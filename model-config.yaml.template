@@ -1,0 +1,25 @@
+# Example DEPLOYMENT names; create and verify these in your Azure resource.
+# Do not add API keys. Use AZURE_OPENAI_API_KEY or Azure Identity credentials.
+azure_openai:
+  endpoint: https://YOUR-RESOURCE.openai.azure.com
+  api_version: v1
+models:
+  annotation: gpt-4.1
+  marking_scheme: gpt-4.1-mini
+  ocr: gpt-4.1-mini
+  batch_metadata_ocr: gpt-4.1-mini
+  grading: gpt-4.1
+  batch_grading: gpt-4.1
+  moderation: gpt-4.1
+  analytics: gpt-4.1
+  student_feedback: gpt-4.1-mini
+  embedding: text-embedding-3-small
+  # Optional, only used after --infographics --confirm-cost:
+  # analytics_image: gpt-image-2.5-flare
+caching:
+  enabled: false
+  scope: run
+  agents: {}
+# Add verified regional rates in USD per million tokens keyed by deployment.
+# For example, input/output/cached (and image, if appropriate). No guessed defaults.
+pricing: {}

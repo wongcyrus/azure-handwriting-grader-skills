@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review answer regions</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0; padding: 0 1.25rem 2.5rem 1.25rem;
+  color: #1a202c; background: #f8fafc; line-height: 1.45;
+}
+header { margin: 0.85rem 0 0.75rem 0; }
+h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 0.25rem 0; color: #1e293b; }
+h2 { font-size: 0.95rem; font-weight: 700; margin: 0 0 0.5rem 0; color: #1e293b; }
+.hint { max-width: 72rem; font-size: 0.84rem; color: #475569; margin: 0 0 0.65rem 0; }
+
+button, input {
+  font: inherit; font-size: 0.86rem;
+  min-block-size: 34px; padding: 0.32rem 0.7rem;
+  border-radius: 5px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b;
+}
+button { cursor: pointer; font-weight: 600; transition: background-color 0.12s ease, border-color 0.12s ease; }
+button:hover:not(:disabled) { background: #f1f5f9; border-color: #94a3b8; }
+button.btn-primary { background: #2563eb; color: #ffffff; border-color: #1d4ed8; }
+button.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+button.btn-success { background: #16a34a; color: #ffffff; border-color: #15803d; }
+button.btn-success:hover:not(:disabled) { background: #15803d; }
+button.btn-danger { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+button.btn-danger:hover:not(:disabled) { background: #fee2e2; border-color: #fca5a5; }
+:where(button, input, [tabindex]):focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+@media (pointer: coarse) {
+  button, input { min-block-size: 44px; }
+}
+
+.toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem;
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;
+  padding: 0.55rem 0.85rem; margin-bottom: 0.65rem;
+}
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+#page { font-size: 0.9rem; color: #1e293b; padding: 0 0.35rem; }
+
+#status {
+  padding: 0.5rem 0.85rem; background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 6px; color: #1d4ed8; font-size: 0.86rem; font-weight: 500;
+  white-space: pre-wrap; margin-bottom: 0.75rem;
+}
+#missing-warning {
+  padding: 0.55rem 0.85rem; background: #fef3c7; border: 1px solid #f59e0b;
+  border-radius: 6px; color: #92400e; font-size: 0.86rem; font-weight: 600;
+  white-space: pre-wrap; margin-bottom: 0.75rem; display: none;
+}
+
+.workspace {
+  display: grid; grid-template-columns: minmax(260px, 320px) 1fr; gap: 1rem; align-items: start;
+}
+@media (max-width: 860px) {
+  .workspace { grid-template-columns: 1fr; }
+}
+
+.sidebar-panel {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.85rem;
+  display: flex; flex-direction: column; gap: 0.75rem;
+  content-visibility: auto; contain-intrinsic-size: auto 300px auto 500px;
+}
+@supports not (content-visibility: auto) {
+  .sidebar-panel { contain: layout style paint; }
+}
+.field-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.field-group label { font-size: 0.82rem; font-weight: 600; color: #334155; }
+.field-group input { width: 100%; }
+
+#list { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+#list button { min-inline-size: 40px; }
+#list button.selected { background: #fef3c7; border-color: #d97706; color: #92400e; }
+
+.canvas-panel {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+#canvas {
+  display: block; width: min(100%, 1000px); height: auto;
+  border: 1px solid #94a3b8; border-radius: 4px;
+  touch-action: none; user-select: none; background: #f1f5f9;
+}
+#canvas rect[data-action="move"] { cursor: move; }
+#canvas rect[data-action="resize"] { cursor: nwse-resize; }
+.box-coords { font-size: 0.78rem; color: #64748b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Review answer regions</h1>
+  <p class="hint">Click New box, set a label and drag on the image to draw. Select a box to move it;
+drag its bottom-right handle to resize. Save each page as reviewed. Use exact uppercase NAME, ID and CLASS labels,
+and place the ID box on the first page.
+Boxes cover the whole answer area. AI suggestions are optional and must be reviewed.</p>
+
+  <nav class="toolbar" aria-label="Page and approval actions">
+    <div class="bar">
+      <button type="button" id="prev">Previous</button>
+      <strong id="page"></strong>
+      <button type="button" id="next">Next</button>
+    </div>
+    <div class="bar">
+      <button type="button" id="suggestions">Load AI suggestions</button>
+      <button type="button" id="save">Save draft</button>
+      <button type="button" id="review" class="btn-primary">Save and mark reviewed</button>
+      <button type="button" id="approve" class="btn-success">Approve all regions</button>
+    </div>
+  </nav>
+</header>
+
+<div id="status" role="status">Connecting...</div>
+<div id="missing-warning" role="alert"></div>
+
+<main class="workspace">
+  <aside class="sidebar-panel" aria-labelledby="boxes-heading">
+    <h2 id="boxes-heading">Regions on this page</h2>
+    <div class="field-group">
+      <label for="label">Box label</label>
+      <input id="label" maxlength="64" placeholder="ID or question number">
+    </div>
+    <div class="bar">
+      <button type="button" id="new">New box</button>
+      <button type="button" id="delete" class="btn-danger">Delete selected</button>
+    </div>
+    <div id="list" aria-label="Boxes on this page"></div>
+    <div id="selected-coords" class="box-coords">Select a box to inspect or use arrow keys to nudge.</div>
+  </aside>
+
+  <section class="canvas-panel" aria-label="Page image canvas">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg" tabindex="0" aria-label="Page region editor"></svg>
+  </section>
+</main>
+<script>
+"use strict";
+let token = location.hash.slice(1);
+if (token) {
+  try { sessionStorage.setItem("region_token", token); } catch (_) {}
+  history.replaceState(null, "", location.pathname);
+} else {
+  try { token = sessionStorage.getItem("region_token") || ""; } catch (_) {}
+}
+const canvas = document.getElementById("canvas"), status = document.getElementById("status");
+const label = document.getElementById("label"), list = document.getElementById("list");
+const ns = "http://www.w3.org/2000/svg";
+let state, page = 0, boxes = [], selected = -1, dirty = false, gesture = null, imageUrl = null;
+function message(text) { status.textContent = text; }
+async function api(path, body) {
+  const options = {headers: {"Authorization": "Bearer " + token}};
+  if (body !== undefined) {
+    options.method = "POST"; options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(path, options);
+  if (!response.ok) {
+    let detail = "Request failed";
+    try { detail = (await response.json()).error || detail; } catch (_) {}
+    throw new Error(detail);
+  }
+  return response;
+}
+function svgElement(name, attrs) {
+  const element = document.createElementNS(ns, name);
+  for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, value);
+  return element;
+}
+function questionKey(value) {
+  let s = String(value || "").trim().toUpperCase();
+  if (s.startsWith("Q") && s.length > 1) s = s.slice(1);
+  const num = Number(s);
+  if (s !== "" && Number.isFinite(num) && Number.isInteger(num)) return String(Math.trunc(num));
+  return s;
+}
+function updateMissingWarning() {
+  const warnEl = document.getElementById("missing-warning");
+  if (!warnEl || !state || !state.draft) return;
+  const presentKeys = new Set();
+  for (let p = 0; p < state.pages.length; p++) {
+    const pBoxes = (p === page) ? boxes : (state.draft.annotations[String(p)] || []);
+    for (const b of pBoxes) {
+      if (b && b.label) presentKeys.add(questionKey(b.label));
+    }
+  }
+  const missing = [];
+  const expected = state.expected_questions || [];
+  for (const q of expected) {
+    if (!presentKeys.has(questionKey(q))) missing.push(q);
+  }
+  const page1Boxes = (page === 0) ? boxes : (state.draft.annotations["0"] || []);
+  const hasId = page1Boxes.some(b => b && String(b.label || "").trim().toUpperCase() === "ID");
+  const warnings = [];
+  if (!hasId) warnings.push("Missing required ID box on Page 1.");
+  if (missing.length > 0) warnings.push("Missing bounding box for rubric question(s): " + missing.join(", "));
+  if (warnings.length > 0) {
+    warnEl.textContent = "Warning: " + warnings.join(" | ");
+    warnEl.style.display = "block";
+  } else {
+    warnEl.textContent = "";
+    warnEl.style.display = "none";
+  }
+}
+function draw() {
+  if (!state || !state.pages || !state.draft) return;
+  const dims = state.pages[page];
+  canvas.setAttribute("viewBox", `0 0 ${dims.width} ${dims.height}`);
+  canvas.replaceChildren(svgElement("image", {href: imageUrl, width: dims.width, height: dims.height}));
+  list.replaceChildren();
+  boxes.forEach((box, index) => {
+    const isSel = index === selected;
+    const color = isSel ? "#d97706" : "#dc2626";
+    const fill = isSel ? "rgba(245,158,11,.16)" : "rgba(220,38,38,.10)";
+    const rect = svgElement("rect", {x: box.x, y: box.y, width: box.width, height: box.height,
+      fill, stroke: color, "stroke-width": Math.max(2, dims.width / 400),
+      "data-index": index, "data-action": "move"});
+    canvas.append(rect);
+    const text = svgElement("text", {x: box.x + 4, y: box.y + Math.max(20, dims.width / 60),
+      fill: color, "font-size": Math.max(20, dims.width / 60), "font-weight": "700", "pointer-events": "none"});
+    text.textContent = box.label; canvas.append(text);
+    if (isSel) {
+      const size = Math.max(16, dims.width / 70);
+      canvas.append(svgElement("rect", {x: box.x + box.width - size, y: box.y + box.height - size,
+        width: size, height: size, fill: color, "data-index": index, "data-action": "resize"}));
+    }
+    const item = document.createElement("button");
+    item.type = "button";
+    item.textContent = box.label; item.className = isSel ? "selected" : "";
+    item.setAttribute("aria-pressed", isSel ? "true" : "false");
+    item.addEventListener("click", () => { selected = index; label.value = box.label; draw(); });
+    list.append(item);
+  });
+  if (gesture && gesture.action === "draw" && gesture.preview) {
+    const p = gesture.preview;
+    canvas.append(svgElement("rect", {
+      x: p.x, y: p.y, width: p.width, height: p.height,
+      fill: "rgba(37,99,235,.12)", stroke: "#2563eb",
+      "stroke-width": Math.max(2, dims.width / 400), "stroke-dasharray": "6 4",
+      "pointer-events": "none"
+    }));
+  }
+  const coordsEl = document.getElementById("selected-coords");
+  if (coordsEl) {
+    coordsEl.textContent = selected >= 0 && boxes[selected]
+      ? `Selected: ${boxes[selected].label} (${boxes[selected].x}, ${boxes[selected].y}, ${boxes[selected].width}×${boxes[selected].height})`
+      : "Select a box to inspect or use arrow keys to nudge.";
+  }
+  document.getElementById("page").textContent =
+    `Page ${page + 1} of ${state.pages.length}${state.draft.reviewed.includes(page) ? " (reviewed)" : ""}${dirty ? " (unsaved)" : ""}`;
+  updateMissingWarning();
+}
+function point(event) {
+  const p = canvas.createSVGPoint(); p.x = event.clientX; p.y = event.clientY;
+  const mapped = p.matrixTransform(canvas.getScreenCTM().inverse());
+  const dims = state.pages[page];
+  return {x: Math.max(0, Math.min(dims.width, Math.round(mapped.x))),
+          y: Math.max(0, Math.min(dims.height, Math.round(mapped.y)))};
+}
+canvas.addEventListener("pointerdown", event => {
+  if (!state || event.button !== 0) return;
+  const action = event.target.dataset.action, pos = point(event);
+  if (action) {
+    selected = Number(event.target.dataset.index);
+    label.value = boxes[selected].label;
+    gesture = {action, pos, original: {...boxes[selected]}};
+  } else {
+    if (!label.value.trim()) { message("Enter a label before drawing a box."); return; }
+    selected = -1; gesture = {action: "draw", pos};
+  }
+  canvas.setPointerCapture(event.pointerId); draw();
+});
+canvas.addEventListener("pointermove", event => {
+  if (!gesture) return;
+  const pos = point(event), dims = state.pages[page];
+  if (gesture.action === "draw") {
+    gesture.preview = {
+      x: Math.min(pos.x, gesture.pos.x),
+      y: Math.min(pos.y, gesture.pos.y),
+      width: Math.abs(pos.x - gesture.pos.x),
+      height: Math.abs(pos.y - gesture.pos.y),
+    };
+    draw();
+    return;
+  }
+  const orig = gesture.original;
+  const dx = pos.x - gesture.pos.x, dy = pos.y - gesture.pos.y;
+  if (gesture.action === "move") {
+    boxes[selected].x = Math.max(0, Math.min(dims.width - orig.width, orig.x + dx));
+    boxes[selected].y = Math.max(0, Math.min(dims.height - orig.height, orig.y + dy));
+  } else {
+    boxes[selected].width = Math.max(1, Math.min(dims.width - orig.x, orig.width + dx));
+    boxes[selected].height = Math.max(1, Math.min(dims.height - orig.y, orig.height + dy));
+  }
+  dirty = true; draw();
+});
+canvas.addEventListener("keydown", event => {
+  if (selected < 0 || !boxes[selected] || !state) return;
+  const step = event.shiftKey ? 20 : 4;
+  const dims = state.pages[page], box = boxes[selected];
+  if (event.key === "ArrowLeft") { box.x = Math.max(0, box.x - step); }
+  else if (event.key === "ArrowRight") { box.x = Math.min(dims.width - box.width, box.x + step); }
+  else if (event.key === "ArrowUp") { box.y = Math.max(0, box.y - step); }
+  else if (event.key === "ArrowDown") { box.y = Math.min(dims.height - box.height, box.y + step); }
+  else if (event.key === "Delete" || event.key === "Backspace") { boxes.splice(selected, 1); selected = -1; }
+  else return;
+  event.preventDefault(); dirty = true; draw();
+});
+canvas.addEventListener("pointerup", event => {
+  if (!gesture) return;
+  if (gesture.action === "draw") {
+    const p = point(event), x = Math.min(p.x, gesture.pos.x), y = Math.min(p.y, gesture.pos.y);
+    const width = Math.abs(p.x - gesture.pos.x), height = Math.abs(p.y - gesture.pos.y);
+    if (width > 3 && height > 3) {
+      boxes.push({x, y, width, height, label: label.value.trim()});
+      selected = boxes.length - 1; dirty = true;
+    }
+  }
+  gesture = null; draw();
+});
+label.addEventListener("change", () => {
+  if (selected >= 0) { boxes[selected].label = label.value.trim(); dirty = true; draw(); }
+});
+document.getElementById("delete").onclick = () => {
+  if (selected >= 0) { boxes.splice(selected, 1); selected = -1; dirty = true; draw(); }
+};
+document.getElementById("new").onclick = () => {
+  selected = -1; label.value = ""; draw(); label.focus();
+};
+async function loadAllSuggestions(promptConfirm) {
+  try {
+    const data = await (await api("/api/suggestions")).json();
+    if (!data || !data.annotations) return;
+    const hasBoxes = Object.values(state.draft.annotations).some(b => b && b.length > 0) || boxes.length > 0;
+    if (promptConfirm && hasBoxes && !confirm("Replace all pages' boxes with AI suggestions? This does not save yet.")) return;
+    for (let p = 0; p < state.pages.length; p++) {
+      if (data.annotations[String(p)]) {
+        state.draft.annotations[String(p)] = structuredClone(data.annotations[String(p)]);
+      }
+    }
+    boxes = structuredClone(state.draft.annotations[String(page)]);
+    selected = -1; dirty = promptConfirm; draw();
+    if (promptConfirm) message("Loaded suggestions from " + data.model + " across all pages. Review and save each page.");
+  } catch (e) {
+    if (promptConfirm) message(e.message);
+  }
+}
+document.getElementById("suggestions").onclick = () => loadAllSuggestions(true);
+async function showPage(index) {
+  if (dirty && !confirm("Discard unsaved edits on this page?")) return;
+  page = index; selected = -1; dirty = false;
+  boxes = structuredClone(state.draft.annotations[String(page)]);
+  const response = await api("/api/images/" + page);
+  if (imageUrl) URL.revokeObjectURL(imageUrl);
+  imageUrl = URL.createObjectURL(await response.blob()); draw();
+}
+async function save(reviewed) {
+  if (selected >= 0) boxes[selected].label = label.value.trim();
+  state.draft.annotations[String(page)] = structuredClone(boxes);
+  const response = await api("/api/page", {revision: state.draft.revision, page, boxes, reviewed});
+  const updated = await response.json();
+  for (let p = 0; p < state.pages.length; p++) {
+    if (p !== page && (!updated.annotations[String(p)] || updated.annotations[String(p)].length === 0)) {
+      if (state.draft.annotations[String(p)] && state.draft.annotations[String(p)].length > 0) {
+        updated.annotations[String(p)] = state.draft.annotations[String(p)];
+      }
+    }
+  }
+  state.draft = updated; dirty = false; state.approved = false; draw();
+  message(reviewed ? "Page saved and marked reviewed." : "Draft saved; page is not marked reviewed.");
+}
+document.getElementById("prev").onclick = () => showPage(Math.max(0, page - 1)).catch(e => message(e.message));
+document.getElementById("next").onclick = () => showPage(Math.min(state.pages.length - 1, page + 1)).catch(e => message(e.message));
+document.getElementById("save").onclick = () => save(false).catch(e => message(e.message));
+document.getElementById("review").onclick = () => save(true).catch(e => message(e.message));
+document.getElementById("approve").onclick = async () => {
+  if (selected >= 0) boxes[selected].label = label.value.trim();
+  state.draft.annotations[String(page)] = structuredClone(boxes);
+  if (!confirm("Approve all page layouts for this exam?")) return;
+  try {
+    for (let p = 0; p < state.pages.length; p++) {
+      if (!state.draft.reviewed.includes(p) || (p === page && dirty)) {
+        const pBoxes = (p === page) ? boxes : (state.draft.annotations[String(p)] || []);
+        const resp = await api("/api/page", {revision: state.draft.revision, page: p, boxes: pBoxes, reviewed: true});
+        state.draft = await resp.json();
+      }
+    }
+    dirty = false;
+    await api("/api/approve", {revision: state.draft.revision});
+    state.approved = true;
+    draw();
+    message("Regions approved. This does not start grading.");
+  } catch (e) { message(e.message); }
+};
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+(async () => {
+  try {
+    if (!token) throw new Error("Open the full URL printed by the review command.");
+    state = await (await api("/api/state")).json();
+    if (!state.approved) {
+      try {
+        const data = await (await api("/api/suggestions")).json();
+        if (data && data.annotations) {
+          for (let p = 0; p < state.pages.length; p++) {
+            const pageBoxes = state.draft.annotations[String(p)];
+            const isReviewed = state.draft.reviewed.includes(p);
+            if ((!pageBoxes || pageBoxes.length === 0) && !isReviewed && data.annotations[String(p)]) {
+              state.draft.annotations[String(p)] = structuredClone(data.annotations[String(p)]);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    await showPage(0);
+    message(state.approved ? "A prior approval exists. Editing and saving invalidates it." : "Review and save every page.");
+  } catch (e) { message(e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+# Azure Handwriting Grader Skills
+
+Human-reviewed handwriting grading with **Azure OpenAI** and **Microsoft Agent
+Framework**. This is an Azure-only port of
+[gemini-handwriting-grader-skills](https://github.com/wongcyrus/gemini-handwriting-grader-skills).
+
+The port preserves local PDF rendering, rubric and region approvals, the browser
+score editor, resumable grading, isolated regrades, reports, offline analytics,
+and separately approved SMTP distribution. No Google SDK or Google credentials
+are required. Original example student documents are deliberately excluded.
+
+**Validation:** automated tests use synthetic data and localhost fake services.
+Live Azure model availability, handwriting accuracy, and grading quality are
+not established by those tests. Teachers must review all scores before use.
+
+## Installation
+
+Python **3.11+** is required. Prefer the committed, hash-bearing lockfile:
+
+```sh
+uv sync --frozen
+cp exam.yaml.template exam.yaml
+cp model-config.yaml.template config.yaml
+```
+
+Alternatively, create a virtual environment and run `python -m pip install -e .`.
+On Windows, use `.venv\Scripts\handwriting-grader.exe`; on Unix, use
+`.venv/bin/handwriting-grader`. PDF rendering uses `pypdfium2`. Optional DOCX
+answer-sheet conversion requires LibreOffice.
+
+### Framework supply-chain pin
+
+The minimal framework packages are pinned to
+**`agent-framework-core==1.26.0`** and **`agent-framework-openai==1.18.2`**.
+Both artifacts were published before the reported compromise and checked
+against their SHA-256 hashes, with no `.pth` startup hooks found.
+
+Do **not** install the umbrella `agent-framework` package versions **1.26.1 or
+1.26.2**: [GHSA-764m-3ppc-5m73](https://github.com/advisories/GHSA-764m-3ppc-5m73)
+documents credential-stealing malware. Version 1.26.0 is a pre-incident rollback,
+not a general safety certification. This project avoids umbrella `[all]` extras,
+which install unrelated providers. Review dependency changes before upgrading.
+
+## Azure configuration
+
+Deploy image-input, structured-output models in your Azure OpenAI resource.
+Values in `models` are **deployment names**, not automatically discovered model
+IDs. The template uses example names; replace them with your own deployments.
+
+```yaml
+azure_openai:
+  endpoint: https://YOUR-RESOURCE.openai.azure.com
+  api_version: v1
+models:
+  annotation: your-vision-deployment
+  marking_scheme: your-small-deployment
+  ocr: your-small-deployment
+  batch_metadata_ocr: your-small-deployment
+  grading: your-vision-deployment
+  batch_grading: your-vision-deployment
+  moderation: your-vision-deployment
+  analytics: your-vision-deployment
+  student_feedback: your-small-deployment
+  embedding: your-embedding-deployment
+```
+
+Only explicit Azure HTTPS resource endpoints are accepted; public OpenAI
+environment variables never select the backend. Authentication uses
+`AZURE_OPENAI_API_KEY`, if supplied, otherwise Azure Identity credentials.
+For local development, sign in with `az login`. For production, configure
+managed identity and set `AZURE_OPENAI_AUTH=managed_identity`.
+Never put credentials, student documents, real exam configuration or outputs
+in source control.
+
+`discover-models --endpoint URL --write-config PATH` writes an **offline template**,
+refuses overwrite, and makes no inference calls. It does not discover deployments,
+verify capability, or fetch pricing.
+
+## Reviewed workflow
+
+Configure `exam.yaml` completely before starting; changes invalidate approvals.
+Relative paths resolve from that file's directory.
+
+```sh
+.venv/bin/handwriting-grader preflight --exam exam.yaml
+.venv/bin/handwriting-grader check-scans --exam exam.yaml
+.venv/bin/handwriting-grader import-rubric --exam exam.yaml
+# Review the rubric workbook before approving:
+.venv/bin/handwriting-grader approve-rubric --exam exam.yaml --confirm-reviewed
+.venv/bin/handwriting-grader prepare-regions --exam exam.yaml
+.venv/bin/handwriting-grader review-regions --exam exam.yaml
+```
+
+For configured attendance, review and approve attendance separately. In the
+region editor, draw or correct each box, save, review every page, and approve.
+Optional `suggest-regions` and DOCX `extract-rubric` use Azure OpenAI; preview
+their target and obtain consent before adding `--confirm-cost`.
+
+Preview grading first:
+
+```sh
+.venv/bin/handwriting-grader grade --exam exam.yaml \
+  --model-config config.yaml \
+  --endpoint https://YOUR-RESOURCE.openai.azure.com --api-version v1
+```
+
+After approval to transmit student work and incur charges, repeat with
+`--confirm-cost`. By default, Microsoft Agent Framework runs an explicit
+approval-validation -> grading -> human-review boundary workflow. `workflow-grade`
+is an alias; `--orchestrator python` uses the same grading engine directly.
+Neither execution path grants human approval or sends email.
+
+**Grading modes:** `--mode batch` groups answer crops in synchronous Responses API
+requests; it is **not** Azure's asynchronous Batch API. Requests are conservatively
+limited to ten image parts and an inline payload budget. Metadata counts each
+field crop as an image: 35 students with three fields can require twelve requests.
+Comparison within a group does not guarantee consistency across all groups.
+`--mode item` grades individual crops and performs question-level text moderation.
+
+SDK retries are bounded; failures and partial runs can still incur charges.
+Use `resume-grading`, `retry-grading`, or isolated `regrade` only after reviewing
+the target and obtaining the relevant cost consent.
+
+```sh
+.venv/bin/handwriting-grader review-grading --exam exam.yaml
+# Explicitly review and approve all identifiers and marks before:
+.venv/bin/handwriting-grader report --exam exam.yaml
+.venv/bin/handwriting-grader analytics --exam exam.yaml
+```
+
+The editor and `cluster-answers` use offline/cached grouping by default.
+Their `--confirm-cost` flag enables Azure embeddings. Set `exam.model_config`
+to the intended model configuration path when enabling embeddings.
+
+`verify-rubric` uses deployment-dependent Responses `web_search`, returns cited
+sources where available, and never approves a rubric. `ai-analysis` requires
+cost consent followed by separate human feedback approval.
+`advanced-report` is offline by default; optional infographics require a configured
+image-generation deployment (`models.analytics_image`) and
+`--infographics --confirm-cost`. Image generation does not automatically retry.
+
+Email remains gated by preview, explicit human approval, then `--confirm-send`.
+Local review URLs contain private access tokens; do not share them.
+
+## Usage and cost
+
+Telemetry is written to `telemetry/azure_usage.jsonl`. The `cost-report` command
+reports token usage and estimates from verified, explicitly configured
+per-deployment `pricing` rates. There are no guessed Gemini or Azure prices.
+Missing rates or usage produce **UNPRICED** / JSON `null`, not a claim of zero cost.
+Use Azure billing for authoritative actual spend.
+Failed responses and individual SDK retries are not fully represented in the
+usage log; recorded call counts are not an authoritative count of billed attempts.
+
+## Testing and architecture
+
+```sh
+uv run --frozen python -m unittest discover -s tests -v
+```
+
+Optional browser tests require the `browser-test` extra and an installed Chrome.
+The offline tests exercise the Azure SDK against localhost fake services,
+structured outputs, image-aware chunking, approvals, workflows, resumability,
+reports, and distribution safeguards. They do not call paid Azure services.
+
+See [architecture](docs/design-logic-and-flow.md),
+[grading](docs/grading-and-moderation-engine.md),
+[model configuration](docs/model-configuration-and-caching.md),
+[testing](docs/testing-skills.md), and the
+[agent skill](skills/handwriting-grading/SKILL.md).

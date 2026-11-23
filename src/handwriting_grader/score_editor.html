@@ -1,0 +1,2328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review grades</title>
+<style>
+:root { --img-size: 360px; }
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0; padding: 0 1.25rem 3rem 1.25rem;
+  color: #1a202c; background-color: #f8fafc;
+}
+
+header { margin: 0.85rem 0 0.5rem 0; }
+h1 { font-size: 1.3rem; font-weight: 700; margin: 0 0 0.25rem 0; color: #1e293b; }
+p.instructions { font-size: 0.82rem; color: #475569; margin: 0 0 0.6rem 0; line-height: 1.4; }
+
+.top-nav-row {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;
+  margin-bottom: 0.65rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e2e8f0;
+}
+.nav-tabs { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; }
+.nav-tab {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.32rem 0.65rem; border: 1px solid #cbd5e1; background: #ffffff;
+  border-radius: 5px; font-size: 0.82rem; font-weight: 600; color: #334155;
+  cursor: pointer; text-decoration: none; transition: all 0.12s ease;
+}
+.nav-tab:hover { background: #f1f5f9; border-color: #94a3b8; }
+.nav-tab.tab-done { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+.nav-tab.tab-flagged { border-color: #fed7aa; background: #fff7ed; color: #9a3412; }
+.nav-tab.active { background: #2563eb; color: #ffffff; border-color: #1d4ed8; }
+.nav-tab.metadata { background: #f8fafc; color: #0284c7; border-color: #bae6fd; }
+.nav-tab.metadata.active { background: #0284c7; color: #ffffff; border-color: #0369a1; }
+.tab-badge {
+  display: inline-block; padding: 0.05rem 0.38rem; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 700; line-height: 1.3;
+}
+.tab-badge.done { background: #dcfce7; color: #15803d; }
+.tab-badge.pending { background: #e2e8f0; color: #334155; }
+.tab-badge.flagged { background: #fee2e2; color: #b91c1c; }
+.nav-tab.active .tab-badge { background: rgba(255,255,255,0.22); color: #ffffff; }
+.review-summary-pill {
+  font-size: 0.78rem; font-weight: 600; color: #475569;
+  padding: 0.25rem 0.55rem; background: #f1f5f9; border-radius: 999px;
+}
+.questions-drawer {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+  padding: 0.6rem; margin-bottom: 0.65rem; max-height: 220px; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.35rem;
+}
+.questions-drawer[hidden] { display: none; }
+
+.global-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important; clip-path: inset(50%) !important; overflow: hidden !important;
+  width: 1px !important; height: 1px !important; margin: -1px !important; padding: 0 !important; border: 0 !important;
+  white-space: nowrap !important;
+}
+
+input, select, textarea, button { font: inherit; font-size: 0.84rem; }
+input[type="number"], input[type="text"], select {
+  padding: 0.28rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; background: #ffffff;
+}
+input[type="range"] { vertical-align: middle; }
+button {
+  cursor: pointer; padding: 0.32rem 0.7rem; border-radius: 4px;
+  border: 1px solid #cbd5e1; background: #ffffff; color: #334155; font-weight: 600;
+  transition: all 0.12s ease;
+}
+button:hover:not(:disabled) { background: #f1f5f9; border-color: #94a3b8; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.btn-primary { background: #2563eb; color: #ffffff; border-color: #1d4ed8; }
+button.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+button.btn-success { background: #16a34a; color: #ffffff; border-color: #15803d; }
+button.btn-success:hover:not(:disabled) { background: #15803d; }
+button.btn-warn { background: #d97706; color: #ffffff; border-color: #b45309; }
+button.btn-warn:hover:not(:disabled) { background: #b45309; }
+.btn-filter-toggle {
+  background: #fef3c7; color: #92400e; border: 1.5px solid #fde68a;
+  padding: 0.22rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; transition: all 0.15s ease;
+  user-select: none;
+}
+.btn-filter-toggle:hover { background: #fde68a; color: #78350f; border-color: #f59e0b; }
+.btn-filter-toggle.active {
+  background: #d97706; color: #ffffff; border-color: #b45309;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.3);
+}
+
+.btn-cluster-toggle {
+  background: #f8fafc; color: #475569; border: 1.5px solid #cbd5e1;
+  padding: 0.22rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; transition: all 0.15s ease;
+  user-select: none;
+}
+.btn-cluster-toggle:hover { background: #e2e8f0; color: #1e293b; border-color: #94a3b8; }
+.btn-cluster-toggle.active {
+  background: #16a34a; color: #ffffff; border-color: #15803d;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.25);
+}
+
+.toggle-vis {
+  padding: 0.2rem 0.5rem; font-size: 0.78rem; border-radius: 4px;
+  border: 1px solid #cbd5e1; background: #ffffff; color: #64748b;
+}
+.toggle-vis.active { background: #16a34a; color: #ffffff; border-color: #15803d; }
+
+#status {
+  padding: 0.45rem 0.85rem; background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 5px; color: #1d4ed8; font-size: 0.84rem; font-weight: 500;
+  margin-bottom: 0.65rem; white-space: pre-wrap;
+}
+
+.question-banner {
+  background: #ffffff; border: 1px solid #cbd5e1; border-left: 4px solid #2563eb;
+  padding: 0.65rem 1rem; border-radius: 0 6px 6px 0; margin-bottom: 0.75rem; font-size: 0.85rem;
+}
+.question-banner strong { color: #1e293b; }
+.question-banner pre {
+  margin: 0.3rem 0 0 0; font-family: inherit; white-space: pre-wrap; color: #475569; font-size: 0.8rem;
+}
+
+.controls-bar {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+  padding: 0.55rem 0.85rem; margin-bottom: 0.75rem;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem;
+}
+.controls-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; }
+.controls-group label {
+  display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.82rem; font-weight: 600; color: #334155;
+}
+
+/* Identity Matching Inline Box (shown when section === 'id') */
+.identity-panel {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+  padding: 0.85rem 1rem; margin-bottom: 1rem;
+  display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
+}
+
+/* Marksheet Table */
+.table-container {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03); overflow-x: auto; margin-bottom: 1.25rem;
+}
+table.marksheet { border-collapse: collapse; width: 100%; font-size: 0.85rem; table-layout: auto; }
+table.marksheet.hide-img .col-img { display: none !important; }
+table.marksheet.hide-ans .col-ans { display: none !important; }
+table.marksheet.hide-mark .col-mark { display: none !important; }
+table.marksheet.hide-sim .col-sim { display: none !important; }
+table.marksheet.hide-reason .col-reason { display: none !important; }
+table.marksheet th, table.marksheet td {
+  border: 1px solid #e2e8f0; padding: 0.5rem 0.65rem; vertical-align: middle; text-align: left;
+}
+table.marksheet th {
+  background: #f8fafc; font-weight: 600; color: #334155; position: sticky; top: 0; z-index: 5;
+}
+table.marksheet th.sortable {
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+table.marksheet th.sortable:hover { background: #e2e8f0; }
+table.marksheet th.sortable.sort-active { background: #eff6ff; color: #1d4ed8; }
+.sort-ind { margin-left: 0.3rem; font-size: 0.72rem; opacity: 0.6; }
+table.marksheet th.sort-active .sort-ind { opacity: 1; }
+table.marksheet tr:hover { background-color: #f8fafc; }
+table.marksheet tr.row-flagged { background-color: #fff7ed; }
+table.marksheet tr.row-failed { background-color: #fef2f2; }
+table.marksheet tr.row-selected { outline: 2px solid #2563eb; outline-offset: -2px; }
+@supports (content-visibility: auto) {
+  table.marksheet tbody tr:nth-child(n+12) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto none auto 140px;
+  }
+}
+
+tr.group-divider td {
+  background: #e2e8f0; font-weight: 700; color: #1e293b;
+  padding: 0.4rem 0.65rem; border-top: 2px solid #cbd5e1; border-bottom: 2px solid #cbd5e1;
+  font-size: 0.82rem;
+}
+.group-badge {
+  display: inline-block; background: #2563eb; color: #ffffff;
+  padding: 0.1rem 0.45rem; border-radius: 10px; font-size: 0.74rem; margin-right: 0.4rem;
+}
+
+/* Maximizable Answer Crop Image */
+td.col-img { width: var(--img-size); min-width: var(--img-size); }
+body.view-expanded td.col-img { min-width: max(380px, var(--img-size)); }
+.answer-crop-img {
+  width: var(--img-size); max-width: none; height: auto; max-height: 75vh;
+  object-fit: contain; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;
+  cursor: pointer; display: block;
+}
+.answer-crop-img:hover { border-color: #2563eb; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+
+input.mark-input {
+  width: 68px; font-size: 1rem; font-weight: 700; text-align: center;
+  padding: 0.25rem 0.35rem; border: 1.5px solid #cbd5e1; border-radius: 4px;
+}
+input.mark-input.locked { border-color: #ea580c; background-color: #fff7ed; }
+.lock-indicator {
+  cursor: pointer; font-size: 0.72rem; color: #ea580c; font-weight: 600; display: block; margin-top: 0.15rem;
+}
+
+.sim-badge {
+  display: inline-block; padding: 0.15rem 0.45rem; border-radius: 4px;
+  font-weight: 700; font-size: 0.78rem;
+}
+.sim-high { background: #dcfce7; color: #15803d; }
+.sim-mid { background: #fef9c3; color: #854d0e; }
+.sim-low { background: #f1f5f9; color: #64748b; }
+
+.inline-text {
+  width: 100%; min-height: 2.6rem; padding: 0.25rem 0.35rem;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  font: inherit; color: inherit; resize: vertical; line-height: 1.35;
+}
+.inline-text:hover { border-color: #cbd5e1; background: #ffffff; }
+.inline-text:focus { border-color: #2563eb; background: #ffffff; outline: none; }
+.warning { color: #dc2626; font-weight: 700; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+[hidden] { display: none !important; }
+
+details {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+  margin-bottom: 0.65rem; overflow: hidden;
+}
+details summary {
+  padding: 0.5rem 0.85rem; font-size: 0.84rem; font-weight: 600; color: #334155;
+  cursor: pointer; background: #f8fafc; user-select: none;
+}
+details summary:hover { background: #f1f5f9; }
+details[open] summary { border-bottom: 1px solid #e2e8f0; }
+.details-content { padding: 0.75rem 0.85rem; }
+
+.table-wrap { overflow-x: auto; }
+table#comparison { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+table#comparison th, table#comparison td { border: 1px solid #cbd5e1; padding: 0.35rem 0.5rem; text-align: left; }
+table#comparison th { background: #f8fafc; }
+
+/* Native Full-screen Zoom & Pan Image Lightbox Modal */
+dialog#image-modal {
+  border: none; border-radius: 10px; padding: 0.75rem 1rem;
+  width: 96vw; height: 94vh; max-width: 96vw; max-height: 94vh; margin: auto;
+  background: #ffffff; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+  overscroll-behavior: contain; overflow: hidden;
+}
+dialog#image-modal[open] {
+  display: flex; flex-direction: column; gap: 0.6rem;
+}
+dialog#image-modal::backdrop {
+  background: rgba(15, 23, 42, 0.82); backdrop-filter: blur(3px);
+  overflow: hidden; overscroll-behavior: contain;
+}
+#modal-img-viewport {
+  flex: 1; min-height: 0; overflow: auto;
+  background: #0f172a; border-radius: 6px; border: 1px solid #cbd5e1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; user-select: none; touch-action: none;
+}
+#modal-img-viewport.is-zoomed {
+  display: block; text-align: center; padding: 1rem;
+}
+#modal-img-viewport.is-dragging { cursor: grabbing; }
+dialog#image-modal img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  background: #ffffff; border-radius: 2px; display: block; margin: auto;
+  pointer-events: none;
+}
+#modal-img-viewport.is-zoomed img {
+  max-width: none; max-height: none; display: inline-block; margin: 0;
+}
+</style>
+</head>
+<body>
+
+<header style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem;">
+  <div>
+    <h1>Review grades</h1>
+    <p class="instructions">Verify every identity and answer against the image. Correct the answer and reasoning where needed.
+Failed or flagged grades and corrected answers require a manual mark. Save each item as reviewed.
+Keep this URL private and close spreadsheet editors while using this interface.</p>
+  </div>
+  <div class="bar" style="padding-top:0.2rem; display:flex; gap:0.5rem;">
+    <button type="button" id="btn-all-status" class="btn-primary" title="View review status across Identity and all questions (Alt+S)">All Questions Status [Alt+S]</button>
+    <button type="button" id="reset-review" title="Back up current review.xlsx and reset all reviewed flags and manual marks to original AI results" style="color:#b91c1c; border-color:#fca5a5;">Reset Review</button>
+    <button id="approve" class="btn-success" title="Validates and approves all student identities and all questions for the whole assignment">Approve Entire Assignment [Alt+A]</button>
+  </div>
+</header>
+
+<div class="top-nav-row">
+  <nav class="nav-tabs" id="question-tabs"></nav>
+  <div class="global-actions">
+    <label class="visually-hidden">Script <select id="script"></select></label>
+    <label class="visually-hidden">Review <select id="section"></select></label>
+  </div>
+</div>
+<div id="questions-drawer" class="questions-drawer" hidden></div>
+
+<div id="status" role="status">Connecting...</div>
+
+<div class="question-banner" id="q-banner">
+  <div style="display: flex; justify-content: space-between; align-items: baseline;">
+    <strong id="q-banner-title">Question Info</strong>
+    <span id="q-banner-stats" style="font-size: 0.8rem; color: #64748b;"></span>
+  </div>
+  <pre id="q-banner-scheme"></pre>
+</div>
+
+<!-- Identity Matching Section (Only visible on Student Identity tab) -->
+<div class="identity-panel" id="script-fields">
+  <div class="bar">
+    <span id="ocr" class="visually-hidden"></span>
+    <label class="visually-hidden">Reviewed roster ID <select id="reviewed-id"></select></label>
+    <label>Metadata image <select id="metadata-image"><option value="id">ID</option><option value="name">Name</option><option value="class">Class</option></select></label>
+    <button type="button" id="mark-ids-reviewed" class="btn-primary">Match OCR IDs &amp; Mark Reviewed</button>
+    <span id="review-status-id" class="visually-hidden"></span>
+  </div>
+</div>
+
+<!-- Marksheet Controls -->
+<div class="controls-bar" id="marksheet-controls">
+  <div class="controls-group">
+    <label>View:
+      <select id="table-image-mode" title="Apply Crop, +Context (expanded margins), or Full Page to all answers at once">
+        <option value="">Crop</option>
+        <option value="ctx-">+Context</option>
+        <option value="full-">Full Page</option>
+      </select>
+    </label>
+    <label title="Increase the bounding box margin on all answers at once to show out-of-bounds writing">Expand Box:
+      <input type="range" id="box-pad" min="0" max="600" step="20" value="0">
+      <span id="currentBoxPad" style="font-weight: 600; color: #2563eb; min-width: 46px;">+0px</span>
+    </label>
+    <label title="Resize all answer images in the table">Image Size: <input type="range" id="img-size" min="160" max="1200" step="20" value="360"> <span id="currentImgSize" style="font-weight: 600; color: #475569;">360px</span></label>
+  </div>
+  <div class="controls-group">
+    <label>Filter:
+      <select id="marksheet-filter">
+        <option value="all">All Students</option>
+        <option value="required">Needs Mark ⚠ (Action Required)</option>
+        <option value="unreviewed">Not Reviewed</option>
+        <option value="flagged">Flagged / Failed</option>
+      </select>
+    </label>
+    <button type="button" id="btn-filter-required" class="btn-filter-toggle" title="Filter to show only students who require a manual mark">Needs Mark (0)</button>
+    <div id="cluster-mode-container" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; font-size: 0.8rem; color: #475569; margin-left: 0.5rem;">
+      <label for="marksheet-cluster-mode" style="font-weight: 600;">Grouping:</label>
+      <select id="marksheet-cluster-mode" title="Choose grouping method">
+        <option value="words">Word Overlap (Local)</option>
+        <option value="embedding" disabled>AI Embedding (Not generated)</option>
+      </select>
+      <button type="button" id="btn-group-toggle" class="btn-cluster-toggle active" title="Toggle grouping similar answers together">📌 Grouped</button>
+    </div>
+    <span style="font-weight: 600; font-size: 0.8rem; color: #475569;">Show/Hide:</span>
+    <button type="button" class="toggle-vis active" data-col="img">Image</button>
+    <button type="button" class="toggle-vis active" data-col="ans">Answer</button>
+    <button type="button" class="toggle-vis active" data-col="mark">Mark</button>
+    <button type="button" class="toggle-vis active" data-col="sim">Similarity</button>
+    <button type="button" class="toggle-vis active" data-col="reason">Reasoning</button>
+    <button type="button" id="mark-question-reviewed" class="btn-primary" style="margin-left: 0.35rem;">Confirm Question Reviewed [Ctrl+Enter]</button>
+  </div>
+</div>
+<div id="kbd-help-bar" style="font-size: 0.76rem; color: #475569; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.3rem 0.65rem; margin-bottom: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.6rem;">
+  <strong>Keyboard:</strong>
+  <span><code>Alt+G</code> Focus 1st Row</span>
+  <span><code>Alt+R</code> Needs Mark</span>
+  <span><code>Enter</code> / <code>↑↓</code> Next/Prev Row</span>
+  <span><code>Alt+Z</code> Zoom Row (<code>Esc</code> Close)</span>
+  <span><code>Alt+V</code> View Mode</span>
+  <span><code>Alt+M</code> Toggle Row Reviewed</span>
+  <span><code>Ctrl+Enter</code> Confirm Question</span>
+  <span><code>Alt+N</code> Next Unreviewed</span>
+  <span><code>Alt+[</code> / <code>]</code> Prev/Next Q</span>
+  <span><code>Alt+S</code> All Status</span>
+  <span><code>Alt+A</code> Approve</span>
+</div>
+
+<!-- One-Page Marksheet Table (Blind Grading: No Student IDs) -->
+<div class="table-container">
+  <table id="marksheet" class="marksheet">
+    <thead>
+      <tr>
+        <th class="sortable" data-col="script" style="width: 75px;" title="Click to sort by script number">Script<span class="sort-ind">⇅</span></th>
+        <th class="col-img">Image</th>
+        <th class="col-ans sortable sort-active" data-col="answer" title="Click to toggle Similar Answers Grouped / A-Z / Z-A">Answer<span class="sort-ind">📌</span></th>
+        <th class="col-mark sortable" data-col="score" style="width: 105px;" title="Click to sort by mark">Mark<span class="sort-ind">⇅</span></th>
+        <th class="col-sim sortable" data-col="similarity" style="width: 95px;" title="Click to sort by similarity">Similarity<span class="sort-ind">⇅</span></th>
+        <th class="col-reason">Reasoning</th>
+        <th class="sortable" data-col="status" style="width: 125px;" title="Click to sort by review status (Needs Mark ⚠ / Flagged / Auto / Reviewed)">Status<span class="sort-ind">⇅</span></th>
+      </tr>
+    </thead>
+    <tbody id="marksheet-tbody"></tbody>
+  </table>
+</div>
+
+<!-- Native Full-screen Zoom & Pan Image Lightbox Modal -->
+<dialog id="image-modal" closedby="any" aria-labelledby="modal-title">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.65rem; flex-shrink: 0;">
+    <h2 style="margin:0; font-size: 1.05rem;" id="modal-title">Enlarged Preview</h2>
+    <div class="bar">
+      <label style="font-size:0.82rem;">View:
+        <select id="lightbox-mode">
+          <option value="ctx-">+Context</option>
+          <option value="full-">Full Page</option>
+        </select>
+      </label>
+      <button type="button" id="zoom-out" title="Zoom out">−</button>
+      <button type="button" id="zoom-fit" title="Fit to screen">Fit</button>
+      <button type="button" id="zoom-100" title="100% native scan pixels">100%</button>
+      <button type="button" id="zoom-in" title="Zoom in">+</button>
+      <span id="zoom-label" style="min-width: 44px; text-align: center; font-weight: 700; font-size: 0.82rem; color: #334155;">Fit</span>
+      <form method="dialog" style="margin:0;">
+        <button type="submit" id="modal-close" style="padding: 0.25rem 0.65rem;">✕ Close</button>
+      </form>
+    </div>
+  </div>
+  <div id="modal-img-viewport">
+    <img id="modal-img" src="" alt="Enlarged answer crop">
+  </div>
+</dialog>
+
+<dialog id="kb-confirm-modal" style="padding: 1.1rem 1.25rem; border: 1px solid #cbd5e1; border-radius: 8px; max-width: 440px; box-shadow: 0 12px 28px rgba(15,23,42,0.2);">
+  <div id="kb-confirm-text" style="font-size: 0.95rem; color: #0f172a; margin-bottom: 1rem; line-height: 1.45;"></div>
+  <div style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+    <button type="button" id="kb-confirm-cancel">Cancel (Esc)</button>
+    <button type="button" id="kb-confirm-ok" class="btn-primary">Confirm (Enter)</button>
+  </div>
+</dialog>
+
+<dialog id="all-status-modal" style="padding: 1rem 1.25rem; border: 1px solid #cbd5e1; border-radius: 10px; width: min(760px, 94vw); max-height: 85vh; box-shadow: 0 16px 36px rgba(15,23,42,0.22);">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; margin-bottom:0.65rem; flex-wrap:wrap;">
+    <div>
+      <strong style="font-size:1.05rem; color:#0f172a;">All Questions &amp; Identity Status</strong>
+      <div id="all-status-summary" style="font-size:0.82rem; color:#475569; margin-top:0.15rem;"></div>
+    </div>
+    <div style="display:flex; gap:0.45rem; align-items:center;">
+      <button type="button" id="all-status-incomplete-btn" class="btn-filter-toggle">Incomplete Only</button>
+      <button type="button" id="all-status-close">Close (Esc)</button>
+    </div>
+  </div>
+  <div style="max-height:62vh; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px;">
+    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+      <thead style="position:sticky; top:0; background:#f8fafc; border-bottom:1px solid #cbd5e1;">
+        <tr>
+          <th style="text-align:left; padding:0.45rem 0.65rem;">Section</th>
+          <th style="text-align:left; padding:0.45rem 0.65rem;">Reviewed</th>
+          <th style="text-align:left; padding:0.45rem 0.65rem;">Needs Mark</th>
+          <th style="text-align:left; padding:0.45rem 0.65rem;">Status</th>
+          <th style="text-align:right; padding:0.45rem 0.65rem;">Action</th>
+        </tr>
+      </thead>
+      <tbody id="all-status-tbody"></tbody>
+    </table>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+let token = location.hash.slice(1);
+if (token) {
+  try { sessionStorage.setItem("score_token", token); } catch (_) {}
+  history.replaceState(null, "", location.pathname);
+} else {
+  try { token = sessionStorage.getItem("score_token") || ""; } catch (_) {}
+}
+
+const byId = id => document.getElementById(id);
+let state, script = 0, section = "id", dirty = false, imageUrl = null, imageGeneration = 0;
+let busy = false, imageReady = false, suggestion = null, bulk = null;
+let savedSortCol = "answer", savedSortMode = "group";
+try {
+  savedSortCol = localStorage.getItem("handwriting_grader_sort_col") || "answer";
+  savedSortMode = localStorage.getItem("handwriting_grader_sort_mode") || "group";
+} catch (_) {}
+let marksheetSort = {col: savedSortCol, mode: savedSortMode};
+let questionStatusFilter = "all";
+try {
+  questionStatusFilter = localStorage.getItem("handwriting_grader_q_status_filter") || "all";
+} catch (_) {}
+const tableImageUrls = new Map();
+const qClusterCache = new Map();
+const qClusterLoading = new Set();
+
+function message(text) { byId("status").textContent = text; }
+function kbConfirm(text) {
+  return new Promise(resolve => {
+    const dlg = byId("kb-confirm-modal");
+    const msg = byId("kb-confirm-text");
+    const okBtn = byId("kb-confirm-ok");
+    const cancelBtn = byId("kb-confirm-cancel");
+    msg.textContent = text;
+    cancelBtn.style.display = "";
+    let settled = false;
+    function finish(val) {
+      if (settled) return;
+      settled = true;
+      dlg.removeEventListener("cancel", onCancel);
+      dlg.removeEventListener("keydown", onKey);
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      if (dlg.open) dlg.close();
+      resolve(val);
+    }
+    function onOk() { finish(true); }
+    function onCancel(e) { if (e) e.preventDefault(); finish(false); }
+    function onKey(e) {
+      if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); finish(true); }
+      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+    }
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    dlg.addEventListener("cancel", onCancel);
+    dlg.addEventListener("keydown", onKey);
+    dlg.showModal();
+    okBtn.focus();
+  });
+}
+function kbAlert(text) {
+  return new Promise(resolve => {
+    const dlg = byId("kb-confirm-modal");
+    const msg = byId("kb-confirm-text");
+    const okBtn = byId("kb-confirm-ok");
+    const cancelBtn = byId("kb-confirm-cancel");
+    msg.textContent = text;
+    cancelBtn.style.display = "none";
+    let settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      cancelBtn.style.display = "";
+      dlg.removeEventListener("cancel", onCancel);
+      dlg.removeEventListener("keydown", onKey);
+      okBtn.removeEventListener("click", finish);
+      if (dlg.open) dlg.close();
+      resolve();
+    }
+    function onCancel(e) { if (e) e.preventDefault(); finish(); }
+    function onKey(e) {
+      if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(); }
+    }
+    okBtn.addEventListener("click", finish);
+    dlg.addEventListener("cancel", onCancel);
+    dlg.addEventListener("keydown", onKey);
+    dlg.showModal();
+    okBtn.focus();
+  });
+}
+function updateRevision(rev) {
+  if (!rev) return;
+  if (rev.includes(":") || !state || !state.revision || !state.revision.includes(":")) {
+    state.revision = rev;
+  } else {
+    state.revision = rev + state.revision.slice(state.revision.indexOf(":"));
+  }
+}
+function setBusy(value) {
+  busy = value;
+  for (const id of ["script", "section", "metadata-image", "approve", "reset-review",
+                    "marksheet-filter",
+                    "img-size", "mark-question-reviewed", "mark-ids-reviewed"]) {
+    const el = byId(id);
+    if (el) el.disabled = busy;
+  }
+  for (const el of document.querySelectorAll("table.marksheet button, table.marksheet input.mark-input, table.marksheet textarea.inline-text"))
+    el.disabled = busy;
+}
+
+function option(value, text) {
+  const element = document.createElement("option");
+  element.value = value; element.textContent = text; return element;
+}
+
+async function api(path, body) {
+  const options = {headers: {"Authorization": "Bearer " + token}};
+  if (body !== undefined) {
+    options.method = "POST"; options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(path, options);
+  if (!response.ok) {
+    let detail = "Request failed";
+    try { detail = (await response.json()).error || detail; } catch (_) {}
+    throw new Error(detail);
+  }
+  return response;
+}
+
+function normalizeAnswer(text) {
+  if (!text) return "";
+  return text.toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function textSimilarity(a, b) {
+  if (a === b) return 1;
+  if (!a || !b) return 0;
+  const setA = new Set(a.split(" ")), setB = new Set(b.split(" "));
+  let inter = 0;
+  for (const w of setA) if (setB.has(w)) inter++;
+  return inter / (setA.size + setB.size - inter);
+}
+
+let allStatusIncompleteOnly = false;
+
+function renderAllStatusRows() {
+  if (!state) return;
+  const tbody = byId("all-status-tbody");
+  const summaryEl = byId("all-status-summary");
+  const incBtn = byId("all-status-incomplete-btn");
+  if (!tbody) return;
+  if (incBtn) incBtn.classList.toggle("active", allStatusIncompleteOnly);
+  tbody.replaceChildren();
+
+  const totalScripts = state.scripts.length;
+  const idRev = state.scripts.filter(s => s.reviewed).length;
+  const idErrs = state.scripts.filter(s => !s.reviewed && (!s.reviewed_id || (s.errors && s.errors.length > 0))).length;
+  const idDone = totalScripts > 0 && idRev === totalScripts;
+
+  const rows = [
+    {
+      sec: "id",
+      label: "Identity (ID / Name / Class)",
+      reviewed: idRev,
+      needsMark: idErrs,
+      done: idDone,
+    },
+    ...state.questions.map((q, qi) => {
+      let rev = 0, req = 0;
+      for (const s of state.scripts) {
+        const m = state.marks[s.script_index][qi];
+        if (!m) continue;
+        if (m.reviewed) rev++;
+        const hasMan = m.manual_mark != null && String(m.manual_mark).trim() !== "";
+        const flg = Boolean(m.grading_failed || m.moderator_flag);
+        const ansCorr = m.answer_raw != null && m.answer !== m.answer_raw;
+        if ((flg || ansCorr) && !hasMan && !m.reviewed) req++;
+      }
+      const qLabel = String(q.question_number).startsWith("Q") ? q.question_number : `Q${q.question_number}`;
+      return {
+        sec: String(qi),
+        label: `${qLabel}${q.question_text ? " — " + String(q.question_text).slice(0, 55) : ""}`,
+        reviewed: rev,
+        needsMark: req,
+        done: totalScripts > 0 && rev === totalScripts,
+      };
+    }),
+  ];
+
+  const doneQs = rows.slice(1).filter(r => r.done).length;
+  const pendingCount = rows.filter(r => !r.done).length;
+  if (summaryEl) {
+    summaryEl.textContent = `Identity: ${idDone ? "Complete ✓" : `${idRev}/${totalScripts}`} · Questions Complete: ${doneQs} / ${state.questions.length} · Incomplete Sections: ${pendingCount}`;
+  }
+
+  const visibleRows = allStatusIncompleteOnly ? rows.filter(r => !r.done) : rows;
+  if (visibleRows.length === 0) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    td.style.cssText = "padding:1rem; text-align:center; color:#15803d; font-weight:600;";
+    td.textContent = "All Identity and Question sections are 100% reviewed ✓";
+    tr.append(td);
+    tbody.append(tr);
+    return;
+  }
+
+  visibleRows.forEach(item => {
+    const tr = document.createElement("tr");
+    const isCurrent = item.sec === section;
+    tr.style.cssText = `border-bottom:1px solid #e2e8f0; cursor:pointer;${isCurrent ? " background:#eff6ff;" : ""}`;
+
+    const tdName = document.createElement("td");
+    tdName.style.cssText = "padding:0.45rem 0.65rem; font-weight:600; color:#0f172a;";
+    tdName.textContent = item.label + (isCurrent ? " (Current)" : "");
+
+    const tdRev = document.createElement("td");
+    tdRev.style.cssText = "padding:0.45rem 0.65rem; font-variant-numeric:tabular-nums;";
+    tdRev.textContent = `${item.reviewed} / ${totalScripts}`;
+
+    const tdReq = document.createElement("td");
+    tdReq.style.cssText = `padding:0.45rem 0.65rem; font-weight:600; color:${item.needsMark > 0 ? "#b45309" : "#64748b"};`;
+    tdReq.textContent = item.needsMark > 0 ? `⚠ ${item.needsMark}` : "0";
+
+    const tdStat = document.createElement("td");
+    tdStat.style.cssText = "padding:0.45rem 0.65rem;";
+    const badge = document.createElement("span");
+    badge.style.cssText = item.done
+      ? "display:inline-block; padding:0.15rem 0.45rem; border-radius:999px; font-size:0.75rem; font-weight:700; background:#dcfce7; color:#166534;"
+      : (item.reviewed > 0
+        ? "display:inline-block; padding:0.15rem 0.45rem; border-radius:999px; font-size:0.75rem; font-weight:700; background:#dbeafe; color:#1e40af;"
+        : "display:inline-block; padding:0.15rem 0.45rem; border-radius:999px; font-size:0.75rem; font-weight:700; background:#fef3c7; color:#92400e;");
+    badge.textContent = item.done ? "Complete ✓" : (item.reviewed > 0 ? "In Progress" : "Not Reviewed");
+    tdStat.append(badge);
+
+    const tdAct = document.createElement("td");
+    tdAct.style.cssText = "padding:0.45rem 0.65rem; text-align:right;";
+    const jumpBtn = document.createElement("button");
+    jumpBtn.type = "button";
+    jumpBtn.className = item.done ? "" : "btn-primary";
+    jumpBtn.textContent = "Go";
+    jumpBtn.onclick = e => {
+      e.stopPropagation();
+      byId("all-status-modal").close();
+      change("section", item.sec);
+    };
+    tdAct.append(jumpBtn);
+
+    tr.onclick = () => {
+      byId("all-status-modal").close();
+      change("section", item.sec);
+    };
+    tr.append(tdName, tdRev, tdReq, tdStat, tdAct);
+    tbody.append(tr);
+  });
+}
+
+async function openAllStatusModal() {
+  const dlg = byId("all-status-modal");
+  if (!dlg || !state) return;
+  if (dlg.open) {
+    dlg.close();
+    return;
+  }
+  renderAllStatusRows();
+  dlg.showModal();
+  const firstBtn = dlg.querySelector("#all-status-tbody button") || byId("all-status-close");
+  if (firstBtn) firstBtn.focus();
+  try {
+    await reload();
+    if (dlg.open) renderAllStatusRows();
+  } catch (_) {}
+}
+
+if (byId("btn-all-status")) byId("btn-all-status").onclick = openAllStatusModal;
+if (byId("all-status-close")) byId("all-status-close").onclick = () => byId("all-status-modal").close();
+if (byId("all-status-incomplete-btn")) {
+  byId("all-status-incomplete-btn").onclick = () => {
+    allStatusIncompleteOnly = !allStatusIncompleteOnly;
+    renderAllStatusRows();
+  };
+}
+if (byId("all-status-modal")) {
+  const dlg = byId("all-status-modal");
+  dlg.addEventListener("pointerdown", e => {
+    const r = dlg.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+  });
+  dlg.addEventListener("keydown", e => {
+    const dlg = byId("all-status-modal");
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const btns = [...dlg.querySelectorAll("#all-status-tbody button")];
+      if (!btns.length) return;
+      e.preventDefault();
+      const idx = btns.indexOf(document.activeElement);
+      const next = idx < 0 ? 0 : Math.max(0, Math.min(btns.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)));
+      btns[next].focus();
+    } else if (e.key.toLowerCase() === "i") {
+      e.preventDefault();
+      allStatusIncompleteOnly = !allStatusIncompleteOnly;
+      renderAllStatusRows();
+    }
+  });
+}
+
+function updateNeedsMarkButton(qIdx, isId) {
+  const btnReq = byId("btn-filter-required");
+  if (!btnReq || !state) return;
+  btnReq.hidden = isId;
+  if (isId) return;
+  const allQMarks = state.scripts.map(s => state.marks[s.script_index][qIdx]);
+  const totalReq = allQMarks.filter(m => {
+    if (!m) return false;
+    const hasMan = m.manual_mark != null && String(m.manual_mark).trim() !== "";
+    const flg = Boolean(m.grading_failed || m.moderator_flag);
+    const ansCorr = m.answer_raw != null && m.answer !== m.answer_raw;
+    return (flg || ansCorr) && !hasMan && !m.reviewed;
+  }).length;
+  const filterMode = byId("marksheet-filter") ? byId("marksheet-filter").value : "all";
+  const isFilteringReq = filterMode === "required";
+  btnReq.classList.toggle("active", isFilteringReq);
+  btnReq.textContent = isFilteringReq
+    ? `Showing Needs Mark (${totalReq}) ⚠ [Alt+R]`
+    : (totalReq > 0 ? `Needs Mark (${totalReq}) ⚠ [Alt+R]` : `Needs Mark (0) [Alt+R]`);
+  btnReq.title = isFilteringReq
+    ? "Click to show all students"
+    : (totalReq > 0 ? `Click to filter: ${totalReq} student(s) require a manual mark` : "No students in this question require a manual mark");
+}
+
+function renderTabs() {
+  const nav = byId("question-tabs");
+  const drawer = byId("questions-drawer");
+  nav.replaceChildren();
+  drawer.replaceChildren();
+  if (!state || !state.scripts) return;
+
+  const totalScripts = state.scripts.length;
+  const idReviewed = state.scripts.filter(s => s.reviewed).length;
+  const idErrors = state.scripts.filter(s => !s.reviewed && s.errors && s.errors.length > 0).length;
+  const idDone = totalScripts > 0 && idReviewed === totalScripts;
+
+  const idTab = document.createElement("button");
+  idTab.type = "button";
+  idTab.className = "nav-tab metadata" + (section === "id" ? " active" : "") + (idDone ? " tab-done" : (idErrors > 0 ? " tab-flagged" : ""));
+  idTab.append(document.createTextNode("Student Identity"));
+  const idBadge = document.createElement("span");
+  idBadge.className = "tab-badge " + (idDone ? "done" : (idErrors > 0 ? "flagged" : "pending"));
+  idBadge.textContent = idDone ? "✓" : `${idReviewed}/${totalScripts}` + (idErrors > 0 ? ` ⚠${idErrors}` : "");
+  idTab.append(idBadge);
+  idTab.onclick = () => {
+    change("section", "id");
+  };
+  nav.append(idTab);
+
+  let totalPendingQuestions = idDone ? 0 : 1;
+  let totalFlaggedQuestions = idErrors > 0 ? 1 : 0;
+  let totalDoneQuestions = 0;
+  let nextPendingSection = idDone ? null : "id";
+  const questions = state.questions || [];
+  const useCompactPicker = questions.length > 10;
+
+  const qStats = questions.map((q, i) => {
+    let qReviewed = 0, qFlagged = 0, qNeedsMark = 0;
+    for (const s of state.scripts) {
+      const m = state.marks[s.script_index][i];
+      if (m && m.reviewed) qReviewed++;
+      if (m && (m.grading_failed || m.moderator_flag) && !m.reviewed) qFlagged++;
+      if (m) {
+        const hasMan = m.manual_mark != null && String(m.manual_mark).trim() !== "";
+        const flg = Boolean(m.grading_failed || m.moderator_flag);
+        const ansCorr = m.answer_raw != null && m.answer !== m.answer_raw;
+        if ((flg || ansCorr) && !hasMan) qNeedsMark++;
+      }
+    }
+    const qDone = totalScripts > 0 && qReviewed === totalScripts;
+    if (qDone) {
+      totalDoneQuestions++;
+    } else {
+      totalPendingQuestions++;
+      if (qFlagged > 0) totalFlaggedQuestions++;
+      if (nextPendingSection === null || (section !== "id" && i > Number(section))) {
+        if (nextPendingSection === null || (section !== "id" && Number(nextPendingSection) <= Number(section))) {
+          nextPendingSection = String(i);
+        }
+      }
+    }
+    return {q, i, qReviewed, qFlagged, qNeedsMark, qDone};
+  });
+
+  if (questions.length > 0) {
+    const totalNeedsMarkQs = qStats.filter(x => x.qNeedsMark > 0).length;
+    const qFilterSelect = document.createElement("select");
+    qFilterSelect.id = "question-status-filter";
+    qFilterSelect.title = "Filter questions by review status";
+    qFilterSelect.style.fontSize = "0.78rem";
+    qFilterSelect.append(
+      option("all", `Show Qs: All (${questions.length})`),
+      option("needs_mark", `Needs Mark (${totalNeedsMarkQs}) ⚠`),
+      option("pending", `Needs Review (${questions.length - totalDoneQuestions})`),
+      option("flagged", `Flagged (${qStats.filter(x => x.qFlagged > 0).length})`),
+      option("done", `Reviewed ✓ (${totalDoneQuestions})`)
+    );
+    qFilterSelect.value = questionStatusFilter;
+    qFilterSelect.onchange = e => {
+      questionStatusFilter = e.target.value;
+      try { localStorage.setItem("handwriting_grader_q_status_filter", questionStatusFilter); } catch (_) {}
+      renderTabs();
+    };
+    nav.append(qFilterSelect);
+  }
+
+  let picker = null;
+  if (useCompactPicker) {
+    const prevQ = document.createElement("button");
+    prevQ.type = "button";
+    prevQ.textContent = "◀";
+    prevQ.title = "Previous question";
+    prevQ.disabled = section === "id";
+    prevQ.onclick = () => {
+      const idx = Number(section);
+      change("section", idx <= 0 ? "id" : String(idx - 1));
+    };
+
+    picker = document.createElement("select");
+    picker.id = "question-picker";
+    picker.style.maxWidth = "300px";
+    picker.style.fontWeight = "600";
+    const idOpt = option("id", `Student Identity (${idDone ? "✓" : `${idReviewed}/${totalScripts}`})`);
+    picker.append(idOpt);
+
+    const nextQ = document.createElement("button");
+    nextQ.type = "button";
+    nextQ.textContent = "▶";
+    nextQ.title = "Next question";
+    nextQ.disabled = section !== "id" && Number(section) >= questions.length - 1;
+    nextQ.onclick = () => {
+      const idx = section === "id" ? 0 : Number(section) + 1;
+      if (idx < questions.length) change("section", String(idx));
+    };
+
+    picker.onchange = e => {
+      change("section", e.target.value);
+    };
+    nav.append(prevQ, picker, nextQ);
+  }
+
+  qStats.forEach(({q, i, qReviewed, qFlagged, qNeedsMark, qDone}) => {
+    const matchesFilter = questionStatusFilter === "all" ||
+      (questionStatusFilter === "needs_mark" && qNeedsMark > 0) ||
+      (questionStatusFilter === "pending" && !qDone) ||
+      (questionStatusFilter === "flagged" && qFlagged > 0) ||
+      (questionStatusFilter === "done" && qDone);
+    if (!matchesFilter && section !== String(i)) return;
+
+    const qLabel = String(q.question_number).startsWith("Q") ? q.question_number : `Q${q.question_number}`;
+    const badgeText = qDone ? "✓" : `${qReviewed}/${totalScripts}` + (qFlagged > 0 ? ` ⚠${qFlagged}` : "");
+
+    if (picker) {
+      picker.append(option(String(i), `${qLabel} (${q.marks}m) · ${badgeText}`));
+    }
+
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = "nav-tab" + (section === String(i) ? " active" : "") + (qDone ? " tab-done" : (qFlagged > 0 ? " tab-flagged" : ""));
+    tab.append(document.createTextNode(`${qLabel} (${q.marks}m)`));
+
+    const badge = document.createElement("span");
+    badge.className = "tab-badge " + (qDone ? "done" : (qFlagged > 0 ? "flagged" : "pending"));
+    badge.textContent = badgeText;
+    tab.append(badge);
+
+    tab.onclick = () => {
+      change("section", String(i));
+    };
+    if (useCompactPicker) {
+      drawer.append(tab);
+    } else {
+      nav.append(tab);
+    }
+  });
+
+  if (picker) {
+    picker.value = section;
+    const toggleDrawer = document.createElement("button");
+    toggleDrawer.type = "button";
+    toggleDrawer.style.fontSize = "0.78rem";
+    toggleDrawer.textContent = drawer.hidden ? `All ${questions.length} Qs ▾` : `Hide ${questions.length} Qs ▴`;
+    toggleDrawer.onclick = () => {
+      drawer.hidden = !drawer.hidden;
+      toggleDrawer.textContent = drawer.hidden ? `All ${questions.length} Qs ▾` : `Hide ${questions.length} Qs ▴`;
+    };
+    nav.append(toggleDrawer);
+  } else {
+    drawer.hidden = true;
+  }
+
+  const summary = document.createElement("span");
+  summary.className = "review-summary-pill";
+  summary.textContent = totalPendingQuestions === 0
+    ? "All sections reviewed ✓"
+    : `${totalPendingQuestions} section${totalPendingQuestions === 1 ? "" : "s"} need review` +
+      (totalFlaggedQuestions > 0 ? ` (${totalFlaggedQuestions} flagged)` : "");
+  nav.append(summary);
+
+  if (nextPendingSection !== null && nextPendingSection !== section) {
+    const jumpBtn = document.createElement("button");
+    jumpBtn.type = "button";
+    jumpBtn.id = "next-unreviewed";
+    jumpBtn.style.fontSize = "0.78rem";
+    jumpBtn.style.padding = "0.25rem 0.55rem";
+    jumpBtn.textContent = "Next needing review →";
+    jumpBtn.onclick = () => {
+      change("section", nextPendingSection);
+    };
+    nav.append(jumpBtn);
+  }
+}
+
+function getStatusPriority(item, isId) {
+  if (isId) {
+    return item.reviewed ? 2 : 0;
+  }
+  if (item.needsManual) return 0; // Needs manual mark ⚠ (Highest priority action item)
+  if (item.flagged && !item.reviewed) return 1; // Flagged / Borderline
+  if (!item.reviewed) return 2; // Auto (OK) / Pending review
+  return 3; // Reviewed ✓
+}
+
+async function renderMarksheetTable() {
+  if (!state || !state.scripts) return;
+  const tbody = byId("marksheet-tbody");
+  tbody.replaceChildren();
+
+  const isId = section === "id";
+  const qIdx = isId ? 0 : Number(section);
+  const qData = isId ? null : state.questions[qIdx];
+
+  if (isId) {
+    byId("q-banner-title").textContent = "Student Identity Matching";
+    byId("q-banner-scheme").textContent = "Verify handwritten ID, Name, and Class against student roster.";
+    byId("q-banner-stats").textContent = `Total Scripts: ${state.scripts.length}`;
+    const idRev = state.scripts.filter(s => s.reviewed).length;
+    const idBtn = byId("mark-ids-reviewed");
+    if (state.scripts.length > 0 && idRev === state.scripts.length) {
+      idBtn.className = "btn-success";
+      idBtn.textContent = "All IDs Reviewed ✓";
+    } else {
+      idBtn.className = "btn-primary";
+      idBtn.textContent = `Match OCR IDs & Mark Reviewed (${idRev}/${state.scripts.length}) [Ctrl+Enter]`;
+    }
+  } else {
+    const qLabel = String(qData.question_number).startsWith("Q") ? qData.question_number : `Q${qData.question_number}`;
+    byId("q-banner-title").textContent = `${qData.question_number}: ${qData.question_text || ""}`;
+    byId("q-banner-scheme").textContent = `Marking Scheme: ${qData.marking_scheme || "(No marking scheme)"}`;
+    const totalRev = state.scripts.filter(s => state.marks[s.script_index][qIdx]?.reviewed).length;
+    const qBtn = byId("mark-question-reviewed");
+    if (state.scripts.length > 0 && totalRev === state.scripts.length) {
+      qBtn.className = "btn-success";
+      qBtn.textContent = `${qLabel} All Reviewed ✓`;
+    } else {
+      qBtn.className = "btn-primary";
+      qBtn.textContent = `Confirm ${qLabel} Reviewed (${totalRev}/${state.scripts.length}) [Ctrl+Enter]`;
+    }
+  }
+
+  const sortMode = marksheetSort.mode;
+  const filterMode = byId("marksheet-filter").value;
+
+  const btnGroup = byId("btn-group-toggle");
+  if (btnGroup) {
+    const isGrouped = sortMode === "group" && !isId;
+    btnGroup.classList.toggle("active", isGrouped);
+    btnGroup.textContent = isGrouped ? "📌 Grouped" : "📌 Group Answers";
+    btnGroup.title = isGrouped
+      ? "Grouping is ON (similar answers grouped under banners). Click to sort by Script ID."
+      : "Grouping is OFF. Click to group similar answers together.";
+  }
+
+  document.querySelectorAll("#marksheet th.sortable").forEach(th => {
+    const col = th.dataset.col;
+    const active = col === marksheetSort.col;
+    th.classList.toggle("sort-active", active);
+    const ind = th.querySelector(".sort-ind");
+    if (!active) {
+      th.removeAttribute("aria-sort");
+      if (ind) ind.textContent = "⇅";
+    } else if (sortMode === "group") {
+      th.setAttribute("aria-sort", "other");
+      if (ind) ind.textContent = "📌";
+    } else if (sortMode.endsWith("-asc")) {
+      th.setAttribute("aria-sort", "ascending");
+      if (ind) ind.textContent = "▲";
+    } else {
+      th.setAttribute("aria-sort", "descending");
+      if (ind) ind.textContent = "▼";
+    }
+  });
+
+  const metaField = isId ? (byId("metadata-image").value || "id") : null;
+  let entries = state.scripts.map(s => {
+    const mark = isId ? null : state.marks[s.script_index][qIdx];
+    const rawScore = mark ? (mark.manual_mark != null && String(mark.manual_mark).trim() !== "" ? mark.manual_mark : mark.moderated_mark ?? mark.raw_mark) : 0;
+    const numScore = rawScore != null && Number.isFinite(Number(rawScore)) ? Number(rawScore) : 0;
+    const simScore = mark ? (Number(mark.similarity_score) || 0) : 0;
+    const ansText = isId
+      ? (metaField === "name" ? (s.name_ocr || "") : (metaField === "class" ? (s.class_ocr || "") : (s.id_ocr || "")))
+      : (mark ? mark.answer || "" : "");
+    const isRev = isId ? Boolean(s.reviewed) : Boolean(mark && mark.reviewed);
+    const hasManual = !isId && mark && mark.manual_mark != null && String(mark.manual_mark).trim() !== "";
+    const isFlg = !isId && mark && (mark.grading_failed || mark.moderator_flag);
+    const isAnsCorrected = !isId && mark && mark.answer_raw != null && mark.answer !== mark.answer_raw;
+    const needsManual = !isId && (isFlg || isAnsCorrected) && !hasManual;
+
+    return {
+      script: s,
+      mark,
+      score: numScore,
+      similarity: simScore,
+      answer: ansText,
+      normAnswer: normalizeAnswer(ansText),
+      reviewed: isRev,
+      flagged: isFlg,
+      hasManual,
+      needsManual,
+    };
+  });
+
+  // Update "Needs Mark" button badge count and active state
+  updateNeedsMarkButton(qIdx, isId);
+
+  if (filterMode === "unreviewed") {
+    entries = entries.filter(e => !e.reviewed);
+  } else if (filterMode === "flagged") {
+    entries = entries.filter(e => e.flagged);
+  } else if (filterMode === "required") {
+    entries = entries.filter(e => isId ? !e.reviewed : e.needsManual);
+  }
+
+  const reviewedCount = entries.filter(e => e.reviewed).length;
+  if (!isId) {
+    byId("q-banner-stats").textContent = `Reviewed: ${reviewedCount} / ${entries.length} | Max Marks: ${qData.marks}`;
+  }
+
+  if (sortMode === "group" && !isId) {
+    const clusterSelect = byId("marksheet-cluster-mode");
+    const useEmbedding = Boolean(state && state.has_clusters && (!clusterSelect || clusterSelect.value === "embedding"));
+    const cachedClusterData = useEmbedding ? qClusterCache.get(qIdx) : null;
+    let clusters = [];
+
+    if (useEmbedding && cachedClusterData && cachedClusterData.clusters && cachedClusterData.clusters.length > 0) {
+      const entryMap = new Map();
+      for (const e of entries) {
+        entryMap.set(e.script.script_index, e);
+      }
+      for (const c of cachedClusterData.clusters) {
+        const cItems = [];
+        for (const sInfo of c.scripts) {
+          const e = entryMap.get(sInfo.script_index);
+          if (e) {
+            e.similarity = sInfo.similarity;
+            cItems.push(e);
+          }
+        }
+        if (cItems.length > 0) {
+          clusters.push({
+            id: c.id,
+            repText: c.rep_text,
+            items: cItems,
+            model: cachedClusterData.model || "gemini-embedding-2"
+          });
+        }
+      }
+    } else {
+      if (useEmbedding && !qClusterLoading.has(qIdx)) {
+        qClusterLoading.add(qIdx);
+        fetch(`/api/cluster/${qIdx}`, {
+          headers: {"Authorization": `Bearer ${token}`}
+        })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          qClusterLoading.delete(qIdx);
+          if (data && data.clusters) {
+            qClusterCache.set(qIdx, data);
+            if (section === String(qIdx) && marksheetSort.mode === "group") {
+              renderMarksheetTable();
+            }
+          }
+        })
+        .catch(() => qClusterLoading.delete(qIdx));
+      }
+
+      for (const e of entries) {
+        let placed = false;
+        for (const cluster of clusters) {
+          if (textSimilarity(e.normAnswer, cluster.repNorm) >= 0.65) {
+            cluster.items.push(e);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          clusters.push({repNorm: e.normAnswer, repText: e.answer, items: [e], model: useEmbedding ? "" : "Word Overlap"});
+        }
+      }
+    }
+
+    clusters.sort((a, b) => {
+      if (b.items.length !== a.items.length) return b.items.length - a.items.length;
+      const simA = a.items.reduce((acc, i) => acc + i.similarity, 0) / a.items.length;
+      const simB = b.items.reduce((acc, i) => acc + i.similarity, 0) / b.items.length;
+      return simB - simA;
+    });
+
+    let groupNum = 1;
+    for (const cluster of clusters) {
+      if (cluster.items.length >= 2) {
+        const avgSim = (cluster.items.reduce((acc, it) => acc + it.similarity, 0) / cluster.items.length).toFixed(2);
+        const avgScore = (cluster.items.reduce((acc, it) => acc + it.score, 0) / cluster.items.length).toFixed(1);
+        const rep = cluster.repText || "(empty)";
+
+        const divRow = document.createElement("tr");
+        divRow.className = "group-divider";
+        const divCell = document.createElement("td");
+        divCell.colSpan = 7;
+
+        const badge = document.createElement("span");
+        badge.className = "group-badge";
+        const modelLabel = cluster.model ? ` · ${cluster.model}` : "";
+        badge.textContent = `Similar Group ${groupNum}${modelLabel}`;
+        divCell.append(badge);
+
+        const strongCount = document.createElement("strong");
+        strongCount.textContent = `${cluster.items.length} students`;
+        divCell.append(strongCount, document.createTextNode(" · Avg Similarity: "));
+
+        const strongSim = document.createElement("strong");
+        strongSim.textContent = avgSim;
+        divCell.append(strongSim, document.createTextNode(" · Avg Mark: "));
+
+        const strongMark = document.createElement("strong");
+        strongMark.textContent = avgScore;
+        divCell.append(strongMark, document.createTextNode(" · "));
+
+        const emAnswer = document.createElement("em");
+        emAnswer.textContent = `"${rep.slice(0, 90)}${rep.length > 90 ? '...' : ''}"`;
+        divCell.append(emAnswer);
+
+        divRow.append(divCell);
+        tbody.append(divRow);
+        groupNum++;
+      }
+
+      for (const item of cluster.items) {
+        tbody.append(createTableRow(item, isId, qIdx));
+      }
+    }
+
+    if (clusters.length === 0) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 7;
+      emptyCell.style.textAlign = "center";
+      emptyCell.style.padding = "2rem";
+      emptyCell.style.color = "#64748b";
+      emptyCell.textContent = filterMode === "required"
+        ? "✓ No items require a manual mark for this question. All items have valid marks."
+        : "No students match the current filter.";
+      emptyRow.append(emptyCell);
+      tbody.append(emptyRow);
+    }
+  } else {
+    if (sortMode === "similarity-desc") {
+      entries.sort((a, b) => b.similarity - a.similarity || a.script.script_index - b.script.script_index);
+    } else if (sortMode === "similarity-asc") {
+      entries.sort((a, b) => a.similarity - b.similarity || a.script.script_index - b.script.script_index);
+    } else if (sortMode === "score-asc") {
+      entries.sort((a, b) => a.score - b.score || a.script.script_index - b.script.script_index);
+    } else if (sortMode === "score-desc") {
+      entries.sort((a, b) => b.score - a.score || a.script.script_index - b.script.script_index);
+    } else if (sortMode === "answer-asc") {
+      entries.sort((a, b) => a.normAnswer.localeCompare(b.normAnswer) || a.script.script_index - b.script.script_index);
+    } else if (sortMode === "answer-desc") {
+      entries.sort((a, b) => b.normAnswer.localeCompare(a.normAnswer) || a.script.script_index - b.script.script_index);
+    } else if (sortMode === "status-asc") {
+      entries.sort((a, b) => getStatusPriority(a, isId) - getStatusPriority(b, isId) || a.script.script_index - b.script.script_index);
+    } else if (sortMode === "status-desc") {
+      entries.sort((a, b) => getStatusPriority(b, isId) - getStatusPriority(a, isId) || b.script.script_index - a.script.script_index);
+    } else if (sortMode === "script-desc") {
+      entries.sort((a, b) => b.script.script_index - a.script.script_index);
+    } else {
+      entries.sort((a, b) => a.script.script_index - b.script.script_index);
+    }
+
+    if (entries.length === 0) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 7;
+      emptyCell.style.textAlign = "center";
+      emptyCell.style.padding = "2rem";
+      emptyCell.style.color = "#64748b";
+      emptyCell.textContent = filterMode === "required"
+        ? "✓ No items require a manual mark for this question. All items have valid marks."
+        : "No students match the current filter.";
+      emptyRow.append(emptyCell);
+      tbody.append(emptyRow);
+    } else {
+      for (const item of entries) {
+        tbody.append(createTableRow(item, isId, qIdx));
+      }
+    }
+  }
+
+  loadTableImages();
+}
+
+function createTableRow(item, isId, qIdx) {
+  const row = document.createElement("tr");
+  const s = item.script;
+  const m = item.mark;
+  const sIdx = s.script_index;
+
+  if (item.flagged) row.className = m && m.grading_failed ? "row-failed" : "row-flagged";
+  if (sIdx === script) row.classList.add("row-selected");
+
+  // 1. Blind Script # ONLY (No student ID shown for fair blind review!)
+  const cellId = document.createElement("td");
+  cellId.style.cursor = "pointer";
+  cellId.title = "Click to select row";
+  cellId.onclick = () => {
+    script = sIdx;
+    byId("script").value = String(sIdx);
+    document.querySelectorAll("#marksheet-tbody tr.row-selected").forEach(tr => tr.classList.remove("row-selected"));
+    row.classList.add("row-selected");
+    const inp = byId(`inline-mark-${sIdx}`);
+    if (inp) inp.focus();
+  };
+  const strongId = document.createElement("strong");
+  strongId.textContent = `#${sIdx + 1}`;
+  strongId.style.color = "#2563eb";
+  strongId.style.textDecoration = "underline";
+  cellId.append(strongId);
+  row.append(cellId);
+
+  // 2. Image (Maximizable)
+  const cellImg = document.createElement("td");
+  cellImg.className = "col-img";
+  const img = document.createElement("img");
+  img.className = "answer-crop-img";
+  img.alt = `Script ${sIdx + 1}`;
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.dataset.script = String(sIdx);
+  img.dataset.field = isId ? (byId("metadata-image").value || "id") : String(qIdx);
+  img.title = "Click to zoom & pan (+Context) (or press Z)";
+  img.onclick = () => openImageModal(
+    null,
+    `Script #${sIdx + 1} - ${isId ? "Identity" : state.questions[qIdx].question_number}`,
+    sIdx,
+    img.dataset.field,
+    byId("table-image-mode").value === "full-" ? "full-" : "ctx-"
+  );
+  cellImg.append(img);
+  row.append(cellImg);
+
+  // 3. Answer
+  const cellAns = document.createElement("td");
+  cellAns.className = "col-ans";
+  if (isId) {
+    cellAns.style.whiteSpace = "pre-wrap";
+    cellAns.textContent = item.answer || "(no answer text)";
+  } else {
+    const ansArea = document.createElement("textarea");
+    ansArea.className = "inline-text inline-ans";
+    ansArea.id = `inline-ans-${sIdx}`;
+    ansArea.value = m.answer || "";
+    ansArea.placeholder = "(no answer text)";
+    ansArea.title = "Edit reviewed answer (auto-saves on blur)";
+    ansArea.onchange = async () => {
+      if (ansArea.value === (m.answer || "")) return;
+      const inp = byId(`inline-mark-${sIdx}`);
+      await saveInlineMark(sIdx, qIdx, inp ? inp.value.trim() : "", m.reviewed);
+    };
+    cellAns.append(ansArea);
+  }
+  row.append(cellAns);
+
+  // 4. Mark
+  const cellMark = document.createElement("td");
+  cellMark.className = "col-mark";
+  if (isId) {
+    const spanMeta = document.createElement("div");
+    spanMeta.style.color = "#64748b";
+    spanMeta.style.fontSize = "0.78rem";
+    spanMeta.style.marginBottom = "0.25rem";
+    spanMeta.textContent = `OCR ID: ${s.id_ocr || "-"}`;
+
+    const idSelect = document.createElement("select");
+    idSelect.style.maxWidth = "200px";
+    idSelect.append(option("", "Choose roster ID"));
+    for (const [id, person] of Object.entries(state.roster || {})) {
+      idSelect.append(option(id, `${id} — ${person.name} (${person.class})`));
+    }
+    idSelect.value = s.reviewed_id == null ? "" : String(s.reviewed_id);
+    idSelect.onchange = async () => {
+      setBusy(true); message(`Saving identity for Script #${sIdx + 1}...`);
+      try {
+        const res = await (await api("/api/save", {
+          revision: state.revision,
+          script_index: sIdx,
+          reviewed: idSelect.value !== "",
+          kind: "script",
+          reviewed_id: idSelect.value,
+        })).json();
+        updateRevision(res.revision);
+        s.reviewed_id = idSelect.value || null;
+        s.reviewed = idSelect.value !== "";
+        dirty = false;
+        const revBtn = byId(`inline-rev-${sIdx}`);
+        if (revBtn) {
+          revBtn.className = s.reviewed ? "btn-success" : "";
+          revBtn.textContent = s.reviewed ? "Reviewed ✓" : "Auto (OK)";
+        }
+        renderTabs();
+        renderComparison();
+        message(s.reviewed ? `Script #${sIdx + 1} identity saved and reviewed.` : `Script #${sIdx + 1} identity cleared.`);
+      } catch (e) {
+        message(e.message);
+      } finally {
+        setBusy(false);
+      }
+    };
+    cellMark.append(spanMeta, idSelect);
+  } else {
+    const isLocked = m.manual_mark != null && String(m.manual_mark).trim() !== "";
+    const markVal = isLocked ? m.manual_mark : (m.moderated_mark ?? m.raw_mark ?? "");
+
+    const markInput = document.createElement("input");
+    markInput.type = "text";
+    markInput.inputMode = "decimal";
+    markInput.value = markVal;
+    markInput.className = "mark-input" + (isLocked ? " locked" : "");
+    markInput.id = `inline-mark-${sIdx}`;
+    markInput.dataset.script = String(sIdx);
+    markInput.dataset.similarity = String(item.similarity);
+    markInput.title = `Type mark (0–${state.questions[qIdx].marks}) and press Enter or Tab`;
+
+    markInput.oninput = () => {
+      markInput.classList.add("locked");
+    };
+    markInput.onkeydown = e => {
+      if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        markInput.blur();
+        focusMarkRow(1, markInput);
+      } else if (e.key === "ArrowDown" && !e.altKey) {
+        e.preventDefault();
+        focusMarkRow(1, markInput);
+      } else if (e.key === "ArrowUp" && !e.altKey) {
+        e.preventDefault();
+        focusMarkRow(-1, markInput);
+      } else if (e.key === "Escape") {
+        markInput.blur();
+      }
+    };
+    markInput.onchange = async () => {
+      markInput.classList.add("locked");
+      await saveInlineMark(sIdx, qIdx, markInput.value.trim(), true);
+    };
+
+    const lockSpan = document.createElement("span");
+    lockSpan.id = `inline-lock-${sIdx}`;
+    lockSpan.className = "lock-indicator";
+    lockSpan.textContent = isLocked ? "🔒 Locked" : "";
+    lockSpan.title = "Click to unlock";
+    lockSpan.onclick = async () => {
+      markInput.classList.remove("locked");
+      lockSpan.textContent = "";
+      markInput.value = m.moderated_mark ?? m.raw_mark ?? "";
+      await saveInlineMark(sIdx, qIdx, "", false);
+    };
+
+    cellMark.append(markInput, lockSpan);
+  }
+  row.append(cellMark);
+
+  // 5. Similarity
+  const cellSim = document.createElement("td");
+  cellSim.className = "col-sim";
+  if (isId) {
+    cellSim.textContent = "-";
+  } else {
+    const simClass = item.similarity >= 0.8 ? "sim-high" : (item.similarity >= 0.5 ? "sim-mid" : "sim-low");
+    const spanSim = document.createElement("span");
+    spanSim.className = `sim-badge ${simClass}`;
+    spanSim.textContent = item.similarity.toFixed(2);
+    cellSim.append(spanSim);
+  }
+  row.append(cellSim);
+
+  // 6. Reasoning
+  const cellReason = document.createElement("td");
+  cellReason.className = "col-reason";
+  if (isId) {
+    cellReason.textContent = s.errors && s.errors.length ? s.errors.map(e => e.field + ": " + e.type).join(", ") : "OK";
+  } else {
+    const reasonArea = document.createElement("textarea");
+    reasonArea.className = "inline-text inline-reason";
+    reasonArea.id = `inline-reason-${sIdx}`;
+    reasonArea.value = m.reasoning || "";
+    reasonArea.placeholder = "(no reasoning)";
+    reasonArea.title = "Edit reviewed reasoning (auto-saves on blur)";
+    reasonArea.onchange = async () => {
+      if (reasonArea.value === (m.reasoning || "")) return;
+      const inp = byId(`inline-mark-${sIdx}`);
+      await saveInlineMark(sIdx, qIdx, inp ? inp.value.trim() : "", m.reviewed);
+    };
+    cellReason.append(reasonArea);
+    if (m.moderator_flag || m.grading_failed) {
+      const flagDiv = document.createElement("div");
+      flagDiv.style.fontSize = "0.75rem";
+      flagDiv.style.color = m.grading_failed ? "#dc2626" : "#b45309";
+      flagDiv.style.fontWeight = "600";
+      flagDiv.style.marginTop = "0.2rem";
+      flagDiv.textContent = (m.grading_failed ? "❌ Grading failed; manual mark required. " : "") +
+        (m.moderator_flag ? `⚠️ Moderator: ${m.moderator_note || "Flagged"}` : "");
+      cellReason.append(flagDiv);
+    }
+  }
+  row.append(cellReason);
+
+  // 7. Review Status
+  const cellAction = document.createElement("td");
+  const revBtn = document.createElement("button");
+  revBtn.id = `inline-rev-${sIdx}`;
+  const needsManual = item.needsManual;
+  revBtn.className = item.reviewed ? "btn-success" : (needsManual ? "btn-warn" : "");
+  revBtn.style.padding = "0.25rem 0.55rem";
+  revBtn.style.fontSize = "0.78rem";
+  revBtn.textContent = item.reviewed ? "Reviewed ✓" : (needsManual ? "Needs mark ⚠" : "Auto (OK)");
+  revBtn.onclick = async () => {
+    if (isId) {
+      setBusy(true); message(`Saving identity for Script #${sIdx + 1}...`);
+      try {
+        const res = await (await api("/api/save", {
+          revision: state.revision,
+          script_index: sIdx,
+          reviewed: true,
+          kind: "script",
+          reviewed_id: s.reviewed_id || "",
+        })).json();
+        updateRevision(res.revision);
+        s.reviewed = true;
+        revBtn.className = "btn-success";
+        revBtn.textContent = "Reviewed ✓";
+        renderTabs();
+        message(`Script #${sIdx + 1} identity saved and reviewed.`);
+      } catch (e) {
+        message(e.message);
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      const input = byId(`inline-mark-${sIdx}`);
+      await saveInlineMark(sIdx, qIdx, input ? input.value.trim() : "", true);
+    }
+  };
+  cellAction.append(revBtn);
+  row.append(cellAction);
+
+  return row;
+}
+
+async function saveInlineMark(sIdx, qIdx, markValue, markReviewed) {
+  setBusy(true); message("Saving mark...");
+  try {
+    const currentMark = state.marks[sIdx][qIdx];
+    const ansEl = byId(`inline-ans-${sIdx}`);
+    const reasonEl = byId(`inline-reason-${sIdx}`);
+    const body = {
+      revision: state.revision,
+      script_index: sIdx,
+      reviewed: markReviewed,
+      kind: "mark",
+      question_index: qIdx,
+      answer: ansEl ? ansEl.value : currentMark.answer,
+      reasoning: reasonEl ? reasonEl.value : currentMark.reasoning,
+      manual_mark: markValue,
+    };
+    const res = await (await api("/api/save", body)).json();
+    updateRevision(res.revision);
+    currentMark.answer = body.answer;
+    currentMark.reasoning = body.reasoning;
+    currentMark.manual_mark = markValue === "" ? null : markValue;
+    currentMark.reviewed = markReviewed;
+    dirty = false;
+    const lockSpan = byId(`inline-lock-${sIdx}`);
+    if (lockSpan) lockSpan.textContent = markValue !== "" ? "🔒 Locked" : "";
+    const revBtn = byId(`inline-rev-${sIdx}`);
+    if (revBtn) {
+      revBtn.className = markReviewed ? "btn-success" : "";
+      revBtn.textContent = markReviewed ? "Reviewed ✓" : "Review & Save";
+    }
+    renderTabs();
+    renderComparison();
+    updateNeedsMarkButton(qIdx, false);
+    const revCount = state.scripts.filter(s => state.marks[s.script_index][qIdx]?.reviewed).length;
+    byId("q-banner-stats").textContent = `Reviewed: ${revCount} / ${state.scripts.length} | Max Marks: ${state.questions[qIdx].marks}`;
+    const qLabel = String(state.questions[qIdx].question_number).startsWith("Q")
+      ? state.questions[qIdx].question_number
+      : `Q${state.questions[qIdx].question_number}`;
+    const qBtn = byId("mark-question-reviewed");
+    if (qBtn) {
+      if (state.scripts.length > 0 && revCount === state.scripts.length) {
+        qBtn.className = "btn-success";
+        qBtn.textContent = `${qLabel} All Reviewed ✓`;
+      } else {
+        qBtn.className = "btn-primary";
+        qBtn.textContent = `Confirm ${qLabel} Reviewed (${revCount}/${state.scripts.length}) [Ctrl+Enter]`;
+      }
+    }
+    message(markReviewed ? `Script #${sIdx + 1} saved and reviewed.` : `Script #${sIdx + 1} mark saved.`);
+  } catch (e) {
+    message(e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+byId("mark-ids-reviewed").onclick = async () => {
+  if (section !== "id" || !state) return;
+  const roster = state.roster || {};
+  const targets = [];
+  for (const s of state.scripts) {
+    if (s.reviewed) continue;
+    const candidate = s.reviewed_id || (s.id_ocr && Object.prototype.hasOwnProperty.call(roster, String(s.id_ocr)) ? String(s.id_ocr) : "");
+    if (candidate) targets.push({script_index: s.script_index, reviewed_id: candidate});
+  }
+  if (targets.length === 0) {
+    message("No unmatched OCR IDs can be auto-matched; choose roster IDs in the table.");
+    return;
+  }
+  setBusy(true); message(`Marking ${targets.length} matched student ID(s) reviewed...`);
+  try {
+    const items = targets.map(t => ({
+      script_index: t.script_index,
+      reviewed: true,
+      kind: "script",
+      reviewed_id: t.reviewed_id,
+    }));
+    const res = await (await api("/api/save-batch", {revision: state.revision, items})).json();
+    updateRevision(res.revision);
+    dirty = false;
+    await reload();
+    const allIdsDone = state.scripts.every(s => s.reviewed);
+    const nextQ = state.questions.findIndex((_, qi) =>
+      state.scripts.some(s => !state.marks[s.script_index][qi]?.reviewed)
+    );
+    if (allIdsDone && nextQ >= 0) {
+      section = String(nextQ);
+      await render();
+      message(`Marked ${targets.length} student identity/identities reviewed ✓ — Moved to next unreviewed question.`);
+    } else {
+      message(`Marked ${targets.length} student identity/identities reviewed.`);
+    }
+  } catch (e) {
+    message(e.message);
+  } finally {
+    setBusy(false);
+    if (document.activeElement?.tagName === "BUTTON") document.activeElement.blur();
+  }
+};
+
+byId("mark-question-reviewed").onclick = async () => {
+  if (section === "id" || !state) return;
+  const qIdx = Number(section);
+  const unreviewed = state.scripts.filter(s => {
+    const m = state.marks[s.script_index][qIdx];
+    return m && !m.reviewed;
+  });
+  if (unreviewed.length === 0) {
+    message("All items in this question are already reviewed.");
+    return;
+  }
+  const failedNoMark = unreviewed.filter(s => {
+    const m = state.marks[s.script_index][qIdx];
+    const hasManual = m.manual_mark != null && String(m.manual_mark).trim() !== "";
+    return m.grading_failed && !hasManual;
+  });
+  const targets = unreviewed.filter(s => !failedNoMark.includes(s));
+  if (targets.length === 0) {
+    byId("marksheet-filter").value = "required";
+    renderMarksheetTable();
+    message(`${failedNoMark.length} failed item(s) have no AI score and require a manual mark.`);
+    return;
+  }
+  setBusy(true); message(`Marking ${targets.length} item(s) reviewed...`);
+  try {
+    const items = targets.map(s => {
+      const m = state.marks[s.script_index][qIdx];
+      const hasManual = m.manual_mark != null && String(m.manual_mark).trim() !== "";
+      const inputEl = byId(`inline-mark-${s.script_index}`);
+      let manualVal = hasManual ? String(m.manual_mark) : "";
+      if (!hasManual && m.moderator_flag) {
+        manualVal = inputEl ? inputEl.value.trim() : String(m.moderated_mark ?? m.raw_mark ?? "");
+      }
+      return {
+        script_index: s.script_index,
+        reviewed: true,
+        kind: "mark",
+        question_index: qIdx,
+        answer: m.answer,
+        reasoning: m.reasoning,
+        manual_mark: manualVal,
+      };
+    });
+    const res = await (await api("/api/save-batch", {revision: state.revision, items})).json();
+    updateRevision(res.revision);
+    dirty = false;
+    await reload();
+    if (failedNoMark.length > 0) {
+      byId("marksheet-filter").value = "required";
+      await renderMarksheetTable();
+      message(`Marked ${targets.length} item(s) reviewed. ${failedNoMark.length} failed item(s) still need a manual mark.`);
+    } else {
+      const totalQ = state.questions.length;
+      let nextIdx = -1;
+      for (let offset = 1; offset <= totalQ; offset++) {
+        const candidate = (qIdx + offset) % totalQ;
+        if (state.scripts.some(s => !state.marks[s.script_index][candidate]?.reviewed)) {
+          nextIdx = candidate;
+          break;
+        }
+      }
+      if (nextIdx >= 0) {
+        section = String(nextIdx);
+        await render();
+        const nextLabel = state.questions[nextIdx].question_number;
+        message(`Question reviewed ✓ — Moved to ${String(nextLabel).startsWith("Q") ? nextLabel : "Q" + nextLabel}.`);
+      } else {
+        message(`Marked all ${targets.length} item(s) in this question reviewed ✓ — All sections complete!`);
+      }
+    }
+  } catch (e) {
+    message(e.message);
+  } finally {
+    setBusy(false);
+    if (document.activeElement?.tagName === "BUTTON") document.activeElement.blur();
+  }
+};
+
+async function loadTableImages() {
+  const prefix = byId("table-image-mode").value || "";
+  const pad = Number(byId("box-pad").value) || 0;
+  const query = prefix === "" && pad > 0 ? `?pad=${pad}` : "";
+  document.body.classList.toggle("view-expanded", prefix !== "" || pad > 0);
+  const images = document.querySelectorAll("img.answer-crop-img");
+  for (const img of images) {
+    const s = img.dataset.script, f = img.dataset.field;
+    const key = `${s}_${prefix}${f}${query}`;
+    if (tableImageUrls.has(key)) {
+      img.src = tableImageUrls.get(key);
+      continue;
+    }
+    api(`/api/image/${s}/${prefix}${f}${query}`).then(res => res.blob()).then(blob => {
+      const url = URL.createObjectURL(blob);
+      tableImageUrls.set(key, url);
+      if ((byId("table-image-mode").value || "") === prefix && (Number(byId("box-pad").value) || 0) === pad) img.src = url;
+    }).catch(() => {});
+  }
+}
+
+let lightboxState = { script: 0, field: "0", mode: "", zoom: 0 };
+function setLightboxZoom(zoom, anchorClientX, anchorClientY) {
+  const vp = byId("modal-img-viewport");
+  const img = byId("modal-img");
+  const prevZoom = lightboxState.zoom;
+  lightboxState.zoom = zoom;
+  if (!zoom || !img.naturalWidth) {
+    vp.classList.remove("is-zoomed");
+    img.style.width = "";
+    byId("zoom-label").textContent = "Fit";
+    return;
+  }
+  const rect = vp.getBoundingClientRect();
+  const relX = anchorClientX != null ? (anchorClientX - rect.left + vp.scrollLeft) / Math.max(1, vp.scrollWidth) : 0.5;
+  const relY = anchorClientY != null ? (anchorClientY - rect.top + vp.scrollTop) / Math.max(1, vp.scrollHeight) : 0.5;
+  vp.classList.add("is-zoomed");
+  img.style.width = Math.round(img.naturalWidth * zoom) + "px";
+  byId("zoom-label").textContent = Math.round(zoom * 100) + "%";
+  if (prevZoom || anchorClientX != null) {
+    vp.scrollLeft = Math.max(0, relX * vp.scrollWidth - (anchorClientX != null ? anchorClientX - rect.left : rect.width / 2));
+    vp.scrollTop = Math.max(0, relY * vp.scrollHeight - (anchorClientY != null ? anchorClientY - rect.top : rect.height / 2));
+  }
+}
+
+async function loadLightboxImage(sIdx, field, mode) {
+  const pad = Number(byId("box-pad").value) || 0;
+  const query = mode === "" && pad > 0 ? `?pad=${pad}` : "";
+  const key = `${sIdx}_${mode}${field}${query}`;
+  let url = tableImageUrls.get(key);
+  if (!url) {
+    const res = await api(`/api/image/${sIdx}/${mode}${field}${query}`);
+    const blob = await res.blob();
+    url = URL.createObjectURL(blob);
+    tableImageUrls.set(key, url);
+  }
+  const img = byId("modal-img");
+  img.onload = () => {
+    const defaultZoom = mode === "full-" ? 1 : 0;
+    setLightboxZoom(lightboxState.zoom || defaultZoom);
+  };
+  img.src = url;
+}
+
+function openImageModal(src, title, sIdx, field, mode) {
+  if (!src && sIdx == null) return;
+  const activeMode = mode === "full-" ? "full-" : "ctx-";
+  lightboxState = {
+    script: sIdx != null ? sIdx : script,
+    field: field != null ? field : (section === "id" ? byId("metadata-image").value : section),
+    mode: activeMode,
+    zoom: activeMode === "full-" ? 1 : 0,
+  };
+  byId("lightbox-mode").value = activeMode;
+  byId("modal-title").textContent = title || `Script #${lightboxState.script + 1}`;
+  const dialog = byId("image-modal");
+  if (!dialog.open) dialog.showModal();
+  loadLightboxImage(lightboxState.script, lightboxState.field, activeMode).catch(e => message(e.message));
+}
+
+byId("lightbox-mode").onchange = e => {
+  lightboxState.mode = e.target.value;
+  lightboxState.zoom = e.target.value === "full-" ? 1 : 0;
+  loadLightboxImage(lightboxState.script, lightboxState.field, lightboxState.mode).catch(err => message(err.message));
+};
+byId("zoom-fit").onclick = () => setLightboxZoom(0);
+byId("zoom-100").onclick = () => setLightboxZoom(1);
+byId("zoom-in").onclick = () => {
+  const img = byId("modal-img");
+  const cur = lightboxState.zoom || (img.naturalWidth ? img.clientWidth / img.naturalWidth : 1);
+  setLightboxZoom(Math.min(4, +(cur * 1.25).toFixed(2)));
+};
+byId("zoom-out").onclick = () => {
+  const img = byId("modal-img");
+  const cur = lightboxState.zoom || (img.naturalWidth ? img.clientWidth / img.naturalWidth : 1);
+  setLightboxZoom(Math.max(0.25, +(cur / 1.25).toFixed(2)));
+};
+(() => {
+  const vp = byId("modal-img-viewport");
+  vp.addEventListener("wheel", e => {
+    e.preventDefault();
+    const img = byId("modal-img");
+    if (!img.naturalWidth) return;
+    const cur = lightboxState.zoom || (img.clientWidth / img.naturalWidth) || 1;
+    const next = Math.min(4, Math.max(0.25, +(cur * (e.deltaY < 0 ? 1.2 : 1 / 1.2)).toFixed(2)));
+    setLightboxZoom(next, e.clientX, e.clientY);
+  }, { passive: false });
+  let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  vp.addEventListener("pointerdown", e => {
+    if (!lightboxState.zoom) return;
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    startLeft = vp.scrollLeft; startTop = vp.scrollTop;
+    vp.classList.add("is-dragging");
+    vp.setPointerCapture(e.pointerId);
+  });
+  vp.addEventListener("pointermove", e => {
+    if (!dragging) return;
+    vp.scrollLeft = startLeft - (e.clientX - startX);
+    vp.scrollTop = startTop - (e.clientY - startY);
+  });
+  const endDrag = () => { dragging = false; vp.classList.remove("is-dragging"); };
+  vp.addEventListener("pointerup", endDrag);
+  vp.addEventListener("pointercancel", endDrag);
+})();
+
+byId("table-image-mode").onchange = e => {
+  const mode = e.target.value;
+  try { localStorage.setItem("handwriting_grader_table_img_mode", mode); } catch (_) {}
+  if (mode !== "" && Number(byId("img-size").value) < 480) {
+    byId("img-size").value = "480";
+    byId("currentImgSize").textContent = "480px";
+    document.documentElement.style.setProperty("--img-size", "480px");
+    try { localStorage.setItem("handwriting_grader_img_size", "480"); } catch (_) {}
+  }
+  loadTableImages();
+};
+byId("box-pad").oninput = e => {
+  byId("currentBoxPad").textContent = `+${e.target.value}px`;
+};
+byId("box-pad").onchange = e => {
+  const pad = Number(e.target.value) || 0;
+  byId("currentBoxPad").textContent = `+${pad}px`;
+  try { localStorage.setItem("handwriting_grader_box_pad", String(pad)); } catch (_) {}
+  if (pad > 0) {
+    byId("table-image-mode").value = "";
+    try { localStorage.setItem("handwriting_grader_table_img_mode", ""); } catch (_) {}
+    if (Number(byId("img-size").value) < 480) {
+      byId("img-size").value = "480";
+      byId("currentImgSize").textContent = "480px";
+      document.documentElement.style.setProperty("--img-size", "480px");
+      try { localStorage.setItem("handwriting_grader_img_size", "480"); } catch (_) {}
+    }
+  }
+  loadTableImages();
+};
+
+if (!("closedBy" in HTMLDialogElement.prototype)) {
+  const outside = (e, dialog) => {
+    const r = dialog.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
+  for (const dialog of document.querySelectorAll('dialog[closedby="any"]')) {
+    let pressedOutside = false;
+    dialog.addEventListener("pointerdown", e => { pressedOutside = outside(e, dialog); });
+    dialog.addEventListener("pointerup", e => { if (pressedOutside && outside(e, dialog)) dialog.close(); });
+  }
+}
+
+function initPreferences() {
+  const table = byId("marksheet");
+  // 1. Column visibility persistence
+  document.querySelectorAll(".toggle-vis").forEach(btn => {
+    const col = btn.dataset.col;
+    let saved = null;
+    try { saved = localStorage.getItem("handwriting_grader_vis_" + col); } catch (_) {}
+    const isVisible = saved === null ? true : (saved === "1");
+    btn.classList.toggle("active", isVisible);
+    if (table) table.classList.toggle("hide-" + col, !isVisible);
+
+    btn.onclick = () => {
+      const active = !btn.classList.contains("active");
+      btn.classList.toggle("active", active);
+      if (table) table.classList.toggle("hide-" + col, !active);
+      try { localStorage.setItem("handwriting_grader_vis_" + col, active ? "1" : "0"); } catch (_) {}
+    };
+  });
+
+  // 2. Marksheet filter persistence
+  try {
+    const savedFilter = localStorage.getItem("handwriting_grader_marksheet_filter");
+    if (savedFilter && byId("marksheet-filter")) {
+      byId("marksheet-filter").value = savedFilter;
+    }
+  } catch (_) {}
+
+  // 3. Image size persistence
+  try {
+    const savedImgSize = localStorage.getItem("handwriting_grader_img_size");
+    if (savedImgSize) {
+      byId("img-size").value = savedImgSize;
+      byId("currentImgSize").textContent = savedImgSize + "px";
+      document.documentElement.style.setProperty("--img-size", savedImgSize + "px");
+    }
+  } catch (_) {}
+
+  // 4. Box pad persistence
+  try {
+    const savedBoxPad = localStorage.getItem("handwriting_grader_box_pad");
+    if (savedBoxPad !== null && savedBoxPad !== undefined) {
+      byId("box-pad").value = savedBoxPad;
+      byId("currentBoxPad").textContent = `+${savedBoxPad}px`;
+    }
+  } catch (_) {}
+
+  // 5. Table image mode persistence
+  try {
+    const savedMode = localStorage.getItem("handwriting_grader_table_img_mode");
+    if (savedMode !== null && savedMode !== undefined && byId("table-image-mode")) {
+      byId("table-image-mode").value = savedMode;
+    }
+  } catch (_) {}
+
+  // 6. Metadata image field persistence
+  try {
+    const savedMetaImg = localStorage.getItem("handwriting_grader_metadata_image");
+    if (savedMetaImg && byId("metadata-image")) {
+      byId("metadata-image").value = savedMetaImg;
+    }
+  } catch (_) {}
+}
+
+byId("img-size").oninput = e => {
+  const val = e.target.value;
+  byId("currentImgSize").textContent = val + "px";
+  document.documentElement.style.setProperty("--img-size", val + "px");
+  try { localStorage.setItem("handwriting_grader_img_size", val); } catch (_) {}
+};
+
+byId("marksheet-filter").onchange = e => {
+  try { localStorage.setItem("handwriting_grader_marksheet_filter", e.target.value); } catch (_) {}
+  renderMarksheetTable();
+};
+
+if (byId("btn-filter-required")) {
+  byId("btn-filter-required").onclick = () => {
+    const filterEl = byId("marksheet-filter");
+    if (filterEl.value === "required") {
+      filterEl.value = "all";
+    } else {
+      filterEl.value = "required";
+    }
+    try { localStorage.setItem("handwriting_grader_marksheet_filter", filterEl.value); } catch (_) {}
+    renderMarksheetTable();
+  };
+}
+
+if (byId("marksheet-cluster-mode")) {
+  byId("marksheet-cluster-mode").onchange = e => {
+    if (state && state.has_clusters) {
+      localStorage.setItem("handwriting_grader_cluster_mode", e.target.value);
+    }
+    // Selecting a grouping method activates grouping mode
+    marksheetSort = {col: "answer", mode: "group"};
+    try {
+      localStorage.setItem("handwriting_grader_sort_col", marksheetSort.col);
+      localStorage.setItem("handwriting_grader_sort_mode", marksheetSort.mode);
+    } catch (_) {}
+    renderMarksheetTable();
+  };
+}
+
+if (byId("btn-group-toggle")) {
+  byId("btn-group-toggle").onclick = () => {
+    if (marksheetSort.mode === "group") {
+      marksheetSort = {col: "script", mode: "script-asc"};
+    } else {
+      marksheetSort = {col: "answer", mode: "group"};
+    }
+    try {
+      localStorage.setItem("handwriting_grader_sort_col", marksheetSort.col);
+      localStorage.setItem("handwriting_grader_sort_mode", marksheetSort.mode);
+    } catch (_) {}
+    renderMarksheetTable();
+  };
+}
+
+document.querySelectorAll("#marksheet th.sortable").forEach(th => {
+  th.onclick = () => {
+    const col = th.dataset.col;
+    if (col === "answer") {
+      if (marksheetSort.col !== "answer") marksheetSort = {col: "answer", mode: "group"};
+      else if (marksheetSort.mode === "group") marksheetSort = {col: "answer", mode: "answer-asc"};
+      else if (marksheetSort.mode === "answer-asc") marksheetSort = {col: "answer", mode: "answer-desc"};
+      else marksheetSort = {col: "answer", mode: "group"};
+    } else if (col === "similarity") {
+      marksheetSort = {col, mode: marksheetSort.col === col && marksheetSort.mode === "similarity-desc" ? "similarity-asc" : "similarity-desc"};
+    } else {
+      const asc = `${col}-asc`, desc = `${col}-desc`;
+      marksheetSort = {col, mode: marksheetSort.col === col && marksheetSort.mode === asc ? desc : asc};
+    }
+    try {
+      localStorage.setItem("handwriting_grader_sort_col", marksheetSort.col);
+      localStorage.setItem("handwriting_grader_sort_mode", marksheetSort.mode);
+    } catch (_) {}
+    renderMarksheetTable();
+  };
+});
+
+function renderComparison() {}
+
+async function render() {
+  try {
+    localStorage.setItem("handwriting_grader_section", section);
+    localStorage.setItem("handwriting_grader_script", String(script));
+  } catch (_) {}
+  byId("script").value = String(script); byId("section").value = section;
+  const current = state.scripts[script];
+  const identity = section === "id";
+  byId("script-fields").style.display = identity ? "flex" : "none";
+  byId("mark-question-reviewed").hidden = identity;
+  byId("cluster-mode-container").style.display = identity ? "none" : "inline-flex";
+  if (byId("btn-filter-required")) byId("btn-filter-required").hidden = identity;
+
+  renderTabs();
+  await renderMarksheetTable();
+
+  if (identity) {
+    byId("ocr").textContent = `Script #${script + 1} | OCR ID: ${current.id_ocr} | Name: ${current.name_ocr ?? "unavailable"} | Class: ${current.class_ocr}` +
+      (current.errors.length ? " | Errors: " + current.errors.map(e => e.field + ": " + e.type).join(", ") : "");
+    byId("reviewed-id").replaceChildren(option("", "Choose a roster ID"));
+    for (const [id, person] of Object.entries(state.roster))
+      byId("reviewed-id").append(option(id, `${id} — ${person.name} (${person.class})`));
+    byId("reviewed-id").value = current.reviewed_id == null ? "" : String(current.reviewed_id);
+    byId("review-status-id").textContent = current.reviewed ? "Identity reviewed." : "Identity not yet reviewed.";
+  }
+}
+
+function updateClusterDropdown() {
+  const sel = byId("marksheet-cluster-mode");
+  if (!sel) return;
+  const hasClusters = Boolean(state && state.has_clusters);
+  sel.replaceChildren();
+  if (hasClusters) {
+    sel.append(
+      option("embedding", "AI Embedding (Semantic)"),
+      option("words", "Word Overlap (Local)")
+    );
+    const saved = localStorage.getItem("handwriting_grader_cluster_mode");
+    sel.value = saved === "words" ? "words" : "embedding";
+    sel.title = "Choose grouping method: AI Embedding (Semantic) or Word Overlap (Local)";
+  } else {
+    sel.append(
+      option("words", "Word Overlap (Local)"),
+      option("embedding", "AI Embedding (Not generated)")
+    );
+    if (sel.options[1]) sel.options[1].disabled = true;
+    sel.value = "words";
+    sel.title = "Grouped by local word overlap. Run 'handwriting-grader cluster-answers' to pre-compute AI semantic clusters.";
+  }
+}
+
+async function reload() {
+  const firstLoad = !state;
+  state = await (await api("/api/state")).json();
+  if (firstLoad) {
+    try {
+      const savedSec = localStorage.getItem("handwriting_grader_section");
+      if (savedSec === "id" || (savedSec !== null && /^\d+$/.test(savedSec) && Number(savedSec) >= 0 && Number(savedSec) < state.questions.length)) {
+        section = savedSec;
+      }
+      const savedScript = localStorage.getItem("handwriting_grader_script");
+      if (savedScript !== null && /^\d+$/.test(savedScript) && Number(savedScript) >= 0 && Number(savedScript) < state.scripts.length) {
+        script = Number(savedScript);
+      }
+    } catch (_) {}
+  }
+  byId("script").replaceChildren(...state.scripts.map(s => option(String(s.script_index), `Script ${s.script_index + 1}`)));
+  byId("section").replaceChildren(option("id", "Identity"),
+    ...state.questions.map((q, i) => option(String(i), `Question ${q.question_number}`)));
+  updateClusterDropdown();
+  await render();
+}
+
+async function change(which, value) {
+  if (dirty && !(await kbConfirm("Discard unsaved edits?"))) {
+    byId(which).value = which === "script" ? String(script) : section; return;
+  }
+  if (which === "script") script = Number(value); else section = value;
+  dirty = false; render().catch(e => message(e.message));
+}
+
+byId("script").onchange = e => change("script", e.target.value);
+byId("section").onchange = e => change("section", e.target.value);
+byId("metadata-image").onchange = e => {
+  try { localStorage.setItem("handwriting_grader_metadata_image", e.target.value); } catch (_) {}
+  renderMarksheetTable();
+};
+
+byId("reset-review").onclick = async () => {
+  if (!(await kbConfirm("Reset all reviewed marks, answers, reasoning, and identities back to the original AI results? (A backup is saved in review-history/.)"))) return;
+  setBusy(true); message("Backing up and resetting review to original AI results...");
+  try {
+    await (await api("/api/reset", {revision: state.revision, confirmed: true})).json();
+    dirty = false;
+    await reload();
+    message("Review reset to original AI results ✓ (backup saved in review-history/).");
+  } catch (e) {
+    await reload().catch(() => {});
+    message(e.message);
+  } finally {
+    setBusy(false);
+    if (document.activeElement?.tagName === "BUTTON") document.activeElement.blur();
+  }
+};
+
+byId("approve").onclick = async () => {
+  if (dirty) { message("Save the current item before approval."); return; }
+
+  // Refresh latest state from server so review counts are up to date
+  try { await reload(); } catch (_) {}
+
+  // Check whether human review is complete across all identities and marks
+  const unreviewedScripts = (state.scripts || []).filter(s => !s.reviewed || !s.reviewed_id);
+  let unreviewedMarks = 0;
+  let needsManualMarks = 0;
+  if (state.marks && state.questions) {
+    for (let qIdx = 0; qIdx < state.questions.length; qIdx++) {
+      for (const s of (state.scripts || [])) {
+        const m = state.marks[s.script_index]?.[qIdx];
+        if (!m || !m.reviewed) unreviewedMarks++;
+        const hasManual = m && m.manual_mark != null && String(m.manual_mark).trim() !== "";
+        if (m && (m.grading_failed || m.moderator_flag) && !hasManual) {
+          needsManualMarks++;
+        }
+      }
+    }
+  }
+
+  if (unreviewedScripts.length > 0 || unreviewedMarks > 0) {
+    let msg = "Cannot approve assignment yet: Human review is incomplete.\n\n";
+    if (unreviewedScripts.length > 0) {
+      msg += `• ${unreviewedScripts.length} script student ID(s) not yet reviewed.\n`;
+    }
+    if (unreviewedMarks > 0) {
+      msg += `• ${unreviewedMarks} mark(s) across questions not yet reviewed.\n`;
+    }
+    if (needsManualMarks > 0) {
+      msg += `• ${needsManualMarks} flagged or failed mark(s) require teacher manual scores.\n`;
+    }
+    msg += "\nIn accordance with human-in-the-loop review, every question must be reviewed before final approval.\n\nTip: Press Alt+S (or click All Questions Status) to view progress across all questions.";
+    await kbAlert(msg);
+    return;
+  }
+
+  if (!(await kbConfirm("Approve all reviewed identities and scores? This will finalize grading and create the cryptographically-signed approval.json record."))) return;
+  setBusy(true); message("Approving assignment grading...");
+  try {
+    const result = await (await api("/api/approve", {revision: state.revision, confirmed: true})).json();
+    await reload();
+    message(`Approved ${result.students} students and ${result.marks} marks.`);
+  } catch (e) {
+    await reload().catch(() => {});
+    message(e.message);
+  } finally {
+    setBusy(false);
+    if (document.activeElement?.tagName === "BUTTON") document.activeElement.blur();
+  }
+};
+
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+function focusMarkRow(delta, currentEl) {
+  const inputs = [...document.querySelectorAll("#marksheet-tbody input.mark-input, #marksheet-tbody select")];
+  if (!inputs.length) return;
+  const idx = currentEl ? inputs.indexOf(currentEl) : inputs.indexOf(document.activeElement);
+  const nextIdx = idx < 0 ? (delta > 0 ? 0 : inputs.length - 1) : Math.max(0, Math.min(inputs.length - 1, idx + delta));
+  const target = inputs[nextIdx];
+  if (target) {
+    target.focus();
+    if (typeof target.select === "function") target.select();
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (!state || busy) return;
+  const inInput = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    if (section === "id") {
+      byId("mark-ids-reviewed").click();
+    } else {
+      byId("mark-question-reviewed").click();
+    }
+    return;
+  }
+
+  if (e.altKey && e.key.toLowerCase() === "r") {
+    e.preventDefault();
+    const btn = byId("btn-filter-required");
+    if (btn && !btn.hidden) btn.click();
+    return;
+  }
+  if (e.altKey && e.key.toLowerCase() === "g") {
+    e.preventDefault();
+    focusMarkRow(1);
+    return;
+  }
+  if (e.altKey && e.key.toLowerCase() === "v") {
+    e.preventDefault();
+    const sel = byId("table-image-mode");
+    if (sel && !sel.hidden) {
+      const vals = ["", "ctx-", "full-"];
+      const next = vals[(vals.indexOf(sel.value) + 1) % vals.length];
+      sel.value = next;
+      sel.dispatchEvent(new Event("change"));
+      message(`Image view: ${sel.options[sel.selectedIndex].text}`);
+    }
+    return;
+  }
+  if (e.altKey && e.key.toLowerCase() === "m") {
+    e.preventDefault();
+    const row = document.activeElement?.closest?.("tr");
+    const revBtn = row?.querySelector("button[id^='inline-rev-']");
+    if (revBtn) revBtn.click();
+    return;
+  }
+  if (e.altKey && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    if (byId("image-modal").open) {
+      byId("image-modal").close();
+      return;
+    }
+    const active = document.activeElement;
+    const row = active?.closest?.("tr") || document.querySelector("#marksheet-tbody tr[data-script-idx]");
+    const sIdxAttr = active?.dataset?.script ?? row?.querySelector("input.mark-input")?.dataset?.script;
+    const targetScript = sIdxAttr != null ? Number(sIdxAttr) : script;
+    const f = section === "id" ? (byId("metadata-image").value || "id") : section;
+    const label = section === "id" ? "Identity" : state.questions[Number(section)].question_number;
+    openImageModal(null, `Script #${targetScript + 1} - ${label}`, targetScript, f, byId("table-image-mode").value === "full-" ? "full-" : "ctx-");
+    return;
+  }
+  if (e.altKey && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    openAllStatusModal();
+    return;
+  }
+  if (e.altKey && e.key.toLowerCase() === "a") {
+    e.preventDefault();
+    byId("approve").click();
+    return;
+  }
+  if (e.altKey && e.key.toLowerCase() === "n") {
+    e.preventDefault();
+    const btn = byId("next-unreviewed");
+    if (btn) btn.click();
+    return;
+  }
+  if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "]" || e.key === "[" || e.key === "PageDown" || e.key === "PageUp")) {
+    e.preventDefault();
+    const totalQ = (state.questions || []).length;
+    if (e.key === "ArrowRight" || e.key === "]" || e.key === "PageDown") {
+      const next = section === "id" ? (totalQ > 0 ? "0" : "id") : String(Math.min(totalQ - 1, Number(section) + 1));
+      change("section", next);
+    } else {
+      const prev = section === "id" ? "id" : (Number(section) <= 0 ? "id" : String(Number(section) - 1));
+      change("section", prev);
+    }
+    return;
+  }
+  if (e.altKey && (e.key.toLowerCase() === "j" || e.key === "ArrowDown")) {
+    e.preventDefault(); focusMarkRow(1); return;
+  }
+  if (e.altKey && (e.key.toLowerCase() === "k" || e.key === "ArrowUp")) {
+    e.preventDefault(); focusMarkRow(-1); return;
+  }
+
+  if (inInput || byId("image-modal").open) return;
+
+  if (e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    const f = section === "id" ? (byId("metadata-image").value || "id") : section;
+    const label = section === "id" ? "Identity" : state.questions[Number(section)].question_number;
+    openImageModal(null, `Script #${script + 1} - ${label}`, script, f, byId("table-image-mode").value === "full-" ? "full-" : "ctx-");
+    return;
+  }
+
+  if (e.key === "j" || e.key === "ArrowDown") {
+    e.preventDefault(); focusMarkRow(1);
+  } else if (e.key === "k" || e.key === "ArrowUp") {
+    e.preventDefault(); focusMarkRow(-1);
+  } else if (e.key === "]") {
+    e.preventDefault();
+    const totalQ = (state.questions || []).length;
+    const next = section === "id" ? (totalQ > 0 ? "0" : "id") : String(Math.min(totalQ - 1, Number(section) + 1));
+    change("section", next);
+  } else if (e.key === "[") {
+    e.preventDefault();
+    const prev = section === "id" ? "id" : (Number(section) <= 0 ? "id" : String(Number(section) - 1));
+    change("section", prev);
+  }
+});
+
+(async () => {
+  setBusy(true);
+  try {
+    if (!token) throw new Error("Open the full URL printed by the review command.");
+    initPreferences();
+    await reload(); message("Review each identity and every mark before approval.");
+    setBusy(false);
+  } catch (e) { message(e.message); }
+})();
+</script>
+</body>
+</html>

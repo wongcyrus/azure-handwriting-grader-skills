@@ -1,0 +1,10 @@
+# Reserved synthetic addresses used in documentation and offline tests.
+teacher@example.test
+one@example.test
+two@example.test
+three@example.test
+wrong@example.test
+student001@example.invalid
+student002@example.invalid
+# Synthetic userinfo in an Azure URL-rejection test, not an email account or real credential.
+secret@school.openai.azure.com

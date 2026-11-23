@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "azure-handwriting-grader-skills"
+version = "0.1.0"
+description = "Human-reviewed handwriting grading with Azure OpenAI and Microsoft Agent Framework"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6,<7",
+  "openpyxl>=3.1,<4",
+  "pypdf>=6.5,<7",
+  "Pillow>=11,<13",
+  "matplotlib>=3.9,<4",
+  "openai==3.57.0",
+  "azure-identity>=1.25,<2",
+  "agent-framework-core==1.26.0",
+  "agent-framework-openai==1.18.2",
+  "pydantic>=2,<3",
+  "mammoth>=1.8,<2",
+  "html2text>=2024.2.26",
+  "python-docx>=1,<2",
+  "python-pptx>=1,<2",
+  "pypdfium2>=4.30,<6",
+]
+
+[project.optional-dependencies]
+browser-test = ["playwright>=1.55,<2"]
+
+[project.scripts]
+handwriting-grader = "handwriting_grader.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+handwriting_grader = ["editor.html", "score_editor.html"]
