@@ -98,7 +98,7 @@ class TestAzureChunking(unittest.TestCase):
 
         fake.generate_content.side_effect = metadata
         with patch("handwriting_grader.grading.AzureClient", return_value=fake):
-            result = AzureGrader({"ocr": "gpt-4.1-mini"}, ENDPOINT, "v1").ocr_metadata_batch(items)
+            result = AzureGrader({"ocr": "gpt-5.4-mini"}, ENDPOINT, "v1").ocr_metadata_batch(items)
         self.assertEqual(len(result.students), 35)
         self.assertEqual(fake.generate_content.call_count, 12)
         for call in fake.generate_content.call_args_list:
@@ -120,7 +120,7 @@ class TestAzureChunking(unittest.TestCase):
 
         fake.generate_content.side_effect = grades
         with patch("handwriting_grader.grading.AzureClient", return_value=fake):
-            grader = AzureGrader({"grading": "gpt-4.1"}, ENDPOINT, "v1")
+            grader = AzureGrader({"grading": "gpt-5.4"}, ENDPOINT, "v1")
             result = grader.grade_question_batch(question, items)
             self.assertEqual(len(result.grades), 25)
             self.assertEqual(fake.generate_content.call_count, 3)

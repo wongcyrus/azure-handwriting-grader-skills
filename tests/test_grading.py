@@ -110,7 +110,7 @@ class GradingTests(unittest.TestCase):
         self.models = self.root / "models.yaml"
         self.models.write_text(yaml.safe_dump({
             "azure_openai": {},
-            "models": {"ocr": "gpt-4.1-mini", "grading": "gpt-4.1-mini", "moderation": "gpt-4.1"},
+            "models": {"ocr": "gpt-5.4-mini", "grading": "gpt-5.4-mini", "moderation": "gpt-5.4"},
         }))
         _, self.summary = check_exam(self.config, self.root)
         import_rubric(self.config, self.root, self.exam)
@@ -650,7 +650,7 @@ class GradingTests(unittest.TestCase):
         self.assertEqual(raw["marks"][1]["reasoning"], "Example")
 
         model = self.root / "analysis-models.yaml"
-        model.write_text(yaml.safe_dump({"azure_openai": {}, "models": {"analytics": "gpt-4.1"}}))
+        model.write_text(yaml.safe_dump({"azure_openai": {}, "models": {"analytics": "gpt-5.4"}}))
 
         class FakeAnalyst:
             calls = []
@@ -945,7 +945,7 @@ class GradingTests(unittest.TestCase):
         approve_grading(self.config, self.root, self.exam)
         model = self.root / "analysis-models.yaml"
         model.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"analytics": "gpt-4.1"},
+            "azure_openai": {}, "models": {"analytics": "gpt-5.4"},
             "caching": {"enabled": True, "scope": "shared", "directory": "shared",
                         "agents": {"analytics": True}},
         }))
@@ -1146,7 +1146,7 @@ class GradingTests(unittest.TestCase):
         self.fill_review(root / "review.xlsx")
         approve_grading(self.config, self.root, self.exam)
         settings = yaml.safe_load(self.models.read_text())
-        settings["models"]["analytics"] = "gpt-4.1"
+        settings["models"]["analytics"] = "gpt-5.4"
         # Model configuration is bound to the grading run, so provide separate settings for analytics.
         analytics_models = self.root / "analytics-models.yaml"
         analytics_models.write_text(yaml.safe_dump(settings))
@@ -1236,6 +1236,7 @@ class GradingTests(unittest.TestCase):
         settings = yaml.safe_load(self.models.read_text())
         settings["models"]["analytics"] = "school-analysis"
         settings["models"]["grading"] = "school-chat"
+        settings["deployment_models"] = {"school-analysis": "gpt-5.4", "school-chat": "gpt-5.4-mini"}
         settings["pricing"] = {
             name: {"input": 2, "output": 8} for name in ("school-analysis", "school-chat")
         }

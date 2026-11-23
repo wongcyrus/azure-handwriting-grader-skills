@@ -244,7 +244,7 @@ class RegionWorkflowTests(unittest.TestCase):
         config_path.write_text(yaml.safe_dump(self.config))
         model_path = self.root / "config.yaml"
         model_path.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"annotation": "gpt-4.1"},
+            "azure_openai": {}, "models": {"annotation": "gpt-5.4"},
         }))
         arguments = [
             "suggest-regions", "--exam", str(config_path),
@@ -282,7 +282,7 @@ class RegionWorkflowTests(unittest.TestCase):
         config_path.write_text(yaml.safe_dump(self.config))
         model_path = self.root / "config.yaml"
         model_path.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"annotation": "gpt-4.1"},
+            "azure_openai": {}, "models": {"annotation": "gpt-5.4"},
         }))
         original = (self.regions / "draft.json").read_bytes()
         with patch("handwriting_grader.suggestions.AzureClient") as constructor:
@@ -300,7 +300,7 @@ class RegionWorkflowTests(unittest.TestCase):
         config_path.write_text(yaml.safe_dump(self.config))
         model_path = self.root / "config.yaml"
         model_path.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"annotation": "gpt-4.1"},
+            "azure_openai": {}, "models": {"annotation": "gpt-5.4"},
             "caching": {"enabled": True, "agents": {"annotation": True}},
         }))
         arguments = ["suggest-regions", "--exam", str(config_path), "--model-config", str(model_path),
@@ -350,7 +350,7 @@ class RegionWorkflowTests(unittest.TestCase):
             config_path.write_text(yaml.safe_dump(self.config))
             model_path = self.root / "config.yaml"
             model_path.write_text(yaml.safe_dump({
-                "azure_openai": {}, "models": {"annotation": "gpt-4.1"},
+                "azure_openai": {}, "models": {"annotation": "gpt-5.4"},
             }))
             base_url = f"http://127.0.0.1:{service.server_port}"
             def local_client(**kwargs):
@@ -438,7 +438,7 @@ class RegionWorkflowTests(unittest.TestCase):
         config_path.write_text(yaml.safe_dump(self.config))
         model_path = self.root / "config.yaml"
         model_path.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"annotation": "gpt-4.1"},
+            "azure_openai": {}, "models": {"annotation": "gpt-5.4"},
         }))
         with patch("handwriting_grader.suggestions.AzureClient") as constructor:
             constructor.return_value.__enter__.return_value.generate_content.return_value = SimpleNamespace(

@@ -76,7 +76,10 @@ def load_model_settings(path, agent="annotation"):
         raise ValueError(f"Model configuration needs models.{agent}")
     from .discovery import validate_model_eligibility
 
-    validate_model_eligibility(model, agent=agent)
+    deployment_models = settings.get("deployment_models", {})
+    if not isinstance(deployment_models, dict):
+        raise ValueError("deployment_models must be a mapping of deployment names to underlying models")
+    validate_model_eligibility(model, agent=agent, base_model=deployment_models.get(model))
     return model
 
 

@@ -4,18 +4,21 @@ azure_openai:
   endpoint: https://YOUR-RESOURCE.openai.azure.com
   api_version: v1
 models:
-  annotation: gpt-4.1
-  marking_scheme: gpt-4.1-mini
-  ocr: gpt-4.1-mini
-  batch_metadata_ocr: gpt-4.1-mini
-  grading: gpt-4.1
-  batch_grading: gpt-4.1
-  moderation: gpt-4.1
-  analytics: gpt-4.1
-  student_feedback: gpt-4.1-mini
+  annotation: gpt-5.4
+  marking_scheme: gpt-5.4-mini
+  ocr: gpt-5.4-mini
+  batch_metadata_ocr: gpt-5.4-mini
+  grading: gpt-5.4
+  batch_grading: gpt-5.4
+  moderation: gpt-5.4
+  analytics: gpt-5.4
+  student_feedback: gpt-5.4-mini
   embedding: text-embedding-3-small
   # Optional, only used after --infographics --confirm-cost:
   # analytics_image: gpt-image-2.5-flare
+# Custom text/vision aliases must declare their underlying GPT-5+ models.
+# deployment_models:
+#   school-chat: gpt-5.4
 caching:
   enabled: false
   scope: run

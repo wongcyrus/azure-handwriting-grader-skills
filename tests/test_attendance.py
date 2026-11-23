@@ -55,7 +55,7 @@ class AttendanceTests(unittest.TestCase):
         self.exam.write_text(yaml.safe_dump(self.config))
         self.models = self.root / "models.yaml"
         self.models.write_text(yaml.safe_dump({"azure_openai": {},
-            "models": {"ocr": "gpt-4.1-mini", "grading": "gpt-4.1-mini", "moderation": "gpt-4.1"}}))
+            "models": {"ocr": "gpt-5.4-mini", "grading": "gpt-5.4-mini", "moderation": "gpt-5.4"}}))
         self.write_attendance([("001", "present"), ("002", "absent"), ("003", "present")])
 
     def write_attendance(self, rows):

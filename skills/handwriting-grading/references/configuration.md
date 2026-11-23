@@ -40,14 +40,20 @@ Use a private `config.yaml`; see [model configuration and caching](../../../docs
 for the complete schema and pinned minimal framework dependencies. Set
 `azure_openai.endpoint: https://RESOURCE.openai.azure.com` and
 `azure_openai.api_version: v1`. `models` maps stages to Azure deployment names,
-not necessarily catalog IDs. Illustrative choices are `gpt-4.1-mini` for OCR,
-rubric and student feedback; `gpt-4.1` for annotation, grading, moderation and
+not necessarily catalog IDs. Text/vision stages require GPT-5 or newer.
+Illustrative choices are `gpt-5.4-mini` for OCR,
+rubric and student feedback; `gpt-5.4` for annotation, grading, moderation and
 analytics; `text-embedding-3-small` for embeddings. Arbitrary valid deployment
 aliases are allowed, but offline name checks cannot establish actual capabilities.
 
 - Image stages need image input and structured JSON outputs.
 - Embeddings need a separate embedding deployment; optional `analytics_image`
   needs an Azure image-generation deployment such as an alias for `gpt-image-2.5-flare`.
+
+Custom text/vision aliases must declare their underlying models in
+`deployment_models` (for example, `school-chat: gpt-5.4`). Embeddings and image
+generation are exempt from the GPT version floor. Verify actual deployment
+models and capabilities in Azure; declarations are not live verification.
 - There is no live capability, quality, availability or price verification.
 - `discover-models --endpoint https://RESOURCE.openai.azure.com --api-version v1
   --write-config /private/config.yaml` only writes an offline template and refuses

@@ -68,7 +68,7 @@ class RegradingTests(unittest.TestCase):
         self.exam.write_text(yaml.safe_dump(self.config))
         self.models = self.root / "models.yaml"
         self.models.write_text(yaml.safe_dump({"azure_openai": {},
-            "models": {"ocr": "gpt-4.1-mini", "grading": "gpt-4.1-mini", "moderation": "gpt-4.1"}}))
+            "models": {"ocr": "gpt-5.4-mini", "grading": "gpt-5.4-mini", "moderation": "gpt-5.4"}}))
         import_rubric(self.config, self.root, self.exam)
         approve_rubric(self.config, self.root, self.exam)
         regions = prepare_regions(self.config, self.root, 1)
@@ -216,7 +216,7 @@ class RegradingTests(unittest.TestCase):
         models = self.root / "cached-models.yaml"
         models.write_text(yaml.safe_dump({
             "azure_openai": {},
-            "models": {"ocr": "gpt-4.1-mini", "grading": "gpt-4.1-mini", "moderation": "gpt-4.1"},
+            "models": {"ocr": "gpt-5.4-mini", "grading": "gpt-5.4-mini", "moderation": "gpt-5.4"},
             "caching": {"enabled": True, "scope": "run",
                         "agents": {"ocr": True, "grading": True, "moderation": True}},
         }))
@@ -575,7 +575,7 @@ class RegradingTests(unittest.TestCase):
         self.review(child / "grading" / "review.xlsx")
         approve_grading(self.config, self.root, self.exam, run_id="child")
         model = self.root / "analytics.yaml"
-        model.write_text(yaml.safe_dump({"azure_openai": {}, "models": {"analytics": "gpt-4.1"}}))
+        model.write_text(yaml.safe_dump({"azure_openai": {}, "models": {"analytics": "gpt-5.4"}}))
 
         class FakeAnalyst:
             def __init__(self, *args):

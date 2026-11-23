@@ -200,9 +200,6 @@ class AzureClient:
             "max_output_tokens": config.max_output_tokens,
             "store": False,
         }
-        # Deployment aliases need not disclose the underlying model family.
-        if config.temperature is not None and model.lower().startswith("gpt-4"):
-            request["temperature"] = config.temperature
         if config.thinking_config is not None:
             request["reasoning"] = {"effort": config.thinking_config.effort}
         if config.response_schema is not None:

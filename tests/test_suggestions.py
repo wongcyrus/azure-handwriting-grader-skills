@@ -35,7 +35,7 @@ class TestSuggestionsRubricRequirement(unittest.TestCase):
             }
             model_cfg = root / "config.yaml"
             model_cfg.write_text(
-                "azure_openai: {}\nmodels:\n  annotation: gpt-4.1\n",
+                "azure_openai: {}\nmodels:\n  annotation: gpt-5.4\n",
                 encoding="utf-8",
             )
             with patch("handwriting_grader.suggestions.verify_run", return_value=(root / "output" / "regions", {"pages": [{"width": 100, "height": 100}], "config_sha256": "a", "pdf_sha256": "b"})):

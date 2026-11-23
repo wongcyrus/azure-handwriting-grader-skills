@@ -43,7 +43,9 @@ which install unrelated providers. Review dependency changes before upgrading.
 
 ## Azure configuration
 
-Deploy image-input, structured-output models in your Azure OpenAI resource.
+Deploy **GPT-5 or newer**, image-input, structured-output models in your Azure
+OpenAI resource for text/vision stages. Embeddings and optional image generation
+use dedicated model families and are exempt from the GPT version floor.
 Values in `models` are **deployment names**, not automatically discovered model
 IDs. The template uses example names; replace them with your own deployments.
 
@@ -62,7 +64,17 @@ models:
   analytics: your-vision-deployment
   student_feedback: your-small-deployment
   embedding: your-embedding-deployment
+deployment_models:
+  your-vision-deployment: gpt-5.4
+  your-small-deployment: gpt-5.4-mini
 ```
+
+Custom text/vision aliases require `deployment_models` declarations. Self-describing
+names such as `gpt-5.4` can be used without that mapping. Validation checks the
+declared model family, not the actual Azure deployment: verify its model/version
+and capabilities in Azure. GPT-4.x and older reasoning-model configurations are
+rejected. Use updated configuration for a fresh run; do not rewrite configurations
+or manifests bound to historical approvals.
 
 Only explicit Azure HTTPS resource endpoints are accepted; public OpenAI
 environment variables never select the backend. Authentication uses

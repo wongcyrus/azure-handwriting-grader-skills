@@ -19,7 +19,8 @@ and advisories independently. No Google SDK, authentication or cache is used.
 
 `models` values are **Azure deployment names**, not necessarily catalog model
 IDs. The following names are illustrative; create suitable deployments in your
-Azure resource and replace them with your aliases. There is no live capability,
+Azure resource and replace them with your aliases. Text/vision stages require
+GPT-5 or newer; embedding and image-generation families are exempt. There is no live capability,
 quality, quota, pricing or availability verification.
 
 ```yaml
@@ -27,15 +28,15 @@ azure_openai:
   endpoint: https://RESOURCE.openai.azure.com
   api_version: v1
 models:
-  annotation: gpt-4.1
-  marking_scheme: gpt-4.1-mini
-  ocr: gpt-4.1-mini
-  batch_metadata_ocr: gpt-4.1-mini
-  grading: gpt-4.1
-  batch_grading: gpt-4.1
-  moderation: gpt-4.1
-  analytics: gpt-4.1
-  student_feedback: gpt-4.1-mini
+  annotation: gpt-5.4
+  marking_scheme: gpt-5.4-mini
+  ocr: gpt-5.4-mini
+  batch_metadata_ocr: gpt-5.4-mini
+  grading: gpt-5.4
+  batch_grading: gpt-5.4
+  moderation: gpt-5.4
+  analytics: gpt-5.4
+  student_feedback: gpt-5.4-mini
   embedding: text-embedding-3-small
   # analytics_image: gpt-image-2.5-flare  # Optional, separately configured image deployment
 caching:
@@ -48,8 +49,21 @@ pricing: {}  # Populate exact deployment rates only after regional pricing revie
 The `one_pass_metadata_ocr` / `one_pass_grading` keys remain supported aliases
 for batch settings. Image-reading stages require image input and structured
 JSON output; embeddings and image generation require their own deployment
-types. Name validation catches some obvious mismatches but arbitrary aliases
-cannot be checked for actual capabilities offline.
+types. Custom text/vision aliases must declare their underlying model:
+
+```yaml
+models:
+  grading: school-chat
+deployment_models:
+  school-chat: gpt-5.4
+```
+
+Self-describing GPT-5+ deployment names do not require this mapping. The policy
+validates declared model families, including batch overrides, and rejects GPT-4.x
+and older reasoning models. It cannot verify the actual Azure deployment model,
+image support, structured outputs or availability offline. Verify those in Azure.
+Use updated configurations for new runs rather than rewriting configurations
+bound to historical approvals.
 
 Paid stages with explicit targets use:
 

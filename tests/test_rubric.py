@@ -83,7 +83,7 @@ class RubricTests(unittest.TestCase):
         self.exam.write_text(yaml.safe_dump(self.config))
         model = self.root / "config.yaml"
         model.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"marking_scheme": "gpt-4.1-mini"},
+            "azure_openai": {}, "models": {"marking_scheme": "gpt-5.4-mini"},
         }))
         arguments = [
             "extract-rubric", "--exam", str(self.exam), "--model-config", str(model),
@@ -111,7 +111,7 @@ class RubricTests(unittest.TestCase):
         self.exam.write_text(yaml.safe_dump(self.config))
         model = self.root / "config.yaml"
         model.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"marking_scheme": "gpt-4.1-mini"},
+            "azure_openai": {}, "models": {"marking_scheme": "gpt-5.4-mini"},
             "caching": {"enabled": True, "scope": "shared", "directory": "shared",
                         "agents": {"marking_scheme": True}},
         }))
@@ -159,7 +159,7 @@ class RubricTests(unittest.TestCase):
         self.exam.write_text(yaml.safe_dump(self.config))
         model = self.root / "config.yaml"
         model.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"marking_scheme": "gpt-4.1-mini"},
+            "azure_openai": {}, "models": {"marking_scheme": "gpt-5.4-mini"},
         }))
         service = ThreadingHTTPServer(("127.0.0.1", 0), FakeAzure)
         thread = threading.Thread(target=service.serve_forever, daemon=True)
@@ -208,7 +208,7 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(main(["import-rubric", "--exam", str(self.exam)]), 0)
         model = self.root / "config.yaml"
         model.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"marking_scheme": "gpt-4.1-mini"},
+            "azure_openai": {}, "models": {"marking_scheme": "gpt-5.4-mini"},
         }))
         arguments = [
             "verify-rubric", "--exam", str(self.exam), "--model-config", str(model),
@@ -256,7 +256,7 @@ class RubricTests(unittest.TestCase):
         self.assertEqual(main(["import-rubric", "--exam", str(self.exam)]), 0)
         model = self.root / "config.yaml"
         model.write_text(yaml.safe_dump({
-            "azure_openai": {}, "models": {"marking_scheme": "gpt-4.1-mini"},
+            "azure_openai": {}, "models": {"marking_scheme": "gpt-5.4-mini"},
         }))
         arguments = ["verify-rubric", "--exam", str(self.exam), "--model-config", str(model),
                      "--endpoint", "https://test.openai.azure.com", "--api-version", "v1", "--confirm-cost"]

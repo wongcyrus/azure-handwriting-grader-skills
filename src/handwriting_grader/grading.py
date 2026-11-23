@@ -107,7 +107,7 @@ def grading_models(model_config_path):
         # One-Pass / Batch Question Grading
         for key in ("one_pass_grading", "batch_grading"):
             if key in models_dict and isinstance(models_dict[key], str):
-                models["batch_grading"] = models_dict[key].strip()
+                models["batch_grading"] = load_model_settings(model_config_path, key)
                 models["one_pass_grading"] = models["batch_grading"]
                 break
         else:
@@ -117,11 +117,11 @@ def grading_models(model_config_path):
         # One-Pass / Batch Metadata OCR
         for key in ("one_pass_metadata_ocr", "batch_metadata_ocr", "metadata_ocr"):
             if key in models_dict and isinstance(models_dict[key], str):
-                models["batch_metadata_ocr"] = models_dict[key].strip()
+                models["batch_metadata_ocr"] = load_model_settings(model_config_path, key)
                 models["one_pass_metadata_ocr"] = models["batch_metadata_ocr"]
                 break
         else:
-            models["batch_metadata_ocr"] = models.get("ocr", "gpt-4.1-mini")
+            models["batch_metadata_ocr"] = models["ocr"]
             models["one_pass_metadata_ocr"] = models["batch_metadata_ocr"]
     if file_hash(model_config_path) != before:
         raise ValueError("Model configuration changed while loading")
@@ -269,7 +269,8 @@ class AzureGrader:
             "response_mime_type": "application/json",
             "response_schema": MetadataBatchResponse,
         }
-        model = self.models.get("one_pass_metadata_ocr", self.models.get("batch_metadata_ocr", self.models.get("ocr", "gpt-4.1-mini")))
+        model = (self.models.get("one_pass_metadata_ocr")
+                 or self.models.get("batch_metadata_ocr") or self.models["ocr"])
         think_cfg = get_thinking_config(model, is_reasoning=False)
         if think_cfg:
             ocr_config_kwargs["thinking_config"] = think_cfg
