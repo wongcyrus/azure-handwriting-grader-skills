@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from pydantic import BaseModel
 
 from handwriting_grader.azure_ai import (
-    AIResponse, AzureClient, GenerationConfig, ImagePart, image_chunks, normalize_usage,
+    AIResponse, AzureClient, GenerationConfig, ImagePart, normalize_usage,
 )
 from handwriting_grader.grading import (
     AzureGrader, MetadataBatchResponse, QuestionBatchGradeResponse, StudentMetadataItem,
@@ -15,6 +15,12 @@ from handwriting_grader.grading import (
 
 
 ENDPOINT = "https://school.openai.azure.com"
+
+
+def sdk_client(sdk):
+    return AzureClient(ENDPOINT, client=sdk, pricing_verifier=Mock(
+        verify=Mock(return_value={"input": 2, "cached": 0.1, "output": 10}),
+    ))
 
 
 class Answer(BaseModel):
@@ -28,7 +34,7 @@ class TestAzureTransport(unittest.TestCase):
                                  output=[], usage=SimpleNamespace(input_tokens=10, output_tokens=5, total_tokens=15))
         sdk = Mock()
         sdk.responses.create.return_value = result
-        client = AzureClient(ENDPOINT, client=sdk)
+        client = sdk_client(sdk)
         response = client.generate_content(
             model="school-grader", contents=["Grade only the answer", ImagePart(b"synthetic", "image/png")],
             config=GenerationConfig(response_schema=Answer, temperature=0),
@@ -54,7 +60,7 @@ class TestAzureTransport(unittest.TestCase):
             sdk = Mock()
             sdk.responses.create.return_value = result
             with self.subTest(result=result), self.assertRaises(ValueError):
-                AzureClient(ENDPOINT, client=sdk).generate_content(model="school-grader", contents="test")
+                sdk_client(sdk).generate_content(model="school-grader", contents="test")
 
     def test_public_openai_and_embedded_credentials_are_rejected(self):
         for endpoint in ("https://api.openai.com", "http://school.openai.azure.com",
@@ -64,13 +70,26 @@ class TestAzureTransport(unittest.TestCase):
             with self.subTest(endpoint=endpoint), self.assertRaises(ValueError):
                 AzureClient(endpoint, client=Mock())
 
-    def test_oversized_image_group_is_rejected_before_sdk_call(self):
+    def test_full_image_group_and_payload_reach_sdk_without_legacy_caps(self):
         sdk = Mock()
-        with self.assertRaises(ValueError):
-            AzureClient(ENDPOINT, client=sdk).generate_content(
-                model="school-grader", contents=[ImagePart(b"x", "image/png")] * 11,
-            )
-        sdk.responses.create.assert_not_called()
+        sdk.responses.create.return_value = SimpleNamespace(
+            status="completed", output_text="done", output=[], usage=None,
+        )
+        contents = [ImagePart(b"x" * (21 * 1024 * 1024), "image/png")]
+        contents.extend([ImagePart(b"x", "image/png")] * 104)
+        sdk_client(sdk).generate_content(
+            model="gpt-6.1-sol", contents=contents,
+        )
+        sdk.responses.create.assert_called_once()
+        parts = sdk.responses.create.call_args.kwargs["input"][0]["content"]
+        self.assertEqual(len(parts), 105)
+        self.assertTrue(all(part["type"] == "input_image" for part in parts))
+        self.assertGreater(len(parts[0]["image_url"]), 20 * 1024 * 1024)
+
+    def test_empty_and_unsupported_images_are_still_rejected(self):
+        for data, mime_type in ((b"", "image/png"), (b"x", "text/plain")):
+            with self.subTest(mime_type=mime_type), self.assertRaises(ValueError):
+                ImagePart(data, mime_type)
 
     def test_usage_normalizes_cached_and_reasoning_tokens(self):
         usage = normalize_usage(SimpleNamespace(
@@ -81,9 +100,26 @@ class TestAzureTransport(unittest.TestCase):
         self.assertEqual((usage.prompt_token_count, usage.cached_content_token_count,
                           usage.thoughts_token_count), (120, 20, 10))
 
+    def test_sdk_cache_write_metadata_reaches_telemetry_with_default_ttl(self):
+        from openai.types.responses import ResponseUsage
+        sdk = Mock()
+        sdk.responses.create.return_value = SimpleNamespace(
+            status="completed", output_text="done", output=[],
+            usage=ResponseUsage.model_validate({
+                "input_tokens": 100, "output_tokens": 10, "total_tokens": 110,
+                "input_tokens_details": {"cached_tokens": 20, "cache_write_tokens": 50},
+                "output_tokens_details": {"reasoning_tokens": 0},
+            }),
+        )
+        response = sdk_client(sdk).generate_content(
+            model="gpt-6.2-sol", contents="Grade",
+        )
+        self.assertEqual(response.usage_metadata.cache_write_token_count, 50)
+        self.assertEqual(response.usage_metadata.cache_write_ttl, "30m")
+
 
 class TestAzureChunking(unittest.TestCase):
-    def test_weighted_metadata_chunks_count_images_not_students(self):
+    def test_metadata_chunk_sends_all_35_students_and_105_images_together(self):
         items = [{"script_index": i, "crops": {"ID": b"id", "CLASS": b"class", "NAME": b"name"}}
                  for i in range(35)]
         fake = Mock()
@@ -100,13 +136,16 @@ class TestAzureChunking(unittest.TestCase):
         with patch("handwriting_grader.grading.AzureClient", return_value=fake):
             result = AzureGrader({"ocr": "gpt-5.4-mini"}, ENDPOINT, "v1").ocr_metadata_batch(items)
         self.assertEqual(len(result.students), 35)
-        self.assertEqual(fake.generate_content.call_count, 12)
-        for call in fake.generate_content.call_args_list:
-            self.assertLessEqual(sum(isinstance(value, ImagePart) for value in call.kwargs["contents"]), 10)
+        fake.generate_content.assert_called_once()
+        self.assertEqual(
+            sum(isinstance(value, ImagePart)
+                for value in fake.generate_content.call_args.kwargs["contents"]), 105,
+        )
+        self.assertEqual([student.script_index for student in result.students], list(range(35)))
 
     def test_question_chunks_validate_exact_script_identity(self):
         question = {"question_number": "Q1", "question_text": "Explain", "marking_scheme": "Example", "marks": 2}
-        items = [{"script_index": i, "image": b"synthetic"} for i in range(25)]
+        items = [{"script_index": i, "image": b"synthetic"} for i in range(51)]
         fake = Mock()
 
         def grades(*, contents, **kwargs):
@@ -121,9 +160,16 @@ class TestAzureChunking(unittest.TestCase):
         fake.generate_content.side_effect = grades
         with patch("handwriting_grader.grading.AzureClient", return_value=fake):
             grader = AzureGrader({"grading": "gpt-5.4"}, ENDPOINT, "v1")
-            result = grader.grade_question_batch(question, items)
-            self.assertEqual(len(result.grades), 25)
-            self.assertEqual(fake.generate_content.call_count, 3)
+            for chunk_size, expected_sizes in ((50, [50, 1]), (20, [20, 20, 11])):
+                with self.subTest(chunk_size=chunk_size):
+                    fake.reset_mock()
+                    result = grader.grade_question_batch(question, items, chunk_size=chunk_size)
+                    self.assertEqual([grade.script_index for grade in result.grades], list(range(51)))
+                    self.assertEqual(
+                        [sum(isinstance(value, ImagePart) for value in call.kwargs["contents"])
+                         for call in fake.generate_content.call_args_list],
+                        expected_sizes,
+                    )
             duplicate = grades(contents=["--- [SCRIPT #0] ---"])
             duplicate.parsed.grades.append(duplicate.parsed.grades[0])
             fake.generate_content.side_effect = None
@@ -131,6 +177,11 @@ class TestAzureChunking(unittest.TestCase):
             with self.assertRaises(ValueError):
                 grader.grade_question_batch(question, items[:1])
 
-    def test_payload_budget_can_split_below_image_limit(self):
-        chunks = list(image_chunks([b"x" * 8_000_000] * 3, images=lambda item: [item]))
-        self.assertEqual([len(chunk) for chunk in chunks], [1, 1, 1])
+    def test_question_batch_rejects_invalid_chunk_sizes(self):
+        fake = Mock()
+        with patch("handwriting_grader.grading.AzureClient", return_value=fake):
+            grader = AzureGrader({"grading": "gpt-6.1-sol"}, ENDPOINT, "v1")
+            for chunk_size in (0, -1, True, 1.5):
+                with self.subTest(chunk_size=chunk_size), self.assertRaises(ValueError):
+                    grader.grade_question_batch({}, [], chunk_size=chunk_size)
+        fake.generate_content.assert_not_called()

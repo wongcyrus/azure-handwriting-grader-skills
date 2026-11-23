@@ -64,7 +64,10 @@ execute a notebook as a workaround, or claim a human approval occurred.
   `AZURE_OPENAI_AUTH=managed_identity`.
 - **Cost governance**: Before every paid stage, preview target, transferred data and
   estimated requests; independently verify current regional deployment rates and
-  obtain `--confirm-cost`. No default rates are guessed; unknown costs are UNPRICED/null.
+  obtain `--confirm-cost`. The first actual AI request of each run refreshes/checks
+  pricing; missing, ambiguous, stale manual or changed rates block requests.
+  Follow `references/pricing.md`; price verification never grants inference consent.
+  No default rates are guessed; missing usage in historical reports is UNPRICED/null.
   Afterward run `cost-report --exam /private/exam.yaml` and report recorded
   successful-call usage, priced estimates, missing pricing and failures from
   `azure_usage.jsonl`. SDK retry attempts and failed responses are not individually
@@ -153,16 +156,23 @@ execute a notebook as a workaround, or claim a human approval occurred.
       commands (`retry-grading --align-images ...`) in `references/regions.md`.
 8. For grading, reporting and AI analysis read `references/grading.md`.
    Obtain the specified human confirmations; never infer approval.
+   - For current Azure prices, read `references/pricing.md`. Obtain the ARM region
+     and Standard deployment type before `fetch-pricing`; never infer them
+     from an endpoint. Preview public retail rates without inference or credentials.
+     Save only when requested, using `--write-config` to a new private file; review
+     meter provenance and keep missing/ambiguous prices UNPRICED. Discovery and
+     preflight stay offline. A pricing lookup is not approval for paid grading.
    - `grade` defaults to `--orchestrator agent-framework`: real Executor/WorkflowBuilder
      validation → existing grading → human-review boundary. `workflow-grade` forces it;
      `--orchestrator python` is the direct fallback. No autonomous approval or email.
      Core transport remains synchronous with question threads; framework clients are
      not shared across OS threads.
    - `--mode batch` is synchronous multi-image inference, **not Azure asynchronous Batch**.
-     Logical 50-script question chunks split into at most ten high-detail image parts
-     or smaller payload-limited groups. Comparisons occur within groups, not guaranteed
-     across the whole cohort. Metadata chunks of 35 full scripts/three fields normally
-     split into three-student/nine-image groups (potentially 12 calls).
+     Like Gemini, requests send up to 50 question scripts or 35 metadata scripts
+     together (105 metadata images with three fields), without image-count or payload
+     micro-batching. Azure GPT-6.1 image capacity is assumed, not verified; deployment,
+     context, output and quota limits can reject requests. Comparisons occur within
+     groups, not guaranteed across the whole cohort.
    - `--mode item` grades individual crops, then moderates text. Image/payload limits
      still apply, and diagrams need image review. Both modes preserve artifact schemas.
      Choose by actual deployment behavior and preview; promise no fixed savings/runtime.

@@ -132,9 +132,11 @@ never treat test success as a teacher's approval.
 not verify deployments, quota, prices or capabilities. Use explicit HTTPS Azure
 endpoint/API version and private deployment configuration; no public OpenAI fallback.
 Default framework grading has a direct Python fallback and no autonomous approval.
-Batch is not asynchronous Azure Batch: logical 50-script question chunks split into
-at most ten image parts and payload-limited groups; metadata 35-script/three-field
-chunks can require 12 calls. Text moderation needs separate diagram image review.
+Batch is not asynchronous Azure Batch: like Gemini, up to 50 question scripts or
+35 metadata scripts are sent together per request (105 images with three fields),
+without image-count/payload micro-batching. Azure GPT-6.1 image capacity is assumed,
+not verified; deployment/context/output/quota limits can reject requests.
+Text moderation needs separate diagram image review.
 
 `review-grading` and `cluster-answers` start offline/cached; `--confirm-cost` opts
 into paid embeddings using `exam.model_config` or adjacent `config.yaml`.

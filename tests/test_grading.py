@@ -1007,7 +1007,9 @@ class GradingTests(unittest.TestCase):
     def test_azure_sdk_grading_requests_against_fake_service(self):
         from openai import OpenAI
         from handwriting_grader.azure_ai import AzureClient
-        from azure_test_support import responses_body
+        from azure_test_support import responses_body, manual_test_prices
+
+        self.models.write_text(yaml.safe_dump(manual_test_prices(yaml.safe_load(self.models.read_text()))))
 
         calls = []
 
@@ -1213,7 +1215,7 @@ class GradingTests(unittest.TestCase):
     def test_azure_sdk_ai_analysis_against_local_fake_service(self):
         from openai import OpenAI
         from handwriting_grader.azure_ai import AzureClient
-        from azure_test_support import responses_body
+        from azure_test_support import responses_body, manual_test_prices
 
         calls = []
 
@@ -1241,7 +1243,7 @@ class GradingTests(unittest.TestCase):
             name: {"input": 2, "output": 8} for name in ("school-analysis", "school-chat")
         }
         model = self.root / "analytics-models.yaml"
-        model.write_text(yaml.safe_dump(settings))
+        model.write_text(yaml.safe_dump(manual_test_prices(settings)))
         service = ThreadingHTTPServer(("127.0.0.1", 0), FakeAzure)
         thread = threading.Thread(target=service.serve_forever, daemon=True)
         thread.start()

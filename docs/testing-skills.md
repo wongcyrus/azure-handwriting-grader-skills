@@ -45,7 +45,8 @@ review defaults and opt-in images. Merely loading a skill is not enforcement.
 - Responses calls use `store=False`; model names are deployment aliases.
 - Offline template generation refuses overwrite and does not probe Azure.
 - Default framework grading and direct Python fallback preserve artifact/gate schemas.
-- Image groups respect count and inline payload limits; batch means synchronous inference.
+- Gemini-style groups send 50 question scripts or 35 metadata scripts together without
+  image-count/payload micro-batching; batch means synchronous inference.
 - Review/clustering start offline; paid embeddings require `--confirm-cost`.
 - Reports are offline by default; image generation is explicitly opted in and never auto-retried.
 - Pricing is per deployment, independently verified; unknown costs remain UNPRICED/null.

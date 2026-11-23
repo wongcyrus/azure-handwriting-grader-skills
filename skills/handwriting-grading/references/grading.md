@@ -40,16 +40,17 @@
    and question threads, not shared cross-thread framework clients.
 
    - **Batch (default)**: synchronous multi-image inference, not Azure asynchronous
-     Batch. Logical 50-script question chunks split into at most ten high-detail image
-     parts per request and the inline payload limit. Comparisons occur within groups;
+     Batch. Like Gemini, up to 50 question scripts are sent together per request,
+     without image-count or payload micro-batching. Comparisons occur within groups;
      no whole-cohort consistency or fixed savings/runtime guarantee.
    - **Item**: individual crops then whole-question text moderation. Transport limits
      still apply. Moderation cannot re-inspect diagrams: teachers must review images.
    - Both retain `results.json`, `review.xlsx`, and `azure_usage.jsonl`. Pillow blank
      filtering saves calls only for clearly blank crops; confirm them during review.
    - Roster candidates assist ID/CLASS/NAME OCR but do not guarantee correct matching.
-     A logical 35-script metadata chunk with three fields splits into three-student /
-     nine-image groups (potentially 12 requests), not one call.
+     Up to 35 metadata scripts are sent together per request (105 images with three
+     fields). Azure GPT-6.1 image capacity is assumed, not verified; deployment,
+     context, output-token budgets and quota can still cause failures.
 
    Run `cost-report --exam /private/exam.yaml` for offline usage and priced estimates.
    Bounded Azure SDK retries may handle transient failures; after exhaustion report
@@ -193,7 +194,7 @@ When API operations exhaust their built-in retry attempts:
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml`: Retries failed marks and completes unmoderated questions.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --align-images`: Aligns all scanned page images to the approved reference layout (offline, 0 AI cost). Can be combined with `--re-ocr-id`, `--re-ocr-metadata`, or `--question`.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-id`: Re-runs student ID OCR for all scripts using the approved bounding box.
-  - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-metadata`: Re-runs student ID, class, and name OCR across scripts using roster-assisted image groups capped at ten image parts and the inline payload budget. A 35-script/three-field chunk can require 12 requests; every identity still needs human verification.
+  - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-metadata`: Re-runs student ID, class, and name OCR using Gemini-style groups of up to 35 scripts per request (105 images with three fields), without image-count or payload micro-batching. Deployment capacity is assumed, not verified; every identity still needs human verification.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --question <Q_NUM>`: Re-grades and re-moderates a specific question using its approved box.
   Always preview the action plan without `--confirm-cost`, obtain explicit user cost confirmation, and rerun with `--confirm-cost`. The command updates `results.json`, syncs manifest hashes to current region approvals, and updates `review.xlsx` while preserving existing manual reviews.
 

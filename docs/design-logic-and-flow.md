@@ -154,9 +154,11 @@ across OS threads. Explicit HTTPS Azure endpoints/API versions and `store=False`
 are required; data-retention policy still needs independent review.
 
 Batch means synchronous multi-image inference, not Azure asynchronous Batch.
-Logical 50-script question chunks split into at most ten image parts and the inline
-payload limit. Comparisons occur within groups, not across a guaranteed whole-cohort
-context. Three metadata fields for 35 scripts can require 12 requests. Roster
+Gemini-style groups send up to 50 scripts per question request and 35 scripts per
+metadata request (105 images with three fields), without Azure-specific image-count
+or payload micro-batching. Deployment capacity is assumed; Azure GPT-6.1 ceilings
+are unverified and service/context/output/quota limits can cause failures.
+Comparisons occur within groups, not across a guaranteed whole-cohort context. Roster
 candidates assist but cannot guarantee accurate OCR. Prices must be verified per
 Azure deployment; unknown costs remain UNPRICED/null. `advanced-report` is offline
 unless `--infographics --confirm-cost` explicitly opts into a configured Azure image

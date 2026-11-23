@@ -31,10 +31,10 @@ ambiguous handwriting but do **not** guarantee exact matching or prevent false
 matches. Teachers must check every identity, leading zero and script association.
 Batch extraction can fall back to individual fields on errors.
 
-The logical metadata chunk is 35 scripts, but Azure image grouping limits apply:
-with three image fields per script, a group normally holds three students/nine
-images. A full 35-script chunk can therefore require 12 calls, not one. Payload
-limits may split it further. No runtime or exact-match percentage is guaranteed.
+Metadata grouping follows Gemini: up to 35 scripts are sent in one request, with
+all available field crops (105 images for three fields). No Azure-specific image
+count or payload micro-batching is applied. Deployment capacity is assumed, not
+verified. No runtime or exact-match percentage is guaranteed.
 
 ## Grading modes and request limits
 
@@ -45,12 +45,14 @@ instructions; local validation checks mark ranges, not pedagogical correctness.
 
 | Mode | Behavior | Important limits |
 |---|---|---|
-| `--mode batch` (default) | Synchronous multi-image inference per question, with structured `QuestionBatchGradeResponse`; comparisons occur within each image group. | Not Azure asynchronous Batch. The logical 50-script question chunk is split into groups of at most 10 image parts or fewer to fit the inline payload budget. Multi-page scripts can reduce students per group. No whole-cohort consistency guarantee. |
+| `--mode batch` (default) | Synchronous multi-image inference per question, with structured `QuestionBatchGradeResponse`; comparisons occur within each image group. | Not Azure asynchronous Batch. Like Gemini, up to 50 scripts are sent together per question request, without image-count or payload micro-batching. No whole-cohort consistency guarantee. |
 | `--mode item` | Individual structured `GradeResponse`, then whole-question text moderation. | Still subject to image/payload/context limits. Moderation sees transcription, not original diagrams; teachers must inspect images. Request count and rates differ from batch mode. |
 
-The transport conservatively caps requests at ten high-detail image parts and
-checks total inline bytes. Dense or oversized single scripts still need deliberate
-crop review or another approach; item mode does not eliminate transport limits.
+The transport keeps MIME/nonempty-image validation but imposes no application
+image-count or byte ceiling. Azure GPT-6.1 image-count and payload ceilings remain
+unverified; the service can reject large requests. Context, output-token budgets
+and quota still apply. Dense scripts need deliberate crop review; item mode does
+not eliminate deployment limits.
 No fixed savings, latency or state-of-the-art quality claim is made.
 
 ## Schemas and moderation

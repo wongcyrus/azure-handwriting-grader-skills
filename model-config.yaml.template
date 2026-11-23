@@ -1,28 +1,33 @@
 # Example DEPLOYMENT names; create and verify these in your Azure resource.
 # Do not add API keys. Use AZURE_OPENAI_API_KEY or Azure Identity credentials.
+# Current GA evaluation candidates checked 2026-11-23; recheck lifecycle in Azure.
+# Run discover-models for the curated list; existing GPT-5+ configs remain supported.
 azure_openai:
   endpoint: https://YOUR-RESOURCE.openai.azure.com
   api_version: v1
 models:
-  annotation: gpt-5.4
-  marking_scheme: gpt-5.4-mini
-  ocr: gpt-5.4-mini
-  batch_metadata_ocr: gpt-5.4-mini
-  grading: gpt-5.4
-  batch_grading: gpt-5.4
-  moderation: gpt-5.4
-  analytics: gpt-5.4
-  student_feedback: gpt-5.4-mini
+  annotation: gpt-6.1-terra
+  marking_scheme: gpt-6-luna
+  ocr: gpt-6-luna
+  batch_metadata_ocr: gpt-6-luna
+  grading: gpt-6.1-terra
+  batch_grading: gpt-6.1-terra
+  moderation: gpt-6.2-sol
+  analytics: gpt-6.2-sol
+  student_feedback: gpt-6-luna
   embedding: text-embedding-3-small
   # Optional, only used after --infographics --confirm-cost:
   # analytics_image: gpt-image-2.5-flare
 # Custom text/vision aliases must declare their underlying GPT-5+ models.
 # deployment_models:
-#   school-chat: gpt-5.4
+#   school-chat: gpt-6.1-terra
 caching:
   enabled: false
   scope: run
   agents: {}
-# Add verified regional rates in USD per million tokens keyed by deployment.
-# For example, input/output/cached (and image, if appropriate). No guessed defaults.
+# Before paid use, fetch-pricing --region YOUR-ARM-REGION --deployment-type
+# global-standard --model-config config.yaml --write-config priced-config.yaml.
+# Review the new copy; the first paid request of every run refreshes/checks prices.
+# Missing or changed prices block requests. Embeddings/images need current manual evidence.
+# Never guess the region, billing mode, rates or discounts.
 pricing: {}

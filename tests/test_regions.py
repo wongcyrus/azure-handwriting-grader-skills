@@ -322,7 +322,7 @@ class RegionWorkflowTests(unittest.TestCase):
     def test_azure_sdk_serializes_requests_against_local_fake_service(self):
         from openai import OpenAI
         from handwriting_grader.azure_ai import AzureClient
-        from azure_test_support import responses_body
+        from azure_test_support import responses_body, manual_test_prices
 
         calls = []
 
@@ -349,9 +349,9 @@ class RegionWorkflowTests(unittest.TestCase):
             config_path = self.root / "exam.yaml"
             config_path.write_text(yaml.safe_dump(self.config))
             model_path = self.root / "config.yaml"
-            model_path.write_text(yaml.safe_dump({
+            model_path.write_text(yaml.safe_dump(manual_test_prices({
                 "azure_openai": {}, "models": {"annotation": "gpt-5.4"},
-            }))
+            })))
             base_url = f"http://127.0.0.1:{service.server_port}"
             def local_client(**kwargs):
                 sdk = OpenAI(base_url=f"http://127.0.0.1:{service.server_port}/v1/",

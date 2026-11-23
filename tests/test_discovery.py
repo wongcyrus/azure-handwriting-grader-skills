@@ -1,10 +1,13 @@
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
-from handwriting_grader.discovery import validate_model_eligibility, write_model_config
+from handwriting_grader.discovery import discover_and_report, validate_model_eligibility, write_model_config
 from handwriting_grader.grading import grading_models
 from handwriting_grader.suggestions import load_model_settings
 
@@ -60,10 +63,31 @@ class TestAzureDeploymentConfiguration(unittest.TestCase):
             write_model_config(path, "https://school.openai.azure.com")
             config = yaml.safe_load(path.read_text())
             self.assertEqual(config["azure_openai"]["api_version"], "v1")
-            self.assertEqual(load_model_settings(path, "grading"), "gpt-5.4")
+            self.assertEqual(load_model_settings(path, "grading"), "gpt-6.1-terra")
+            self.assertEqual(load_model_settings(path, "ocr"), "gpt-6-luna")
+            self.assertEqual(load_model_settings(path, "moderation"), "gpt-6.2-sol")
+            template = yaml.safe_load(
+                (Path(__file__).resolve().parents[1] / "model-config.yaml.template").read_text()
+            )
+            self.assertEqual(config["models"], template["models"])
             self.assertNotIn("analytics_image", config["models"])
             with self.assertRaises(FileExistsError):
                 write_model_config(path, "https://other.openai.azure.com")
+
+    def test_discovery_reports_current_candidates_without_network_or_old_recommendations(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), patch(
+            "socket.socket.connect", side_effect=AssertionError("Discovery must remain offline"),
+        ):
+            result = discover_and_report("https://school.openai.azure.com")
+        report = output.getvalue()
+        for model in ("gpt-6.1-terra", "gpt-6-luna", "gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-sol"):
+            self.assertIn(f"| {model} |", report)
+        for model in ("gpt-4o", "gpt-4.1", "gpt-5.4", "gpt-chat-latest"):
+            self.assertNotIn(f"| {model}", report)
+        self.assertIn("documentation snapshot", report)
+        self.assertIn("no live verification", report)
+        self.assertEqual(result["azure_openai"]["endpoint"], "https://school.openai.azure.com")
 
     def test_old_google_config_is_not_accepted(self):
         with tempfile.TemporaryDirectory() as temp:

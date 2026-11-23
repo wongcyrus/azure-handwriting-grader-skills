@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
 
-from .azure_ai import AzureClient, GenerationConfig, ImagePart, image_chunks
+from .azure_ai import AzureClient, GenerationConfig, ImagePart
 from openpyxl import Workbook, load_workbook
 from PIL import Image, ImageEnhance
 from pydantic import BaseModel, StrictBool, StrictInt, StrictStr
@@ -163,10 +163,11 @@ def crop_image(path, box):
 
 
 class AzureGrader:
-    def __init__(self, models, endpoint, api_version):
+    def __init__(self, models, endpoint, api_version, *, pricing_config=None, pricing_verifier=None):
         self.models = models
         self.client = AzureClient(
             endpoint=endpoint, api_version=api_version,
+            pricing_config=pricing_config, pricing_verifier=pricing_verifier,
         )
 
     def __enter__(self):
@@ -217,15 +218,6 @@ class AzureGrader:
         return response.text.strip()
 
     def ocr_metadata_batch(self, items, fields=("ID", "CLASS", "NAME"), roster_list=None):
-        chunks = list(image_chunks(
-            items, images=lambda item: (item.get("crops", {}).get(field)
-                                       for field in fields if item.get("crops", {}).get(field)),
-        ))
-        if len(chunks) > 1:
-            students = []
-            for chunk in chunks:
-                students.extend(self.ocr_metadata_batch(chunk, fields, roster_list).students)
-            return MetadataBatchResponse(students=students)
         fields_str = ", ".join(fields)
         prompt = (
             f"Extract the student metadata ({fields_str}) from the attached images.\n"
@@ -386,12 +378,14 @@ class AzureGrader:
         return {item.script_index: item.model_dump() for item in result.items}
 
     def grade_question_batch(self, question, script_items, chunk_size=50):
+        if type(chunk_size) is not int or chunk_size <= 0:
+            raise ValueError("Chunk size must be a positive integer")
         all_grades = []
         model_name = self.models.get("one_pass_grading", self.models.get("batch_grading", self.models.get("moderation", self.models["grading"])))
         tracker = get_active_tracker()
 
-        chunk_start = 0
-        for chunk in image_chunks(script_items, images=lambda item: [item["image"]], chunk_size=chunk_size):
+        for chunk_start in range(0, len(script_items), chunk_size):
+            chunk = script_items[chunk_start:chunk_start + chunk_size]
             prompt = (
                 "You are an expert exam grader and moderator evaluating student handwritten answers for the following question.\n"
                 "Evaluate all student answers together to maintain rigorous, fair, and consistent standards across the cohort.\n\n"
@@ -444,7 +438,6 @@ class AzureGrader:
                 if response.parsed is not None
                 else QuestionBatchGradeResponse.model_validate_json(response.text)
             )
-            chunk_start += len(chunk)
             chunk_expected = {item["script_index"] for item in chunk}
             returned_indices = {g.script_index for g in result.grades}
             if returned_indices != chunk_expected or len(result.grades) != len(chunk_expected):
@@ -664,7 +657,8 @@ def batch_extract_metadata(provider, script_indices, fields, boxes, stride, imag
 
 def continue_grading(target, results, questions, boxes, summary, stride, models, endpoint, api_version, provider_factory,
                      cache_agents, cache_root, metadata_fields, attendance_guard, effective_crops=None,
-                     mode="batch", batch_concurrency=3, metadata_candidates=None, metadata_roster=None):
+                     mode="batch", batch_concurrency=3, metadata_candidates=None, metadata_roster=None,
+                     pricing_config=None):
     from .cache import CachedGrader
     expected_questions = {question_key(q["question_number"]) for q in questions}
     scripts = {row["script_index"]: row for row in results["scripts"]}
@@ -682,7 +676,11 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
     if metadata_fields not in (["ID", "CLASS"], ["ID", "CLASS", "NAME"]):
         raise ValueError("Grading checkpoint has invalid metadata fields")
     tracker = get_active_tracker()
-    with provider_factory(models, endpoint, api_version) as underlying:
+    price_options = {}
+    if provider_factory is AzureGrader:
+        from .pricing import pricing_client_options
+        price_options = pricing_client_options(pricing_config, target / "telemetry")
+    with provider_factory(models, endpoint, api_version, **price_options) as underlying:
         provider = CachedGrader(underlying, cache_root, cache_agents, models, endpoint, api_version)
         missing_scripts = [si for si in range(summary["students"]) if si not in scripts]
         if missing_scripts:
@@ -1016,7 +1014,8 @@ def resume_grading(config, config_dir, config_path, summary, provider_factory=Az
                              manifest.get("metadata_fields", ["ID", "CLASS"]),
                              attendance_guard(config, config_dir, config_path, manifest),
                              mode=grading_mode, batch_concurrency=batch_concurrency,
-                             metadata_candidates=metadata_candidates, metadata_roster=metadata_roster)
+                             metadata_candidates=metadata_candidates, metadata_roster=metadata_roster,
+                             pricing_config=manifest["model_config_path"])
         finish_grading(config, config_dir, config_path, target, manifest, results)
     return target
 
@@ -1156,7 +1155,12 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
 
         provider = None
         if needs_ai:
-            provider = provider_factory(manifest["models"], manifest["endpoint"], manifest["api_version"])
+            price_options = {}
+            if provider_factory is AzureGrader:
+                from .pricing import pricing_client_options
+                price_options = pricing_client_options(manifest["model_config_path"], target / "telemetry")
+            provider = provider_factory(manifest["models"], manifest["endpoint"], manifest["api_version"],
+                                        **price_options)
             cache_agents = manifest.get("cache_agents", [])
             if cache_agents:
                 cache_root = Path(manifest.get("cache_root", target / "cache"))
@@ -1451,7 +1455,8 @@ def grade_exam(config, config_dir, config_path, model_config_path, endpoint, api
                              models, endpoint, api_version, provider_factory, cache_agents, cache_root,
                              manifest["metadata_fields"], attendance_guard(config, config_dir, config_path, manifest),
                              mode=mode, batch_concurrency=batch_concurrency,
-                             metadata_candidates=metadata_candidates, metadata_roster=metadata_roster)
+                             metadata_candidates=metadata_candidates, metadata_roster=metadata_roster,
+                             pricing_config=model_config_path)
             finish_grading(config, config_dir, config_path, target, manifest, results)
     return target
 

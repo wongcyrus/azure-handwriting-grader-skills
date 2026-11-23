@@ -133,7 +133,7 @@ class RubricTests(unittest.TestCase):
     def test_azure_sdk_extraction_request_against_fake_service(self):
         from openai import OpenAI
         from handwriting_grader.azure_ai import AzureClient
-        from azure_test_support import responses_body
+        from azure_test_support import responses_body, manual_test_prices
 
         calls = []
         questions = self.questions
@@ -158,9 +158,9 @@ class RubricTests(unittest.TestCase):
         self.config["exam"]["marking_scheme"] = "source.docx"
         self.exam.write_text(yaml.safe_dump(self.config))
         model = self.root / "config.yaml"
-        model.write_text(yaml.safe_dump({
+        model.write_text(yaml.safe_dump(manual_test_prices({
             "azure_openai": {}, "models": {"marking_scheme": "gpt-5.4-mini"},
-        }))
+        })))
         service = ThreadingHTTPServer(("127.0.0.1", 0), FakeAzure)
         thread = threading.Thread(target=service.serve_forever, daemon=True)
         thread.start()
@@ -188,7 +188,7 @@ class RubricTests(unittest.TestCase):
     def test_search_grounded_verification_requires_consent_and_preserves_sources(self):
         from openai import OpenAI
         from handwriting_grader.azure_ai import AzureClient
-        from azure_test_support import responses_body
+        from azure_test_support import responses_body, manual_test_prices
 
         calls = []
 
@@ -207,9 +207,9 @@ class RubricTests(unittest.TestCase):
 
         self.assertEqual(main(["import-rubric", "--exam", str(self.exam)]), 0)
         model = self.root / "config.yaml"
-        model.write_text(yaml.safe_dump({
+        model.write_text(yaml.safe_dump(manual_test_prices({
             "azure_openai": {}, "models": {"marking_scheme": "gpt-5.4-mini"},
-        }))
+        }, web_search=True)))
         arguments = [
             "verify-rubric", "--exam", str(self.exam), "--model-config", str(model),
             "--endpoint", "https://test.openai.azure.com", "--api-version", "v1",

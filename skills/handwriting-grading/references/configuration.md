@@ -41,9 +41,9 @@ for the complete schema and pinned minimal framework dependencies. Set
 `azure_openai.endpoint: https://RESOURCE.openai.azure.com` and
 `azure_openai.api_version: v1`. `models` maps stages to Azure deployment names,
 not necessarily catalog IDs. Text/vision stages require GPT-5 or newer.
-Illustrative choices are `gpt-5.4-mini` for OCR,
-rubric and student feedback; `gpt-5.4` for annotation, grading, moderation and
-analytics; `text-embedding-3-small` for embeddings. Arbitrary valid deployment
+New templates use `gpt-6-luna` for OCR, rubric and student feedback,
+`gpt-6.1-terra` for annotation/grading and `gpt-6.2-sol` for moderation/analytics;
+`text-embedding-3-small` remains separate for embeddings. Arbitrary valid deployment
 aliases are allowed, but offline name checks cannot establish actual capabilities.
 
 - Image stages need image input and structured JSON outputs.
@@ -51,13 +51,21 @@ aliases are allowed, but offline name checks cannot establish actual capabilitie
   needs an Azure image-generation deployment such as an alias for `gpt-image-2.5-flare`.
 
 Custom text/vision aliases must declare their underlying models in
-`deployment_models` (for example, `school-chat: gpt-5.4`). Embeddings and image
+`deployment_models` (for example, `school-chat: gpt-6.1-terra`). Embeddings and image
 generation are exempt from the GPT version floor. Verify actual deployment
 models and capabilities in Azure; declarations are not live verification.
-- There is no live capability, quality, availability or price verification.
-- `discover-models --endpoint https://RESOURCE.openai.azure.com --api-version v1
-  --write-config /private/config.yaml` only writes an offline template and refuses
-  overwrite. Inspect existing configuration before reuse.
+- There is no live deployment capability, quality or availability verification.
+  Explicit public retail-price lookup is available through `fetch-pricing`; see
+  [pricing](pricing.md) for region/type selection, provenance and limitations.
+- `discover-models --endpoint https://RESOURCE.openai.azure.com` lists curated
+  GA candidates: GPT-6.1 Terra/Sol, GPT-6 Luna and GPT-6.2 Sol/Astra. The snapshot
+  was checked 2026-11-23; exclude preview, legacy, deprecated, retired and older
+  models from recommendations. Recheck current lifecycle/availability in Azure;
+  no live lookup or quality benchmark is performed. See the
+  [model table](../../../README.md#current-model-recommendations).
+- Add `--api-version v1 --write-config /private/config.yaml` to create an offline
+  template; overwrite is refused. Existing explicit GPT-5+ configurations remain
+  compatible, not automatically recommended. Inspect existing configuration before reuse.
 - Targeted paid stages require `--model-config`, `--endpoint`, `--api-version`;
   preview before adding `--confirm-cost`. Confirm data transfer and independently
   verified current regional rates. Unknown prices are UNPRICED/null, not free.

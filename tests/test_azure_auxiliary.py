@@ -55,7 +55,7 @@ class AzureAuxiliaryTests(unittest.TestCase):
                 patch.object(verification, "get_thinking_config", return_value=None), \
                 patch.object(verification, "AzureClient", return_value=client) as factory:
             target = verification.verify_rubric({}, self.root, rubric, model_config, ENDPOINT, "v1")
-        factory.assert_called_once_with(endpoint=ENDPOINT, api_version="v1")
+        factory.assert_called_once_with(endpoint=ENDPOINT, api_version="v1", pricing_config=model_config)
         self.assertEqual(client.generate_content.call_args.kwargs["config"].tools, ["web_search"])
         book = load_workbook(target / "verification.xlsx")
         self.addCleanup(book.close)
@@ -155,7 +155,7 @@ class AzureAuxiliaryTests(unittest.TestCase):
         self.assertFalse((self.root / "reports").exists())
 
     def test_requested_infographics_use_configured_azure_transport_without_retries(self):
-        _, reviewed, rows = self._report_fixture()
+        model_config, reviewed, rows = self._report_fixture()
         image = io.BytesIO()
         Image.new("RGB", (16, 9), "white").save(image, format="PNG")
         client = Mock()
@@ -169,7 +169,9 @@ class AzureAuxiliaryTests(unittest.TestCase):
                 patch.object(advanced, "AzureClient", return_value=client) as factory, \
                 patch.object(advanced.time, "sleep"):
             target = advanced.create_advanced_report({}, self.root, None, infographics=True)
-        factory.assert_called_once_with(endpoint=ENDPOINT, api_version="v1", max_retries=0)
+        factory.assert_called_once_with(
+            endpoint=ENDPOINT, api_version="v1", max_retries=0, pricing_config=model_config,
+        )
         self.assertEqual(client.generate_image.call_count, 2)
         self.assertEqual(json.loads((target / "manifest.json").read_text())["infographics_count"], 2)
 
@@ -318,7 +320,9 @@ class AzureAuxiliaryTests(unittest.TestCase):
             self.assertEqual(server.get_embedding_client(), (fake, "embedding-alias"))
         self.assertEqual(server.embedding_cache, {})
         cache.assert_called_once_with(model_config, "embedding-alias", namespace=ENDPOINT)
-        factory.assert_called_once_with(endpoint=ENDPOINT + "/", api_version="v1")
+        factory.assert_called_once_with(
+            endpoint=ENDPOINT + "/", api_version="v1", pricing_verifier=unittest.mock.ANY,
+        )
         with patch.object(score_editor.ThreadingHTTPServer, "server_close"):
             server.server_close()
         fake.close.assert_called_once()

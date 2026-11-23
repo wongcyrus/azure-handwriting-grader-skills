@@ -2,19 +2,12 @@
 
 import base64
 import copy
-import json
-import math
 import os
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel
-
-
-MAX_IMAGES = 10
-MAX_IMAGE_BYTES = 20 * 1024 * 1024
-MAX_INLINE_BYTES = 18 * 1024 * 1024
 
 
 def validate_endpoint(endpoint):
@@ -39,8 +32,8 @@ class ImagePart:
     def __post_init__(self):
         if self.mime_type not in ("image/png", "image/jpeg", "image/webp"):
             raise ValueError("Unsupported image MIME type")
-        if not self.data or len(self.data) > MAX_IMAGE_BYTES:
-            raise ValueError("Image must be nonempty and at most 20 MiB")
+        if not self.data:
+            raise ValueError("Image must be nonempty")
 
 
 @dataclass(frozen=True)
@@ -65,6 +58,8 @@ class Usage:
     total_token_count: int = 0
     cached_content_token_count: int = 0
     thoughts_token_count: int = 0
+    cache_write_token_count: int | None = None
+    cache_write_ttl: str | None = None
 
 
 @dataclass
@@ -77,7 +72,7 @@ class AIResponse:
     embeddings: list = field(default_factory=list)
 
 
-def normalize_usage(usage):
+def normalize_usage(usage, *, cache_write_ttl=None):
     if usage is None:
         return None
     inp = getattr(usage, "input_tokens", getattr(usage, "prompt_tokens", 0)) or 0
@@ -90,7 +85,8 @@ def normalize_usage(usage):
         output_details = getattr(usage, "completion_tokens_details", None)
     return Usage(inp, out, getattr(usage, "total_tokens", 0) or inp + out,
                  getattr(input_details, "cached_tokens", 0) or 0,
-                 getattr(output_details, "reasoning_tokens", 0) or 0)
+                 getattr(output_details, "reasoning_tokens", 0) or 0,
+                 getattr(input_details, "cache_write_tokens", None), cache_write_ttl)
 
 
 def strict_schema(model):
@@ -112,34 +108,15 @@ def strict_schema(model):
     return schema
 
 
-def image_chunks(items, *, images, chunk_size=MAX_IMAGES):
-    """Bound both image count and encoded payload without splitting one script."""
-    if type(chunk_size) is not int or chunk_size <= 0:
-        raise ValueError("Chunk size must be a positive integer")
-    chunk, count, size = [], 0, 0
-    for item in items:
-        parts = list(images(item))
-        item_count = len(parts)
-        item_size = sum(4 * math.ceil(len(data) / 3) for data in parts)
-        if item_count > MAX_IMAGES or item_size > MAX_INLINE_BYTES:
-            raise ValueError("One script exceeds the Azure image request budget")
-        if chunk and (len(chunk) >= chunk_size or count + item_count > MAX_IMAGES
-                      or size + item_size > MAX_INLINE_BYTES):
-            yield chunk
-            chunk, count, size = [], 0, 0
-        chunk.append(item)
-        count += item_count
-        size += item_size
-    if chunk:
-        yield chunk
-
-
 class AzureClient:
-    def __init__(self, endpoint, api_version="v1", *, max_retries=2, timeout=180, client=None):
+    def __init__(self, endpoint, api_version="v1", *, max_retries=2, timeout=180, client=None,
+                 pricing_config=None, pricing_verifier=None):
         self.endpoint = validate_endpoint(endpoint)
         if not isinstance(api_version, str) or not api_version.strip():
             raise ValueError("Azure OpenAI API version is required")
         self.api_version = api_version
+        self._pricing_config = pricing_config
+        self._pricing_verifier = pricing_verifier
         self._credential = None
         self._owned = client is None
         if client is not None:
@@ -178,9 +155,35 @@ class AzureClient:
     def __exit__(self, *exc):
         self.close()
 
+    def _require_prices(self, model, **options):
+        from .pricing import PriceVerificationError, RunPricingVerifier
+        from .telemetry import get_active_tracker
+
+        tracker = get_active_tracker()
+        verifier = self._pricing_verifier
+        if verifier is None and tracker is not None and tracker.pricing_verifier.config_path is not None:
+            verifier = tracker.pricing_verifier
+            if self._pricing_config is not None:
+                from pathlib import Path
+                if Path(self._pricing_config).expanduser().resolve() != verifier.config_path:
+                    raise PriceVerificationError("Client and run use different pricing configurations")
+        if verifier is None:
+            verifier = self._pricing_verifier = RunPricingVerifier(self._pricing_config)
+        rates = verifier.verify(self.endpoint, model, **options)
+        if not isinstance(rates, dict):
+            raise PriceVerificationError("Price verifier returned no verified rates")
+        if tracker is not None:
+            with tracker._lock:
+                tracker.rates_table[model] = rates
+
     def generate_content(self, *, model, contents, config=None):
         config = config or GenerationConfig()
         values = [contents] if isinstance(contents, str) else list(contents)
+        if any(not isinstance(value, (str, ImagePart)) for value in values):
+            raise ValueError("Model contents must be text or image parts")
+        if config.tools and config.tools != ["web_search"]:
+            raise ValueError("Unsupported hosted tools")
+        self._require_prices(model, tools=tuple(config.tools or ()))
         parts = []
         for value in values:
             if isinstance(value, str):
@@ -189,12 +192,6 @@ class AzureClient:
                 encoded = base64.b64encode(value.data).decode("ascii")
                 parts.append({"type": "input_image", "image_url":
                               f"data:{value.mime_type};base64,{encoded}", "detail": "high"})
-            else:
-                raise ValueError("Model contents must be text or image parts")
-        if sum(p["type"] == "input_image" for p in parts) > MAX_IMAGES:
-            raise ValueError("Azure request exceeds the conservative ten-image limit")
-        if len(json.dumps(parts).encode()) > 20 * 1024 * 1024:
-            raise ValueError("Azure request exceeds the inline payload budget")
         request = {
             "model": model, "input": [{"role": "user", "content": parts}],
             "max_output_tokens": config.max_output_tokens,
@@ -210,8 +207,6 @@ class AzureClient:
         elif config.response_mime_type == "application/json":
             request["text"] = {"format": {"type": "json_object"}}
         if config.tools:
-            if config.tools != ["web_search"]:
-                raise ValueError("Unsupported hosted tools")
             request["tools"] = [{"type": "web_search"}]
         result = self.client.responses.create(**request)
         if getattr(result, "status", "completed") != "completed":
@@ -230,9 +225,12 @@ class AzureClient:
             if not text:
                 raise ValueError("Azure structured response did not return text")
             parsed = config.response_schema.model_validate_json(text)
-        return AIResponse(text, parsed, normalize_usage(getattr(result, "usage", None)), sources)
+        return AIResponse(text, parsed, normalize_usage(
+            getattr(result, "usage", None), cache_write_ttl="30m",
+        ), sources)
 
     def embed_content(self, *, model, contents):
+        self._require_prices(model, kind="embedding")
         result = self.client.embeddings.create(model=model, input=contents)
         embeddings = [SimpleNamespace(values=item.embedding)
                       for item in sorted(result.data, key=lambda item: item.index)]
@@ -240,6 +238,7 @@ class AzureClient:
                           embeddings=embeddings)
 
     def generate_image(self, *, model, prompt, size="1536x1024"):
+        self._require_prices(model, kind="image", image_size=size)
         # Image requests deliberately do not automatically retry paid generation.
         result = self.client.with_options(max_retries=0).images.generate(
             model=model, prompt=prompt, size=size, n=1,

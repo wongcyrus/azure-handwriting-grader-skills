@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import html2text
 import mammoth
 import yaml
-from .azure_ai import AzureClient, GenerationConfig, ImagePart, image_chunks
+from .azure_ai import AzureClient, GenerationConfig, ImagePart
 from openpyxl import Workbook, load_workbook
 from pydantic import BaseModel, StrictStr
 
@@ -211,7 +211,7 @@ def extract_rubric(config, config_dir, config_path, model_config_path, endpoint,
     agents = [name for name in enabled_agents(model_path) if name == "marking_scheme"]
     cache = CachedGrader(None, cache_directory(model_path, cache_root) if agents else cache_root / "cache", agents,
                          {"marking_scheme": model}, endpoint, api_version, source_files=["rubric.py"])
-    with AzureClient(endpoint=endpoint, api_version=api_version) as client:
+    with AzureClient(endpoint=endpoint, api_version=api_version, pricing_config=model_path) as client:
         def compute():
             t0 = time.monotonic()
             rubric_config = {

@@ -30,9 +30,10 @@ from .azure_ai import AzureClient, GenerationConfig
 
 
 class AzureAnalyst:
-    def __init__(self, model, endpoint, api_version):
+    def __init__(self, model, endpoint, api_version, *, pricing_config=None, pricing_verifier=None):
         self.model = model
-        self.client = AzureClient(endpoint=endpoint, api_version=api_version)
+        self.client = AzureClient(endpoint=endpoint, api_version=api_version,
+                                  pricing_config=pricing_config, pricing_verifier=pricing_verifier)
 
     def __enter__(self):
         self.client.__enter__()
@@ -139,8 +140,12 @@ def create_analysis(config, config_dir, config_path, model_config_path, endpoint
             return value
 
         use_parallel = provider_factory is AzureAnalyst
-        with provider_factory(model, endpoint, api_version) as provider, \
-                provider_factory(feedback_model, endpoint, api_version) as fb_provider:
+        price_options = {}
+        if use_parallel:
+            from .pricing import pricing_client_options
+            price_options = pricing_client_options(model_config_path, root / "telemetry")
+        with provider_factory(model, endpoint, api_version, **price_options) as provider, \
+                provider_factory(feedback_model, endpoint, api_version, **price_options) as fb_provider:
 
             def _student_task(idx_row):
                 idx, row = idx_row
@@ -451,6 +456,7 @@ def create_advanced_report(config, config_dir, config_path, *, run_id=None, info
             print(f"Generating Azure infographics for Class & {len(questions)} questions ({img_model}, no auto-retry)...", flush=True)
             with AzureClient(
                 endpoint=endpoint, api_version=api_version, max_retries=0,
+                pricing_config=model_config_path,
             ) as img_client:
                 tasks = [("class", "Class Overview", overview[:900], info_dir / "class.png")]
                 for idx, q in enumerate(questions):

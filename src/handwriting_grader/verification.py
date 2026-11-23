@@ -60,7 +60,7 @@ def verify_rubric(config, config_dir, config_path, model_config_path, endpoint, 
     report.add_heading("Marking Scheme Verification Report", 0)
     report.add_paragraph("AI-generated review; verify every claim and source. This does not approve the rubric.")
     try:
-        with AzureClient(endpoint=endpoint, api_version=api_version) as client:
+        with AzureClient(endpoint=endpoint, api_version=api_version, pricing_config=model_config_path) as client:
             for question in questions:
                 t0 = time.monotonic()
                 verif_config = {

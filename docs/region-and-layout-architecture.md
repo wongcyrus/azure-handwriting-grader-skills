@@ -47,7 +47,7 @@ handwriting-grader suggest-regions --exam exam.yaml \
 ```
 - **Approved-Rubric-First Requirement**: `suggest-regions` requires an extracted/imported and approved `output/rubric/rubric.xlsx` (`approve-rubric --confirm-reviewed`) and refuses to run if no question ID list exists.
 - **Dynamic Prompt Injection**: `load_rubric_questions()` reads every `question_number` and a short text summary from `rubric.xlsx`, and `build_prompt()` injects them dynamically into the prompt (with zero hardcoded label examples). `question_ids` is included in the cache key so rubric changes invalidate stale suggestions.
-- **Deployment**: Uses `models.annotation` (illustrative alias `gpt-5.4`), requiring GPT-5+, image input and structured output. Spatial precision is not guaranteed; inspect every box. Preview without `--confirm-cost` first.
+- **Deployment**: Uses `models.annotation` (new-template candidate `gpt-6.1-terra`), requiring GPT-5+, image input and structured output. Spatial precision is not guaranteed; inspect every box. Preview without `--confirm-cost` first.
 - Generates `output/regions/ai_suggestions.json`.
 - **Safety Rule**: Suggestions are non-destructive proposals. They never automatically overwrite manual bounding boxes.
 

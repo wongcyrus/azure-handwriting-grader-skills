@@ -8,6 +8,20 @@ import yaml
 from .azure_ai import validate_endpoint
 
 
+MODEL_RECOMMENDATIONS_CHECKED = "2026-11-23"
+MODEL_CATALOG_URL = (
+    "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/"
+    "concepts/models-sold-directly-by-azure"
+)
+RECOMMENDED_MODELS = (
+    ("gpt-6.1-terra", "2026-10-26", "Visual crops, bounding boxes and diagram grading"),
+    ("gpt-6-luna", "2026-09-22", "Efficient OCR, rubric extraction and student feedback"),
+    ("gpt-6.2-sol", "2026-11-17", "General reasoning, moderation and analytics"),
+    ("gpt-6.2-astra", "2026-11-17", "Evaluate for difficult rubric and moderation tasks"),
+    ("gpt-6.1-sol", "2026-09-29", "GPT-6.1 alternative for reasoning and grading"),
+)
+
+
 def validate_model_eligibility(model, agent=None, *, base_model=None):
     if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", model):
         raise ValueError(f"Invalid Azure deployment name for {agent}")
@@ -35,15 +49,15 @@ def write_model_config(target, endpoint, api_version="v1"):
     config = {
         "azure_openai": {"endpoint": endpoint, "api_version": api_version},
         "models": {
-            "annotation": "gpt-5.4",
-            "marking_scheme": "gpt-5.4-mini",
-            "ocr": "gpt-5.4-mini",
-            "batch_metadata_ocr": "gpt-5.4-mini",
-            "grading": "gpt-5.4",
-            "batch_grading": "gpt-5.4",
-            "moderation": "gpt-5.4",
-            "analytics": "gpt-5.4",
-            "student_feedback": "gpt-5.4-mini",
+            "annotation": "gpt-6.1-terra",
+            "marking_scheme": "gpt-6-luna",
+            "ocr": "gpt-6-luna",
+            "batch_metadata_ocr": "gpt-6-luna",
+            "grading": "gpt-6.1-terra",
+            "batch_grading": "gpt-6.1-terra",
+            "moderation": "gpt-6.2-sol",
+            "analytics": "gpt-6.2-sol",
+            "student_feedback": "gpt-6-luna",
             "embedding": "text-embedding-3-small",
         },
         "caching": {"enabled": False, "scope": "run", "agents": {}},
@@ -58,7 +72,15 @@ def write_model_config(target, endpoint, api_version="v1"):
 def discover_and_report(endpoint, api_version="v1", write_config=None):
     validate_endpoint(endpoint)
     print("Azure deployment names must be configured in your resource; no inference probes or pricing discovery are performed.")
-    print("Use GPT-5+ image-input and structured-output deployments. Names below are examples, not verified deployments.")
+    print(f"Curated GA text/vision recommendations (documentation snapshot: {MODEL_RECOMMENDATIONS_CHECKED}):")
+    print("| Model family | Azure model version | Suggested evaluation |")
+    print("|---|---|---|")
+    for model, version, purpose in RECOMMENDED_MODELS:
+        print(f"| {model} | {version} | {purpose} |")
+    print(f"Source: {MODEL_CATALOG_URL}")
+    print("This snapshot excludes preview, legacy, deprecated, retired and older-generation recommendations; it is not an exhaustive support list.")
+    print("Recheck lifecycle, regional availability, capabilities, quota and pricing in Azure before deployment; no live verification is performed.")
+    print("These are evaluation candidates, not verified handwriting benchmarks or deployed aliases. Existing explicit GPT-5+ configurations remain supported.")
     if write_config is not None:
         config = write_model_config(write_config, endpoint, api_version)
         print(f"Template written to {write_config}; edit deployment names and verified pricing before use.")

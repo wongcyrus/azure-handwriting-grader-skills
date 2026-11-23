@@ -314,10 +314,15 @@ def main(argv=None):
                             help="Optional Moodle Assignment grading worksheet CSV")
     moodle_exp.add_argument("--participants", type=Path, default=None,
                             help="Optional Moodle course participants CSV (to build recipients.csv)")
-    discover_models = commands.add_parser("discover-models", help="Write an offline Azure deployment configuration template (no probing)")
+    discover_models = commands.add_parser("discover-models", help="List curated GA model recommendations and optionally create an offline configuration (no probing)")
     discover_models.add_argument("--endpoint", required=True, help="Explicit Azure OpenAI endpoint")
     discover_models.add_argument("--api-version", default="v1", help="Azure OpenAI API version (default: v1)")
-    discover_models.add_argument("--write-config", type=Path, help="Path to write/update model configuration YAML")
+    discover_models.add_argument("--write-config", type=Path, help="Create model configuration YAML at this path (refuses overwrite)")
+    fetch_pricing = commands.add_parser("fetch-pricing", help="Opt in to Microsoft public retail pricing lookup (no inference)")
+    fetch_pricing.add_argument("--region", required=True, help="Exact Azure ARM region, such as eastus")
+    fetch_pricing.add_argument("--deployment-type", required=True, choices=("global-standard", "data-zone-standard"))
+    fetch_pricing.add_argument("--model-config", type=Path, help="Private configuration whose deployment aliases should be priced")
+    fetch_pricing.add_argument("--write-config", type=Path, help="Create a new priced configuration; never overwrite the source")
     for selected in (resume, grade_review, grade_check, grade_approve, report, analytics, ai_analysis, analysis_approve,
                      advanced_report, cost_report, clean, email_preview, email_approve, email_send):
         selected.add_argument("--run", help="Child run ID (default: original run)")
@@ -333,6 +338,14 @@ def main(argv=None):
                 raise ValueError("Azure API version must be nonempty and contain no whitespace")
         except ValueError as exc:
             print(f"Invalid Azure target: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "fetch-pricing":
+        from .pricing import fetch_and_report
+        try:
+            fetch_and_report(args.region, args.deployment_type, args.model_config, args.write_config)
+            return 0
+        except Exception as exc:
+            print(f"Pricing lookup failed: {exc}", file=sys.stderr)
             return 1
     if args.command == "discover-models":
         from .discovery import discover_and_report

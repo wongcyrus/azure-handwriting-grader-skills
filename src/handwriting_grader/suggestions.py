@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 import yaml
-from .azure_ai import AzureClient, GenerationConfig, ImagePart, image_chunks
+from .azure_ai import AzureClient, GenerationConfig, ImagePart
 from pydantic import BaseModel, StrictInt, StrictStr
 
 from .regions import file_hash, validate_annotations, verify_run
@@ -156,7 +156,7 @@ def generate_suggestions(config, config_dir, config_path, model_config_path, end
     agents = [name for name in enabled_agents(model_path) if name == "annotation"]
     cache = CachedGrader(None, cache_directory(model_path, root) if agents else root / "cache", agents,
                          {"annotation": model}, endpoint, api_version, source_files=["suggestions.py", "regions.py"])
-    with AzureClient(endpoint=endpoint, api_version=api_version) as client:
+    with AzureClient(endpoint=endpoint, api_version=api_version, pricing_config=model_path) as client:
         for index, page in enumerate(manifest["pages"]):
             image = (root / "images" / f"{index}.jpg").read_bytes()
             def compute(img=image, pg_idx=index):

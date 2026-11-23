@@ -20,8 +20,9 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    then obtain explicit `--confirm-cost`. Default framework Executors wrap validation,
    existing grading and the human-review boundary; `workflow-grade` forces this path,
    `--orchestrator python` is the direct fallback. `--mode batch` is synchronous
-   multi-image inference, not Azure asynchronous Batch. Logical question chunks split
-   into at most ten high-detail image parts or smaller payload-limited groups;
+   multi-image inference, not Azure asynchronous Batch. Gemini-style grouping sends
+   up to 50 question scripts or 35 metadata scripts together per request, without
+   image-count/payload micro-batching. Deployment capacity is assumed, not verified;
    comparisons are within groups, not guaranteed across a cohort. Item mode grades
    separate crops and moderates text; diagrams still need human image review.
    Roster-assisted OCR and blank filtering do not guarantee correctness. Bounded SDK

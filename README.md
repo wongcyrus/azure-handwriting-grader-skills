@@ -65,12 +65,12 @@ models:
   student_feedback: your-small-deployment
   embedding: your-embedding-deployment
 deployment_models:
-  your-vision-deployment: gpt-5.4
-  your-small-deployment: gpt-5.4-mini
+  your-vision-deployment: gpt-6.1-terra
+  your-small-deployment: gpt-6-luna
 ```
 
 Custom text/vision aliases require `deployment_models` declarations. Self-describing
-names such as `gpt-5.4` can be used without that mapping. Validation checks the
+names such as `gpt-6.1-terra` can be used without that mapping. Validation checks the
 declared model family, not the actual Azure deployment: verify its model/version
 and capabilities in Azure. GPT-4.x and older reasoning-model configurations are
 rejected. Use updated configuration for a fresh run; do not rewrite configurations
@@ -84,9 +84,70 @@ managed identity and set `AZURE_OPENAI_AUTH=managed_identity`.
 Never put credentials, student documents, real exam configuration or outputs
 in source control.
 
-`discover-models --endpoint URL --write-config PATH` writes an **offline template**,
-refuses overwrite, and makes no inference calls. It does not discover deployments,
-verify capability, or fetch pricing.
+`discover-models --endpoint URL` prints the curated GA recommendation list below.
+Add `--write-config PATH` to create an **offline template**; it refuses overwrite
+and makes no inference calls. It does not discover deployments, verify capability,
+or fetch pricing.
+
+### Current model recommendations
+
+Documentation snapshot checked **2026-11-23** against the [Azure model catalog](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure)
+and [lifecycle policy](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirements).
+All five candidates are listed as GA with image input, Responses and structured
+outputs. Preview, legacy, deprecated, retired and older-generation models are
+excluded from recommendations; this is not an exhaustive Azure support list.
+
+| Model family | Azure version | Suggested evaluation |
+|---|---|---|
+| `gpt-6.1-terra` | 2026-10-26 | Visual crops, bounding boxes and diagram grading |
+| `gpt-6-luna` | 2026-09-22 | Efficient OCR, rubric extraction and student feedback |
+| `gpt-6.2-sol` | 2026-11-17 | General reasoning, moderation and analytics |
+| `gpt-6.2-astra` | 2026-11-17 | Difficult rubric and moderation tasks |
+| `gpt-6.1-sol` | 2026-09-29 | GPT-6.1 alternative for reasoning and grading |
+
+New templates use Terra for annotation/grading, Luna for OCR/rubric/feedback and
+6.2 Sol for moderation/analytics. Dedicated embeddings and optional image generation
+remain separate. Existing explicit GPT-5+ configurations remain compatible; their
+acceptance is not a lifecycle endorsement. The listed versions are Azure deployment
+choices, not SDK deployment names or automatically pinned versions.
+Recheck current lifecycle, regional availability, quota and pricing in Azure.
+These are evaluation candidates, not verified handwriting-quality benchmarks.
+Changing an existing model configuration invalidates bound approvals; use new runs.
+
+### Required price verification before AI use
+
+```sh
+handwriting-grader fetch-pricing \
+  --region eastus --deployment-type global-standard
+# Price your aliases and create a NEW private configuration after reviewing rates:
+handwriting-grader fetch-pricing \
+  --region eastus --deployment-type global-standard \
+  --model-config /private/config.yaml --write-config /private/priced-config.yaml
+```
+
+This explicitly queries Microsoft's unauthenticated Retail Prices API; it makes
+no inference calls and sends no credentials, endpoint, aliases or student data.
+Specify the actual ARM region and Global/Data Zone Standard type. Discovery and
+preflight remain offline. Lookup currently covers the curated GPT-6 families;
+other families, embeddings and image generation require verified manual rates.
+
+Before the first paid request in each new run, the transport refreshes public
+prices once per region/billing profile and checks every requested model against
+the reviewed configuration. Missing/ambiguous prices, refresh failures or changed
+rates **block requests**, not silently authorize new prices. Review a new priced
+copy to proceed. Offline previews, reports and cache hits do not trigger lookup.
+Unsupported families and hosted search fees need dated manual pricing evidence
+from today (UTC); unused optional models do not block other stages.
+
+Short/long-context input, cached input, output and 30-minute/12-hour cache-write
+rates are shown in USD per million tokens. Exported `pricing_sources` retains
+source, retrieval/effective dates, meter IDs and SKU/unit evidence. Missing or
+ambiguous matches remain UNPRICED; network failures do not produce a snapshot.
+The source configuration is untouched and existing destinations cannot be
+overwritten. Review actual deployment model/version and billing mode, then use
+the copy for a fresh run. Public retail rates are estimates, not your negotiated
+invoice; token accounting excludes some tool fees and unlogged failures/retries.
+See [skill pricing guidance](skills/handwriting-grading/references/pricing.md).
 
 ## Reviewed workflow
 
@@ -123,9 +184,12 @@ is an alias; `--orchestrator python` uses the same grading engine directly.
 Neither execution path grants human approval or sends email.
 
 **Grading modes:** `--mode batch` groups answer crops in synchronous Responses API
-requests; it is **not** Azure's asynchronous Batch API. Requests are conservatively
-limited to ten image parts and an inline payload budget. Metadata counts each
-field crop as an image: 35 students with three fields can require twelve requests.
+requests; it is **not** Azure's asynchronous Batch API. Grouping follows the Gemini
+implementation: up to 50 scripts per question request and 35 scripts per metadata
+request (105 images with three fields). Each group is sent together without
+Azure-specific image-count or payload micro-batching. This assumes the deployment
+can accept the group; Azure GPT-6.1 image-count and payload ceilings are unverified.
+Deployment limits, context, output-token budgets and quota can still cause failures.
 Comparison within a group does not guarantee consistency across all groups.
 `--mode item` grades individual crops and performs question-level text moderation.
 

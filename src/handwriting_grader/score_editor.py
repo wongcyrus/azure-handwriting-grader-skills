@@ -446,6 +446,7 @@ class ScoreServer(ThreadingHTTPServer):
             if self._azure_client is None:
                 import yaml
                 from .azure_ai import AzureClient
+                from .pricing import RunPricingVerifier
                 from .suggestions import load_model_settings
 
                 model_cfg_path = Path(self.config_dir) / self.config["exam"].get("model_config", "config.yaml")
@@ -460,7 +461,10 @@ class ScoreServer(ThreadingHTTPServer):
                 model = load_model_settings(model_cfg_path, "embedding")
                 namespace = endpoint.rstrip("/").lower()
                 cache_path = shared_embedding_cache_path(model_cfg_path, model, namespace=namespace)
-                client = AzureClient(endpoint=endpoint, api_version=azure.get("api_version", "v1"))
+                client = AzureClient(
+                    endpoint=endpoint, api_version=azure.get("api_version", "v1"),
+                    pricing_verifier=RunPricingVerifier(model_cfg_path, log_dir=self.root / "telemetry"),
+                )
                 if self.embedding_namespace != namespace or self.embedding_model_name != model:
                     self.embedding_cache.clear()
                 self.embedding_namespace = namespace
