@@ -1,12 +1,38 @@
 # Banner artwork and brand provenance
 
-All eight banners reuse the previously approved editorial artwork. The original
-1536 x 1024 image was generated once with Azure OpenAI for the earlier prototype
-(one request, estimated US$0.00713). This update makes **no new image requests**.
-`editorial-art.jpg` is a metadata-free publication derivative; the original PNG,
-prompt and private billing journals remain outside this publication package.
+Each banner now has its **own separately AI-generated artwork**, based on that
+article's title, description and a distinct editorial concept. On 24 November
+2026, eight explicitly authorized Azure OpenAI requests generated eight
+1536 x 1024 PNGs using `gpt-image-2.5-sunburst`, with no automatic retries.
+Their combined estimated cost was **US$0.06394**, based on the same-day manually
+reviewed configuration. This is an estimate, not an Azure invoice or a newly
+verified public price quote.
+
+| Part | Creative concept | Actual submitted prompt |
+|---|---|---|
+| 1 | The paper bridge: beginning a supervised marking workflow | [01.txt](prompts/01.txt) |
+| 2 | The human lens: identity and mark review | [02.txt](prompts/02.txt) |
+| 3 | The architecture of trust: approvals and checkpoints | [03.txt](prompts/03.txt) |
+| 4 | The optical cut: complete pages, crops and alignment | [04.txt](prompts/04.txt) |
+| 5 | The multimodal prism: image input and reviewable evidence | [05.txt](prompts/05.txt) |
+| 6 | The three-part orchestra: Executors and a separate review stop | [06.txt](prompts/06.txt) |
+| 7 | The cost gate: consent and verified pricing | [07.txt](prompts/07.txt) |
+| 8 | The pilot gallery: visible outputs before measured deployment | [08.txt](prompts/08.txt) |
+
+`artworks/01.jpg` through `08.jpg` are metadata-free publication derivatives.
+The exact original PNGs, submitted prompts and private billing journals remain
+in the independent image repository's ignored output folder, not this package.
+`artwork-provenance.json` records original and publication hashes, submitted
+prompt hashes, logical call counts and estimates without resource endpoints.
 The 2400 x 1260 layout masters upscale the artwork; they do not contain newly
-generated higher-resolution detail.
+generated higher-resolution detail. Composition retains the complete scene,
+extending the background locally rather than cutting off the hero.
+
+These are conceptual editorial illustrations, **not observed grader outputs,
+student scans, framework traces or proof of a successful school pilot**.
+Typography is composed locally for accuracy and readability. The original
+single-image prototype and the first reused-image contact sheet are retained
+as historical iterations; they are no longer the current article banners.
 
 The four brand assets are composited locally, not generated or redrawn by AI.
 Full aspect ratios and colors are preserved, with separate whitespace and
@@ -36,6 +62,7 @@ brand-kit originals if required. The entire supplied Framework square is kept,
 including its background and text; no symbol was extracted or repurposed as an
 Agent Service logo. This provenance note does not grant trademark rights.
 
-`../sources.json` records hashes of the publication artwork and all four assets.
+`../sources.json` records hashes of all eight publication artworks, their
+submitted prompts, provenance and the four brand assets.
 `../tools/banners.py` produces the eight exports offline using Pillow and
 CairoSVG. No brand image is transmitted to Azure during composition.

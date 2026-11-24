@@ -7,7 +7,7 @@ td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8
 a{color:#0067b8}em{color:#4b6175}
 </style></head><body><article><h1>Logic before AI: approvals, checkpoints and recovery</h1>
 <p><em>Part 3 of 8 · For developers · Source walkthrough with saved artifact evidence</em></p>
-<p><img alt="Series banner: Logic before AI, from validation through checkpoints to separate approval." src="media/03-banner.png" /></p>
+<p><img alt="AI-generated conceptual banner for approvals and recovery: glass checkpoints separate sections of a path." src="media/03-banner.png" /></p>
 <p>The most important architecture decision in this grader is not a model name. It is that model output cannot promote itself into an approved result.</p>
 <p>In <a href="02-review-and-return.html">Part 2</a>, OCR read John's class as <code>e: John</code> and his name as part of a printed heading. The saved report nevertheless associates his ID with John in class C. That separation between raw output and reviewed output must exist in the application logic, not only in a prompt.</p>
 <p>This article explains the boundaries using actual artifact structures and source excerpts. It does not pretend that every recovery path has been exercised against this saved exam.</p>

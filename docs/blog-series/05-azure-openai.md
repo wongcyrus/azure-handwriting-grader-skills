@@ -2,7 +2,7 @@
 
 *Part 5 of 8 · For AI developers*
 
-![Series banner: Inside Azure OpenAI, with image input, structured responses and local validation.](media/05-banner.png)
+![AI-generated conceptual banner for multimodal grading: a prism transforms paper fragments into distinct evidence streams.](media/05-banner.png)
 
 The visible output of a grading system should be more than a number. A teacher needs the answer transcription, proposed mark, explanation and any reason to inspect the original image.
 

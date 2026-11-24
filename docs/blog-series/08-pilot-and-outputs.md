@@ -2,7 +2,7 @@
 
 *Part 8 of 8 · For school IT, technical leads and teaching teams*
 
-![Series banner: From demo to pilot, with output evidence, evaluation and teacher decisions.](media/08-banner.png)
+![AI-generated conceptual banner for a measured school pilot: a gallery displays abstract paper, grid and chart sculptures.](media/08-banner.png)
 
 By this point the example has produced marked pages, scorebooks, statistics, reviewed analysis and Office reports. That is a useful demonstration. It is not yet a quality benchmark or evidence that the system is ready for unsupervised school deployment.
 
@@ -126,7 +126,7 @@ The failed folder's manifest records 404 deployment-not-found errors. A later na
 
 This image also shows why review is necessary: generated institutional wordmarks and the IVE expansion should not be treated as official branding or authoritative names. The article displays the artifact as diagnostic evidence, not as approved institutional artwork. Correct or replace those elements before reusing the infographic as a standalone teaching resource.
 
-The publishing banners reuse a previously approved Azure-generated editorial illustration. Their titles and four-mark brand strips are composed locally, without additional paid requests. MVP identifies the author; the product marks identify technologies, not Microsoft endorsement. See the [brand provenance and publication caveats](branding/README.md) before uploading the user-supplied MVP and Framework graphics.
+Each publishing banner now uses a different Azure-generated editorial illustration based on its article's title and description. The eight explicitly authorized requests cost an estimated US$0.06394 in total, with no automatic retries. Titles and four-mark brand strips are composed locally. These illustrations are conceptual artwork, not observed outputs or proof of pilot readiness. MVP identifies the author; the product marks identify technologies, not Microsoft endorsement. See the [submitted prompts, brand provenance and publication caveats](branding/README.md) before uploading the user-supplied MVP and Framework graphics.
 
 ## Step 5: Define a pilot that can disprove your assumptions
 

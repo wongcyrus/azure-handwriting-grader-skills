@@ -2,7 +2,7 @@
 
 *Part 2 of 8 · For teachers · Saved outputs, not a new grading run*
 
-![Series banner: Review, correct and return, with separate teacher and delivery approvals.](media/02-banner.png)
+![AI-generated conceptual banner for review and return: a teacher's magnifying glass resolves tangled red thread into a clean green line.](media/02-banner.png)
 
 A complete spreadsheet is not the same as a trustworthy assessment. This article follows the existing example from OCR identities and draft marks to saved reports. The most useful evidence is not the highest score: it is a misread identity and an answer flagged as cut off.
 

@@ -1,0 +1,121 @@
+{
+  "model_family": "gpt-image-2.5-sunburst",
+  "operation": "generate",
+  "logical_calls": 8,
+  "automatic_retries": 0,
+  "estimated_total_cost_usd": 0.06394,
+  "artworks": [
+    {
+      "part": 1,
+      "publication_file": "artworks/01.jpg",
+      "prompt_file": "prompts/01.txt",
+      "original_png_sha256": "6f7d2753a28c4626218f37581725c5ec43a5a838ba358e1ca07dbd47274d82f6",
+      "publication_sha256": "98ade710b2d6b8e80cde9a93c7409dce6995e4fe58dc9bda25d5551e1c337fe8",
+      "submitted_prompt_sha256": "d2eef85aaed85a9ab72ae41ede07f45d090c132a6ad9e07d5a181c971392b7a3",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.006655
+    },
+    {
+      "part": 2,
+      "publication_file": "artworks/02.jpg",
+      "prompt_file": "prompts/02.txt",
+      "original_png_sha256": "df45ef293edbe5f842037f2a211fe09c394d190f64f50ff6d98ce0a6de9f45d4",
+      "publication_sha256": "7084398ed3a609aafcf3d177e1c506185a9f775de524d733bd85578800569dad",
+      "submitted_prompt_sha256": "23d141796c4133864926daa03f0337cf56dc472ca41add9eb86f54f06d9a0a15",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.00668
+    },
+    {
+      "part": 3,
+      "publication_file": "artworks/03.jpg",
+      "prompt_file": "prompts/03.txt",
+      "original_png_sha256": "21c40318b9122142d0a52c14cc37d07a1ad8f0d11ba15298853ae4910789663a",
+      "publication_sha256": "7aac6f5a84efd9ff53756fa84e0a17aa3d48e493276eae51013afc2e367862eb",
+      "submitted_prompt_sha256": "8c3dd171213a24a68141e75ee5c57d149ac400dcaa1da07b9f5212b9df5d540a",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.006505
+    },
+    {
+      "part": 4,
+      "publication_file": "artworks/04.jpg",
+      "prompt_file": "prompts/04.txt",
+      "original_png_sha256": "b64abe1fda9d4293cd05ba0f5d8034a03040cf7de8fa9ecbe8013ce546c65e0e",
+      "publication_sha256": "248c55985c7d6408e8385d1a0b7a58ed99c6a42680c191d49947446e9801c93f",
+      "submitted_prompt_sha256": "f8eaecbc5a2fc3f4b302398ee21b69e633888e6c3217f0d803fd10cf18228fc1",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.006635
+    },
+    {
+      "part": 5,
+      "publication_file": "artworks/05.jpg",
+      "prompt_file": "prompts/05.txt",
+      "original_png_sha256": "e5e21adb5b82b511a3da24351e7abacb9e20cf62498f271f287ecebe61c302c0",
+      "publication_sha256": "6b077bdcf0ce642692a14187b39cfd607418c8c2859d6f7886849a9cdc0dfb26",
+      "submitted_prompt_sha256": "a4d86591a547b672f72c52a30fce022d8e16b4178e2e91b895c7d4a72bfdbc39",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.012115
+    },
+    {
+      "part": 6,
+      "publication_file": "artworks/06.jpg",
+      "prompt_file": "prompts/06.txt",
+      "original_png_sha256": "072f3bb451391aa544c9eab02c5353e336bc9689ec2334075023f46570994a98",
+      "publication_sha256": "3c6cd089d31da4835b15f5a283468815ed97f58cd424dbcf6ebb3e6c10caa86b",
+      "submitted_prompt_sha256": "336f4c073e5019b9c817b03ab77ad572a0f6862aec4e3d8afa384f4351c88ede",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.012155
+    },
+    {
+      "part": 7,
+      "publication_file": "artworks/07.jpg",
+      "prompt_file": "prompts/07.txt",
+      "original_png_sha256": "a72b3a8b7bb70ffae309e0d868a86ad949424c56ec11d5061a95b099931cc1bb",
+      "publication_sha256": "d183a5493289153c6eccdf32303044a657bdd12cd63b0686fed57a8474059a47",
+      "submitted_prompt_sha256": "13209f49b9f20a489058c29f2d94f4fc650a2286cd0ef1e35b7a9a54ae7209e0",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.006535
+    },
+    {
+      "part": 8,
+      "publication_file": "artworks/08.jpg",
+      "prompt_file": "prompts/08.txt",
+      "original_png_sha256": "1a8ed7f647ef9fe832da6071b27e1c8605873636d66824047ca674c04f2747c3",
+      "publication_sha256": "e8d1269ccfe8fbe4b2e0f2283c33de47ad8539309a1f9d0c3a6bf004c23e0799",
+      "submitted_prompt_sha256": "0f90f789c067e22f069c390ab5a21eeeee4e115c9c2c4756ae4f06a4dfe9cbef",
+      "source_size": [
+        1536,
+        1024
+      ],
+      "logical_calls": 1,
+      "estimated_cost_usd": 0.00666
+    }
+  ]
+}

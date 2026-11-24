@@ -2,7 +2,7 @@
 
 *Part 7 of 8 · For developers and school IT*
 
-![Series banner: Check prices before AI, from reviewed rates to an explicitly authorized request.](media/07-banner.png)
+![AI-generated conceptual banner for pricing and consent: a balance weighs paper and gold weights before a glass gate.](media/07-banner.png)
 
 “What did this cost?” and “May we send these images?” are different questions. A responsible workflow must address both before a paid request, and preserve enough evidence to explain its estimate afterwards.
 
@@ -101,7 +101,7 @@ The independent [Azure image-generation skill](https://github.com/wongcyrus/azur
 
 Its current image-pricing gate checks **manual evidence**, not a live image-price lookup. Evidence must match the model/resource, region, supported billing mode, USD units, current UTC verification date, requested size and quality. The program validates the attestation; it cannot establish that a person actually reviewed the correct prices.
 
-The separately created workflow illustration used one image request and recorded an estimated US$0.04312. That separate run is not included in the grader's stored US$0.33436 snapshot. The editorial banners reuse another previously approved single-request prototype (estimated US$0.00713); their typography and brand strips were composed offline, with no new model calls for this update.
+The separately created workflow illustration used one image request and recorded an estimated US$0.04312. That separate run is not included in the grader's stored US$0.33436 snapshot. The earlier banner prototype used one request (estimated US$0.00713). The current eight banners instead use **eight distinct, separately generated artworks**, with no automatic retries and a combined estimate of **US$0.06394**. Exact typography and brand marks are added locally. [Submitted prompts and provenance](branding/README.md) distinguish these conceptual illustrations from observed grader outputs. None of these publication-art costs belong to the grader's stored snapshot; estimates are not invoices.
 
 ## Step 6: Keep consent and data governance visible
 

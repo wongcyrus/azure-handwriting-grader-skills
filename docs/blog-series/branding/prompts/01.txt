@@ -1,0 +1,12 @@
+Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: Your first teacher-reviewed AI marking run on Azure.
+Description: Teachers prepare handwritten exams, inspect scans and answer regions, and see evidence at each step before allowing AI to draft marks. Human review remains essential; a failed check means stop, not automatic approval.
+
+Creative concept: THE PAPER BRIDGE. A spectacular sculptural bridge made from folded ivory exam paper sweeps from the foreground toward a luminous blue gateway on the RIGHT side. Individual folded sheets gradually turn into tiny luminous geometric particles near the gateway. Warm amber light shines through the paper folds, against deep plum and midnight blue. Tactile paper fibers, cinematic volumetric light, elegant shallow depth of field and a strong sense of invitation. The gateway symbolizes beginning a carefully supervised workflow, not magical automatic grading.
+
+Use one dominant, unmistakable hero silhouette. It should be beautiful and intriguing at thumbnail size. No ordinary desk still life, laptop, generic cloud icon, rows of cards or stock-photo classroom.
+
+Composition: leave the LEFT 42 percent calm and dark plum for large typography added later. Put the bridge's main sculptural curve and blue gateway on the right. Compose all essential visual elements within the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, so a wide 1200x515 crop works without cutting the hero. Avoid important objects near the top and bottom. Full-bleed artwork, no borders.
+
+No rendered titles, letters, legible handwriting, numbers, logos, badges, watermarks, interfaces, score values or fabricated application outputs. Any paper marks are abstract strokes only. This is conceptual editorial art, not an observed grading result. Prioritize visual allure, rich light, contrast and a memorable composition over literal explanation.

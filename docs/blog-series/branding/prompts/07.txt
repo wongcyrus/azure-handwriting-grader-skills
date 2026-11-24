@@ -1,0 +1,12 @@
+Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: Check prices before AI: consent, estimates and data boundaries.
+Description: Preview is not consent. Reviewed rates and permission to send data must both exist before a paid request. Estimates, actual usage and unknown costs need distinct treatment; missing evidence must block rather than imply a free operation.
+
+Creative concept: THE COST GATE. On the RIGHT, a jewel-like precision balance with two transparent pans stands immediately before a luminous closed glass doorway. One pan holds folded ivory paper; the other contains tiny solid gold weights, not coins. A fine stream of light approaches the closed doorway but stops at its threshold. Rich matte black, brushed champagne gold, warm amber and a restrained electric-blue edge reflection. Luxurious product-editorial photography, tactile materials, spotlight, deep shadows and carefully controlled reflections.
+
+The balance and doorway should form one bold, instantly recognizable silhouette: deliberate judgment before spending or transmission. No cryptocurrency, currency symbols, price numbers, invoice, calculator, stock-market chart, generic padlock or cluttered desk.
+
+Composition: leave the LEFT 42 percent quiet matte black for large typography added later. Place the balance and cost gate on the right. Keep the essential sculpture inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, so a wide 1200x515 crop retains both pans and doorway. Full-bleed, no borders.
+
+No titles, letters, numbers, logos, badges, watermarks, interfaces or fabricated billing evidence. This is conceptual editorial art, not an invoice or price quote. Prioritize elegance, dramatic gold-black contrast, intrigue and exceptional thumbnail appeal.

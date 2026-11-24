@@ -1,0 +1,12 @@
+Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: What Microsoft Agent Framework actually orchestrates in a grading application.
+Description: A deliberately small workflow has three Executors: validate inputs, execute the grading engine, and return a draft artifact location. Human approval remains outside that workflow; agents do not negotiate or approve grades.
+
+Creative concept: THE THREE-PART ORCHESTRA. On the LEFT, exactly three dominant sculptural luminous hubs are linked by flowing braided fiber-optic ribbons, like a beautifully choreographed kinetic installation. The hubs are distinct in material: frosted glass, polished violet metal and luminous emerald ceramic. Abstract paper fragments flow between them. The final ribbon terminates at a clearly separate amber stop marker, leaving an intentional gap before it rather than flowing onward indefinitely. Deep forest-green and near-black atmosphere, brilliant emerald light, ultraviolet accents and very subtle copper reflections.
+
+Sophisticated cinematic spatial design, energetic but uncluttered. Not a network map, swarm of tiny nodes, robot group, autonomous-agent negotiation or logo recreation. No diagrams or interface cards. The three large hubs must be visually countable and feel engineered, not random.
+
+Composition: the three hubs occupy the LEFT 56 percent; leave the RIGHT 42 percent dark and quiet for large typography added later. Keep the three hubs, ribbons and stop marker inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
+
+No titles, letters, numbers, logos, badges, watermarks, code, interfaces or fabricated framework traces. This is an editorial metaphor, not runtime evidence. Prioritize rhythm, dramatic light, sculptural distinction and memorable color.

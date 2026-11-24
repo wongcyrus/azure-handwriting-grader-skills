@@ -1,0 +1,12 @@
+Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: From demonstration to school pilot: show the outputs, then measure quality.
+Description: Marked pages, scorebooks, statistics and Office reports are visible outputs, not proof of deployment readiness. A school pilot must resolve input warnings, evaluate quality and retain teacher control before scaling.
+
+Creative concept: THE PILOT GALLERY. On the LEFT, a sunlit miniature gallery of three large sculptural physical artifacts on elegant low plinths: a folded ivory page, a translucent grid-like glass sheet and a tall graceful colored-column sculpture. They suggest different output formats without showing fabricated results. A narrow teal path connects the plinths and leads toward a modest amber-lit open horizon, suggesting a measured pilot rather than a triumphant mass launch. Warm ivory architectural space, bold azure and teal accents, soft terracotta shadows, daylight and tactile matte materials.
+
+A fresh optimistic contemporary architectural editorial scene, not another dark technology network. No rocket, robots, cloud logo, conventional classroom stock photo, anonymous chart dashboard or fireworks. The gallery should be graphic, sophisticated, inviting and beautiful at thumbnail size. Do not imply the pilot has already succeeded.
+
+Composition: artifacts and perspective path occupy the LEFT 55 percent; leave the RIGHT 42 percent quiet warm ivory for dark large typography added later. Keep all essential sculptures and horizon inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
+
+No titles, letters, numbers, logos, badges, watermarks, interfaces, score values or fabricated report screenshots. All artifacts are abstract editorial symbols, not actual Office outputs. Prioritize optimism, beautiful spatial composition, rich daylight and a memorable silhouette.

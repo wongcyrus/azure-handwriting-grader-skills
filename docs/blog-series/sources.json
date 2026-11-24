@@ -4,10 +4,6 @@
   "captured_date": "2026-11-24",
   "sources": [
     {
-      "path": "docs/blog-series/branding/editorial-art.jpg",
-      "sha256": "b2aee456692d9b2fc3d28d63f5c11e58385cf11b46e5447b31131971110a1132"
-    },
-    {
       "path": "docs/blog-series/branding/mvp.png",
       "sha256": "125cfc4c17d5e0b022235956dccc1ff8b3a078ab27d1f2f5da4bc45771140d0b"
     },
@@ -22,6 +18,74 @@
     {
       "path": "docs/blog-series/branding/agent-framework.png",
       "sha256": "1d3c1e781eaf33ce1d40e839284fa579d33ab656d57a42f876043ab272ad65e1"
+    },
+    {
+      "path": "docs/blog-series/branding/artwork-provenance.json",
+      "sha256": "7b7b5fd7a5696f33a0a9ac9ee21676286562171943c53f4959c1d01b93efa1e8"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/01.jpg",
+      "sha256": "98ade710b2d6b8e80cde9a93c7409dce6995e4fe58dc9bda25d5551e1c337fe8"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/02.jpg",
+      "sha256": "7084398ed3a609aafcf3d177e1c506185a9f775de524d733bd85578800569dad"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/03.jpg",
+      "sha256": "7aac6f5a84efd9ff53756fa84e0a17aa3d48e493276eae51013afc2e367862eb"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/04.jpg",
+      "sha256": "248c55985c7d6408e8385d1a0b7a58ed99c6a42680c191d49947446e9801c93f"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/05.jpg",
+      "sha256": "6b077bdcf0ce642692a14187b39cfd607418c8c2859d6f7886849a9cdc0dfb26"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/06.jpg",
+      "sha256": "3c6cd089d31da4835b15f5a283468815ed97f58cd424dbcf6ebb3e6c10caa86b"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/07.jpg",
+      "sha256": "d183a5493289153c6eccdf32303044a657bdd12cd63b0686fed57a8474059a47"
+    },
+    {
+      "path": "docs/blog-series/branding/artworks/08.jpg",
+      "sha256": "e8d1269ccfe8fbe4b2e0f2283c33de47ad8539309a1f9d0c3a6bf004c23e0799"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/01.txt",
+      "sha256": "d2eef85aaed85a9ab72ae41ede07f45d090c132a6ad9e07d5a181c971392b7a3"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/02.txt",
+      "sha256": "23d141796c4133864926daa03f0337cf56dc472ca41add9eb86f54f06d9a0a15"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/03.txt",
+      "sha256": "8c3dd171213a24a68141e75ee5c57d149ac400dcaa1da07b9f5212b9df5d540a"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/04.txt",
+      "sha256": "f8eaecbc5a2fc3f4b302398ee21b69e633888e6c3217f0d803fd10cf18228fc1"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/05.txt",
+      "sha256": "a4d86591a547b672f72c52a30fce022d8e16b4178e2e91b895c7d4a72bfdbc39"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/06.txt",
+      "sha256": "336f4c073e5019b9c817b03ab77ad572a0f6862aec4e3d8afa384f4351c88ede"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/07.txt",
+      "sha256": "13209f49b9f20a489058c29f2d94f4fc650a2286cd0ef1e35b7a9a54ae7209e0"
+    },
+    {
+      "path": "docs/blog-series/branding/prompts/08.txt",
+      "sha256": "0f90f789c067e22f069c390ab5a21eeeee4e115c9c2c4756ae4f06a4dfe9cbef"
     },
     {
       "path": "example/VTC Test.pdf",
@@ -159,5 +223,7 @@
   "publication_permission": "Owner confirmed existing example details may be retained.",
   "paid_calls_for_article_preparation": 0,
   "banner_artwork_prior_paid_calls": 1,
+  "banner_artwork_current_paid_calls": 8,
+  "banner_artwork_estimated_cost_usd": 0.06394,
   "banner_branding_paid_calls": 0
 }

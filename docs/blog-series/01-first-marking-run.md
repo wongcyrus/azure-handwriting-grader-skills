@@ -2,7 +2,7 @@
 
 *Part 1 of 8 · For teachers · Evidence captured on 24 November 2026*
 
-![Series banner: Your first marking run, with AI drafting and teacher approval.](media/01-banner.png)
+![AI-generated conceptual banner for the first marking run: a folded-paper bridge leads toward a blue gateway.](media/01-banner.png)
 
 Marking software is useful only when you can see what it has done. In this series, we follow an existing handwritten exam through preparation, proposed marks, teacher review and reports. Every demonstrated stage includes an actual saved output or a fresh read-only check. We do not substitute a polished diagram for evidence that the application ran.
 

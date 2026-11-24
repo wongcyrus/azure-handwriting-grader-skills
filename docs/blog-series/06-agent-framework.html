@@ -7,7 +7,7 @@ td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8
 a{color:#0067b8}em{color:#4b6175}
 </style></head><body><article><h1>What Microsoft Agent Framework actually orchestrates in a grading application</h1>
 <p><em>Part 6 of 8 · For agent and application developers</em></p>
-<p><img alt="Series banner: Microsoft Agent Framework, three Executors with a separate human review boundary." src="media/06-banner.png" /></p>
+<p><img alt="AI-generated conceptual banner for Microsoft Agent Framework: three luminous hubs connect to a separate stop marker." src="media/06-banner.png" /></p>
 <p>An “agentic” architecture diagram can easily imply more autonomy than the code provides. This application uses real Microsoft Agent Framework Executors and a workflow, but it does not ask a group of autonomous agents to negotiate grades or grant approval.</p>
 <p>The workflow is deliberately small: validate inputs, execute the existing grading engine, and return a draft location for human review. Pricing and review policy remain application responsibilities.</p>
 <p>This article shows the actual code and the saved artifacts the grading engine produces. No framework event log was captured for the existing example, so those artifacts are not presented as proof of which orchestrator ran historically.</p>

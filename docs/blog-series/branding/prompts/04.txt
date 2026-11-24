@@ -1,0 +1,12 @@
+Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: Getting the image right: scans, crops and alignment.
+Description: A grading model cannot evaluate content missing from its image. Developers inspect full pages, crop coordinates, clipped-answer warnings and conservative alignment before considering stronger prompts.
+
+Creative concept: THE OPTICAL CUT. On the LEFT, a huge crystal-clear optical lens intersects a single floating ivory page at a dynamic angle. Behind it, three thin translucent rectangular crop frames are slightly misaligned; the lens brings their edges into precise alignment while leaving the whole page visibly present. Tiny abstract ink strokes remain contained within the page rather than falling off a crop. Exquisite macro optics, teal light refracting through glass, emerald-to-black background, a small sunset-orange reflection. The lens and clean frame edges are the unmistakable focal silhouette.
+
+Visually adventurous scientific-editorial photography with cinematic depth and beautiful optical caustics. No classroom, hands, computer screen, labeled arrows or generic camera product shot. Do not resemble the human review magnifying-glass scene: this is a suspended technical optical sculpture with geometric crop frames, no people.
+
+Composition: put the optical sculpture in the LEFT 55 percent; leave the RIGHT 42 percent deep teal-black and quiet for large typography added later. Essential lens and page edges must fit inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
+
+No titles, letters, legible handwriting, numbers, logos, badges, watermarks, interfaces or fabricated scan-check results. Paper marks are abstract. This is conceptual editorial art, not an actual exam capture. Prioritize arresting optics, spatial depth and thumbnail clarity.

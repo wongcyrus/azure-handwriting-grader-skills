@@ -1,0 +1,12 @@
+Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: Inside Azure OpenAI multimodal grading: from image to reviewable evidence.
+Description: Images and rubric context enter a multimodal request; the application validates structured transcription, proposed marks, explanations and moderation flags. Structured output makes evidence reviewable but cannot repair a bad crop.
+
+Creative concept: THE MULTIMODAL PRISM. On the RIGHT, an enormous faceted translucent prism splits a ribbon made from ivory paper fragments and abstract ink into four elegant luminous streams. Those streams resolve into different sculptural forms: a fine ribbon, stacked glass blocks, a curved thread and a small amber bead. They symbolize different kinds of reviewable evidence, not real score records. Pearlescent pale lavender environment, electric cyan and coral refracted light, saturated violet shadows. A glossy high-end abstract studio render, airy, luminous and surprisingly beautiful.
+
+Make the prism a singular large hero with powerful reflected color. No robot, server rack, generic cloud icon, blue desk, labels, code panel or infographic boxes. This should feel like a luxury science-magazine cover rather than an enterprise presentation.
+
+Composition: leave the LEFT 42 percent pale lavender and quiet for dark large typography added later. Prism and evidence streams occupy the right. Keep all essential forms inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, so a wide 1200x515 crop preserves the hero. Full-bleed, no borders.
+
+No titles, letters, numbers, logos, badges, watermarks, screenshots or fabricated grading outputs. The four streams are purely conceptual. Prioritize luminous color, elegant materials, dynamic composition and strong thumbnail appeal.

@@ -2,7 +2,7 @@
 
 *Part 3 of 8 · For developers · Source walkthrough with saved artifact evidence*
 
-![Series banner: Logic before AI, from validation through checkpoints to separate approval.](media/03-banner.png)
+![AI-generated conceptual banner for approvals and recovery: glass checkpoints separate sections of a path.](media/03-banner.png)
 
 The most important architecture decision in this grader is not a model name. It is that model output cannot promote itself into an approved result.
 

@@ -1,0 +1,12 @@
+Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: Review, correct and return results--with the teacher in control.
+Description: Teachers compare OCR identities with reviewed identities, inspect flagged answers and proposed marks, and keep grading approval separate from permission to return results. A complete spreadsheet is not proof of trustworthy assessment.
+
+Creative concept: THE HUMAN LENS. A beautifully lit extreme close-up on the LEFT: an anonymous teacher's hand holding a large elegant magnifying glass above layered ivory paper. Through the circular lens, a tangled red thread resolves into a clean emerald thread. Another hand lightly holds a vermilion pencil. The lens is the large hero shape, combining tangible human judgment with an expressive metaphor for correction. Sophisticated contemporary editorial photography with subtle painterly texture, warm porcelain, coral and crimson, a touch of emerald, generous soft daylight. No face, recognizable person or personal data.
+
+Use a completely different scene from a blue paper-to-digital gateway. Avoid a conventional school desk overview. Make the circular lens graphic, sculptural and compelling at thumbnail size.
+
+Composition: the hands, paper and lens occupy the LEFT 55 percent; leave the RIGHT 42 percent quiet warm cream, with no objects or distracting texture, for dark large typography added later. Keep all essential visual elements inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, so a wide 1200x515 crop does not cut the lens. Full-bleed artwork, no borders.
+
+No titles, letters, legible handwriting, numbers, logos, badges, watermarks, interfaces, score values or fabricated reports. Paper marks are abstract strokes, not a student's actual answers. This is conceptual editorial art, not an observed application output. Prioritize beauty, warmth, visual tension and human control.

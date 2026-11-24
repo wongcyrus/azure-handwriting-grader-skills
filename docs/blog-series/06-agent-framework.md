@@ -2,7 +2,7 @@
 
 *Part 6 of 8 · For agent and application developers*
 
-![Series banner: Microsoft Agent Framework, three Executors with a separate human review boundary.](media/06-banner.png)
+![AI-generated conceptual banner for Microsoft Agent Framework: three luminous hubs connect to a separate stop marker.](media/06-banner.png)
 
 An “agentic” architecture diagram can easily imply more autonomy than the code provides. This application uses real Microsoft Agent Framework Executors and a workflow, but it does not ask a group of autonomous agents to negotiate grades or grant approval.
 

@@ -20,13 +20,18 @@ recommendation, not a verified mandatory Microsoft banner dimension. Confirm the
 destination editor's requirements and cropping. Keep in-body infographic artwork
 separate from banners.
 
-All eight now use the approved editorial artwork with locally composited MVP,
-Azure OpenAI, Microsoft Foundry and Microsoft Agent Framework marks.
+Each of the eight banners now uses a different AI-generated scene based on its
+article's title and description, with varied palettes and left/right composition.
+MVP, Azure OpenAI, Microsoft Foundry and Microsoft Agent Framework marks and
+exact typography are composited locally.
 [Brand provenance and publication caveats](branding/README.md) distinguish
 official Azure icons from the two user-supplied third-party copies. The MVP
 badge identifies the author, not Microsoft endorsement. Confirm asset permission
 with the publishing editor before upload.
-[Preview all eight branded banners](banner-prototypes/02-branded-series-preview.jpg).
+[Preview the eight AI-generated scenes](banner-prototypes/03-distinct-ai-artworks.jpg)
+and [all eight finished banners](banner-prototypes/04-distinct-banners-preview.jpg).
+The [actual generation prompts](branding/README.md) and original-image hashes
+are included; exact PNG originals and private audits remain outside this package.
 
 Each HTML file contains only the article, not this editorial guide. `ASSETS.csv`
 lists every article image's filename, alt text and caption for uploading.
@@ -62,9 +67,10 @@ identifies source-only procedures or outcomes that were not captured.
 - Existing cost accounting under the grading folder includes later phases.
   Scope is explained rather than calling the accumulated total “grading cost.”
 - Saved image-report manifests include both failures and a later successful
-  folder. No grading or reporting rerun was performed. The editorial banner
-  artwork reuses one previously approved paid prototype; this branding update
-  makes no new model requests.
+  folder. No grading or reporting rerun was performed. Eight separately
+  authorized banner-art requests were completed, with no automatic retries and
+  estimated total US$0.06394. This is separate from the original one-request
+  prototype (estimated US$0.00713) and all grader/reporting costs.
 - No local browser UI, child regrade, delivery preview, Moodle export, live price
   failure or framework event trace was captured. Those procedures are labelled
   as command/source examples, not claimed executions.

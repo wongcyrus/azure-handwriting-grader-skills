@@ -2,7 +2,7 @@
 
 *Part 4 of 8 · For developers and technical educators*
 
-![Series banner: Getting the image right, with full pages, crop boundaries and conservative alignment.](media/04-banner.png)
+![AI-generated conceptual banner for scans and alignment: an optical lens examines a floating page and crop frames.](media/04-banner.png)
 
 A handwriting model cannot grade content it never receives. In this example, the model's own saved comments repeatedly say that writing is cut off. The useful debugging path starts with pixels and coordinates, not a stronger grading prompt.
 

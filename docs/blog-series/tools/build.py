@@ -123,6 +123,14 @@ def pdf_page(source, filename, page_index=0):
 for name in BANNER_SOURCES:
     record(ROOT / "branding" / name)
 build_banners()
+banner_provenance = json.loads((ROOT / "branding/artwork-provenance.json").read_text())
+artworks = banner_provenance["artworks"]
+assert len(artworks) == 8 and len({item["original_png_sha256"] for item in artworks}) == 8
+for item in artworks:
+    for key, expected in (("publication_file", "publication_sha256"),
+                          ("prompt_file", "submitted_prompt_sha256")):
+        path = ROOT / "branding" / item[key]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == item[expected], path
 
 pdf_page(REPO / "example/VTC Test.pdf", "01-original-page.png")
 pdf_page(OUTPUT / "reports/pdfs/script-00001.pdf", "09-marked-peter-page.png")
@@ -322,6 +330,8 @@ revision = "b6af53dd1cf4cf74b9a50591f0e775a3b1533133"
     "publication_permission": "Owner confirmed existing example details may be retained.",
     "paid_calls_for_article_preparation": 0,
     "banner_artwork_prior_paid_calls": 1,
+    "banner_artwork_current_paid_calls": banner_provenance["logical_calls"],
+    "banner_artwork_estimated_cost_usd": banner_provenance["estimated_total_cost_usd"],
     "banner_branding_paid_calls": 0,
 }, indent=2))
 
@@ -369,10 +379,10 @@ for path in MEDIA.glob("*.png"):
 for index in range(1, 9):
     with Image.open(MEDIA / f"{index:02}-banner.png") as image:
         assert image.size == (1200, 630)
-for path in ROOT.glob("*.html"):
+for path in [*ROOT.glob("*.html"), ROOT / "branding/README.html"]:
     for target in re.findall(r'(?:src|href)="([^"]+)"', path.read_text()):
         if ":" not in target and not target.startswith("#"):
-            assert (ROOT / target.split("#")[0]).exists(), (path, target)
+            assert (path.parent / target.split("#")[0]).exists(), (path, target)
     assert "token=" not in path.read_text().lower()
 assert len(articles) == 8
 print(f"Verified eight articles, {len(assets)} image placements, all local links and PNGs.")
