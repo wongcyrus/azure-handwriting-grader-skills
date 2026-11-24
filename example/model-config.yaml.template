@@ -1,0 +1,30 @@
+# Copy to config.yaml locally; never add credentials to this file.
+# Set your actual HTTPS Azure endpoint and verified deployment aliases.
+# Paid stages require a preview, verified rates and separate --confirm-cost.
+azure_openai:
+  endpoint: null
+  api_version: v1
+
+models:
+  annotation: null
+  marking_scheme: null
+  ocr: null
+  batch_metadata_ocr: null
+  grading: null
+  batch_grading: null
+  moderation: null
+  analytics: null
+  student_feedback: null
+  embedding: null
+
+# Declare underlying GPT-5+ models for custom text/vision deployment aliases.
+deployment_models: {}
+
+caching:
+  enabled: false
+  scope: run
+  agents: {}
+
+# Fetch and review current prices for your actual Azure region/deployment type.
+# Missing or changed rates block paid calls; do not guess prices.
+pricing: {}
