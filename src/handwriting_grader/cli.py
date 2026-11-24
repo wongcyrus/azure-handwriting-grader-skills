@@ -216,7 +216,7 @@ def main(argv=None):
     retry_cmd = commands.add_parser("retry-grading", help="Retry failed marks and unmoderated questions in a grading run")
     retry_cmd.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     retry_cmd.add_argument("--run", help="Target child run ID (default: original run)")
-    retry_cmd.add_argument("--align-images", action="store_true", help="Align scanned page images to reference regions before cropping (offline, zero AI cost)")
+    retry_cmd.add_argument("--align-images", action="store_true", help="Re-render original PDF pages and align to reference regions, preserving previous artifacts (offline, zero AI cost)")
     retry_cmd.add_argument("--re-ocr-id", action="store_true", help="Re-run ID OCR for all scripts using current approved box")
     retry_cmd.add_argument("--re-ocr-metadata", action="store_true", help="Re-run ID, CLASS and NAME OCR for all scripts using current approved boxes")
     retry_cmd.add_argument("--question", help="Re-grade and re-moderate a specific question using current approved box")
@@ -288,6 +288,10 @@ def main(argv=None):
     advanced_report.add_argument("--confirm-cost", action="store_true", help="Confirm paid infographic generation")
     advanced_report.add_argument("--image-model", default=None,
                                  help="Azure image-generation deployment for optional infographics")
+    advanced_report.add_argument("--image-model-config", type=Path,
+                                 help="Separate private image configuration with endpoint, deployment and verified pricing")
+    advanced_report.add_argument("--report-name", default="reports",
+                                 help="New report folder under ai-analysis (default: reports; refuses overwrite)")
     cost_report = commands.add_parser("cost-report", help="Generate or display token, model and cost breakdown")
     cost_report.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     clean = commands.add_parser("clean", help="Safely archive (.zip) or purge output runs after human confirmation")
@@ -818,7 +822,7 @@ def main(argv=None):
 
         details = []
         if args.align_images:
-            details.append(f"align {len(manifest.get('image_sha256', []))} page image(s) to reference layout (offline)")
+            details.append(f"re-render and align {len(manifest.get('image_sha256', []))} original PDF page image(s), preserving previous artifacts (offline)")
         if regions_updated:
             details.append("approved regions updated")
         if fields:
@@ -935,23 +939,40 @@ def main(argv=None):
         print("AI analysis approved; later changes invalidate the approval.")
         return 0
     if args.command == "advanced-report":
-        from .advanced import create_advanced_report
+        from .advanced import create_advanced_report, image_report_settings, read_approved_analysis, report_directory
         from .run_context import run_directory
 
-        if args.infographics and not args.confirm_cost:
-            print("No images requested. Obtain approval and rerun with --infographics --confirm-cost.", file=sys.stderr)
-            return 1
         analysis_dir = run_directory(config, path.parent, args.run) / "ai-analysis"
         try:
+            report_dir = report_directory(analysis_dir, args.report_name)
+            if args.image_model_config is not None and not args.infographics:
+                raise ValueError("--image-model-config requires --infographics")
+            if args.infographics and not args.confirm_cost:
+                _, validated, _, _, _, _ = read_approved_analysis(config, path.parent, path, run_id=args.run)
+                settings = image_report_settings(analysis_dir, args.image_model_config, args.image_model)
+                if report_dir.exists():
+                    raise ValueError("Advanced reports already exist; choose a new --report-name")
+                count = 1 + len(validated[3])
+                print(f"Azure infographic target: endpoint={settings['endpoint']}, "
+                      f"api_version={settings['api_version']}, model={settings['model']}. "
+                      f"Up to {count} single-attempt image requests send reviewed class/question analysis text. "
+                      f"Size: 1536x1024; quality: auto. Output: {report_dir}.")
+                print("No images requested. Obtain approval and rerun with --confirm-cost.", file=sys.stderr)
+                return 1
             model_config_path = None
             if args.infographics:
-                with (analysis_dir / "manifest.json").open(encoding="utf-8") as file:
-                    model_config_path = json.load(file)["model_config_path"]
+                if args.image_model_config is not None:
+                    model_config_path = args.image_model_config.expanduser().resolve()
+                else:
+                    with (analysis_dir / "manifest.json").open(encoding="utf-8") as file:
+                        model_config_path = json.load(file)["model_config_path"]
             tracker = TelemetryTracker(log_dir=analysis_dir / "telemetry", config_path=model_config_path)
             set_active_tracker(tracker)
             output = create_advanced_report(config, path.parent, path, run_id=args.run,
                                             infographics=args.infographics,
-                                            image_model=getattr(args, "image_model", None))
+                                            image_model=getattr(args, "image_model", None),
+                                            image_model_config=args.image_model_config,
+                                            report_name=args.report_name)
             if tracker.traces:
                 tracker.write_cost_report(analysis_dir)
         except (OSError, ValueError, KeyError) as exc:

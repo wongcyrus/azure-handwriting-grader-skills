@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -29,6 +30,23 @@ class Answer(BaseModel):
 
 
 class TestAzureTransport(unittest.TestCase):
+    def test_identity_scope_matches_foundry_or_azure_openai_resource(self):
+        for endpoint, scope in (
+            ("https://images.services.ai.azure.com", "https://ai.azure.com/.default"),
+            (ENDPOINT, "https://cognitiveservices.azure.com/.default"),
+        ):
+            credential = Mock()
+            with self.subTest(endpoint=endpoint), \
+                    patch.dict(os.environ, {"AZURE_OPENAI_API_KEY": "", "AZURE_OPENAI_AUTH": "default"}), \
+                    patch("azure.identity.DefaultAzureCredential", return_value=credential), \
+                    patch("azure.identity.get_bearer_token_provider", return_value=Mock()) as token_provider, \
+                    patch("openai.OpenAI") as sdk:
+                with AzureClient(endpoint, "v1"):
+                    pass
+                token_provider.assert_called_once_with(credential, scope)
+                self.assertEqual(sdk.call_args.kwargs["base_url"], endpoint + "/openai/v1/")
+                credential.close.assert_called_once()
+
     def test_structured_vision_uses_explicit_azure_route_and_no_storage(self):
         result = SimpleNamespace(status="completed", output_text='{"answer":"example","flag":false}',
                                  output=[], usage=SimpleNamespace(input_tokens=10, output_tokens=5, total_tokens=15))

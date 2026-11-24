@@ -134,7 +134,10 @@ class AzureClient:
                 raise ValueError("AZURE_OPENAI_AUTH must be default or managed_identity")
             self._credential = (ManagedIdentityCredential() if auth == "managed_identity"
                                 else DefaultAzureCredential())
-            key = get_bearer_token_provider(self._credential, "https://cognitiveservices.azure.com/.default")
+            scope = ("https://ai.azure.com/.default"
+                     if urlsplit(self.endpoint).hostname.endswith(".services.ai.azure.com")
+                     else "https://cognitiveservices.azure.com/.default")
+            key = get_bearer_token_provider(self._credential, scope)
         options = {"max_retries": max_retries, "timeout": timeout}
         if api_version == "v1":
             self.client = OpenAI(base_url=f"{self.endpoint}/openai/v1/", api_key=key, **options)

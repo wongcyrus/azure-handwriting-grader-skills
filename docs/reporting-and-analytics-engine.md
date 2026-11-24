@@ -13,7 +13,13 @@ Invoked via `handwriting-grader report --exam exam.yaml [--run CHILD_RUN]`:
 - `output/reports/details_score_report.xlsx`: Granular sheet containing `Answers` and `Reasoning` from human-reviewed marks, plus `AnswersRaw` and `ReasoningRaw` preserving model initial output for audit comparison.
 
 ### 1.2 Individual Scored PDFs
-- Generates `output/reports/pdfs/script-00001.pdf`, `script-00002.pdf`, ...
+- Generates `output/reports/pdfs/<ID>_<NAME>_script-00001.pdf`, for example
+  `001_One_script-00001.pdf`. IDs and names come from approved identities and the
+  roster, not unreviewed OCR. Leading zeroes and Unicode names are preserved;
+  unsafe characters are replaced and long components shortened. The script suffix
+  prevents filename collisions. Scorebook paths and email attachments use these names.
+- Existing version-1 reports retain their original index-only filenames and remain
+  usable with PDF integrity checks. They are not automatically renamed.
 - Each student's original scanned script is overlayed with teacher-approved question marks and total marks.
 - `output/reports/all.pdf`: Concatenates all individual grade slips in script order mapped to reviewed identities for print batching.
 - `output/reports/sampleOfN.pdf`: Ranked top/middle/bottom samples where cohort size permits; optional `sampleOfN_only_pass.pdf` requires explicit pass threshold/equality policy.

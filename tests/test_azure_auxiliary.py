@@ -4,6 +4,7 @@ import shutil
 import threading
 import unittest
 import uuid
+import yaml
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -174,6 +175,105 @@ class AzureAuxiliaryTests(unittest.TestCase):
         )
         self.assertEqual(client.generate_image.call_count, 2)
         self.assertEqual(json.loads((target / "manifest.json").read_text())["infographics_count"], 2)
+
+    def test_separate_image_resource_preserves_analysis_and_existing_reports(self):
+        _, reviewed, rows = self._report_fixture()
+        image_config = self.root / "image.config.yaml"
+        image_endpoint = "https://images.services.ai.azure.com"
+        image_config.write_text(yaml.safe_dump({
+            "azure_openai": {"endpoint": image_endpoint, "api_version": "v1"},
+            "models": {"analytics_image": "gpt-image-2.5-sunburst"},
+        }))
+        original_hashes = {name: file_hash(self.root / name)
+                           for name in ("models.yaml", "manifest.json", "review.xlsx", "approval.json")}
+        previous_report = self.root / "reports"
+        previous_report.mkdir()
+        (previous_report / "teacher-report.docx").write_bytes(b"original report")
+        old_cache = self.root / "infographics"
+        old_cache.mkdir()
+        (old_cache / "class.png").write_bytes(b"another resource's image")
+        image = io.BytesIO()
+        Image.new("RGB", (16, 9), "white").save(image, format="PNG")
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=False)
+        client.generate_image.return_value = SimpleNamespace(image_bytes=image.getvalue(), usage_metadata=None)
+        with patch.object(advanced, "read_approved_analysis", return_value=reviewed), \
+                patch.object(advanced, "validate_analysis"), \
+                patch.object(advanced, "report_rows", return_value=(rows, {})), \
+                patch.object(advanced, "AzureClient", return_value=client) as factory, \
+                patch.object(advanced.time, "sleep"):
+            target = advanced.create_advanced_report(
+                {}, self.root, None, infographics=True,
+                image_model_config=image_config, report_name="reports-infographics",
+            )
+        factory.assert_called_once_with(
+            endpoint=image_endpoint, api_version="v1", max_retries=0, pricing_config=image_config,
+        )
+        self.assertEqual(client.generate_image.call_count, 2)
+        self.assertEqual(target, self.root / "reports-infographics")
+        self.assertTrue((target / "infographics" / "class.png").is_file())
+        self.assertEqual((previous_report / "teacher-report.docx").read_bytes(), b"original report")
+        for name, digest in original_hashes.items():
+            self.assertEqual(file_hash(self.root / name), digest)
+        manifest = json.loads((target / "manifest.json").read_text())
+        self.assertEqual(manifest["image_generation"]["endpoint"], image_endpoint)
+        self.assertEqual(manifest["image_generation"]["model_config_sha256"], file_hash(image_config))
+
+    def test_separate_image_resource_rejects_project_url_and_missing_api_version(self):
+        _, reviewed, _ = self._report_fixture()
+        image_config = self.root / "image.config.yaml"
+        for azure in (
+            {"endpoint": "https://images.services.ai.azure.com/api/projects/project", "api_version": "v1"},
+            {"endpoint": "https://images.services.ai.azure.com"},
+        ):
+            image_config.write_text(yaml.safe_dump({
+                "azure_openai": azure, "models": {"analytics_image": "gpt-image-2.5-sunburst"},
+            }))
+            with self.subTest(azure=azure), \
+                    patch.object(advanced, "read_approved_analysis", return_value=reviewed), \
+                    patch.object(advanced, "AzureClient") as factory:
+                with self.assertRaises(ValueError):
+                    advanced.create_advanced_report(
+                        {}, self.root, None, infographics=True, image_model_config=image_config,
+                    )
+                factory.assert_not_called()
+            self.assertFalse((self.root / "reports").exists())
+
+    def test_named_report_cannot_escape_analysis_directory(self):
+        _, reviewed, _ = self._report_fixture()
+        for name in ("../outside", "/outside", ".", "nested/reports"):
+            with self.subTest(name=name), \
+                    patch.object(advanced, "read_approved_analysis", return_value=reviewed):
+                with self.assertRaisesRegex(ValueError, "single ASCII folder"):
+                    advanced.create_advanced_report({}, self.root, None, report_name=name)
+
+    def test_infographic_cli_prices_calls_using_separate_image_configuration(self):
+        _, _, _ = self._report_fixture()
+        image_config = self.root / "image.config.yaml"
+        image_config.write_text("pricing:\n  image-alias:\n    input: 5\n    output: 30\n")
+        analysis = self.root / "ai-analysis"
+        analysis.mkdir()
+
+        def report(*args, **kwargs):
+            self.assertEqual(kwargs["image_model_config"], image_config)
+            self.assertEqual(kwargs["report_name"], "reports-infographics")
+            get_active_tracker().record_call(
+                "infographics", "Class", "image-alias", Usage(1000, 1000, 2000), 1,
+            )
+            return analysis / "reports-infographics"
+
+        with patch("handwriting_grader.cli.load_config", return_value={"exam": {"output_dir": "output"}}), \
+                patch("handwriting_grader.cli.check_exam", return_value=([], {})), \
+                patch("handwriting_grader.run_context.run_directory", return_value=self.root), \
+                patch.object(advanced, "create_advanced_report", side_effect=report):
+            self.assertEqual(main([
+                "advanced-report", "--exam", str(self.root / "exam.yaml"), "--infographics", "--confirm-cost",
+                "--image-model-config", str(image_config), "--report-name", "reports-infographics",
+            ]), 0)
+        trace = json.loads((analysis / "telemetry" / "azure_usage.jsonl").read_text())
+        self.assertTrue(trace["cost_known"])
+        self.assertAlmostEqual(trace["cost_usd"], 0.035)
 
     def test_infographic_cli_uses_pricing_from_analysis_manifest(self):
         model_config, _, _ = self._report_fixture()

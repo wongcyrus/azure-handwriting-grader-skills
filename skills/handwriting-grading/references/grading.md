@@ -163,6 +163,10 @@
    `models.analytics_image` deployment (e.g. an alias for `gpt-image-2.5-flare`) or override:
    `advanced-report --exam /private/exam.yaml --infographics --confirm-cost
    [--image-model DEPLOYMENT]`. Inspect the adjacent/recorded model configuration.
+   For a separate image resource, supply `--image-model-config /private/image.config.yaml`
+   with its endpoint, deployment and reviewed rates. Preserve an existing report
+   with `--report-name reports-infographics`; do not edit the approved analysis
+   configuration. Preview without `--confirm-cost` first.
    Image generation is single-attempt with cached PNG reuse and text-card fallback.
    If `ai-analysis/reports/manifest.json` has `failed_infographics`, report failures;
    never retry without a fresh user decision. Review documents before sharing.

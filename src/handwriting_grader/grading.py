@@ -1133,7 +1133,7 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
         return target
 
     guard = attendance_guard(config, config_dir, config_path, manifest)
-    questions, regions_root, _, boxes = approved_inputs(config, config_dir, config_path)
+    questions, regions_root, region_manifest, boxes = approved_inputs(config, config_dir, config_path)
     tracker = get_active_tracker()
     stride = config["layout"]["pages_per_student"]
     image_dir = target / "images"
@@ -1143,15 +1143,41 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
         if align_images:
             from .alignment import align_page_file, prepare_reference_maps
             ref_maps = prepare_reference_maps(regions_root, stride)
-            new_hashes = []
-            for index in range(len(manifest.get("image_sha256", []))):
-                img_path = image_dir / f"{index}.jpg"
-                ref_arr, ref_size = ref_maps[index % stride]
-                align_page_file(img_path, ref_arr, ref_size)
-                new_hashes.append(file_hash(img_path))
-            manifest["image_sha256"] = new_hashes
-            manifest["aligned_to_regions"] = True
-            atomic_json(target / "manifest.json", manifest)
+            with tempfile.TemporaryDirectory(prefix=".alignment-", dir=target) as temp:
+                staging = Path(temp)
+                pages = render_scripts(
+                    config, config_dir, region_manifest, summary["pdf_pages"], staging,
+                )
+                if len(pages) != len(manifest["image_sha256"]):
+                    raise ValueError("Recovery page count differs from the grading manifest")
+                aligned_dir = staging / "images"
+                aligned_dir.mkdir()
+                new_hashes = []
+                for index, page in enumerate(pages):
+                    img_path = aligned_dir / f"{index}.jpg"
+                    ref_arr, ref_size = ref_maps[index % stride]
+                    align_page_file(page, ref_arr, ref_size, output_path=img_path)
+                    new_hashes.append(file_hash(img_path))
+
+                history = target / "alignment-history"
+                history.mkdir(exist_ok=True)
+                backup = Path(tempfile.mkdtemp(prefix="recovery-", dir=history))
+                for name in ("manifest.json", "results.json", "review.xlsx"):
+                    source = target / name
+                    if source.is_file():
+                        shutil.copy2(source, backup / name)
+                image_dir.rename(backup / "images")
+                try:
+                    aligned_dir.rename(image_dir)
+                    manifest["image_sha256"] = new_hashes
+                    manifest["aligned_to_regions"] = True
+                    atomic_json(target / "manifest.json", manifest)
+                except Exception:
+                    if image_dir.exists():
+                        image_dir.rename(staging / "failed-images")
+                    (backup / "images").rename(image_dir)
+                    shutil.copy2(backup / "manifest.json", target / "manifest.json")
+                    raise
 
         provider = None
         if needs_ai:

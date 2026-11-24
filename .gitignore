@@ -9,6 +9,7 @@ dist/
 exam.yaml
 *.exam.yaml
 config.yaml
+/example/priced-config.yaml
 *.config.yaml
 /ITE3101 CA Test/
 data/

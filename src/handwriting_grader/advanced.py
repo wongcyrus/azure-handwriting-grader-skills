@@ -26,7 +26,7 @@ from .rubric import question_key
 from .suggestions import load_model_settings
 from .cache import CachedGrader, cache_directory, enabled_agents
 from .telemetry import get_active_tracker, get_thinking_config
-from .azure_ai import AzureClient, GenerationConfig
+from .azure_ai import AzureClient, GenerationConfig, validate_endpoint
 
 
 class AzureAnalyst:
@@ -406,26 +406,60 @@ def _generate_infographic(client, model, prompt, out_path: Path, label: str = ""
         return None, err
 
 
-def create_advanced_report(config, config_dir, config_path, *, run_id=None, infographics=False, image_model=None):
+def report_directory(root, report_name):
+    if not isinstance(report_name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", report_name):
+        raise ValueError("Report name must be a single ASCII folder name using letters, digits, hyphens or underscores")
+    return root / report_name
+
+
+def image_report_settings(root, image_model_config=None, image_model=None):
+    with (root / "manifest.json").open(encoding="utf-8") as file:
+        analysis_manifest = json.load(file)
+    analysis_config = Path(analysis_manifest["model_config_path"])
+    if file_hash(analysis_config) != analysis_manifest["model_config_sha256"]:
+        raise ValueError("Model configuration changed before image generation")
+    model_config_path = (Path(image_model_config).expanduser().resolve()
+                         if image_model_config is not None else analysis_config)
+    config_digest = file_hash(model_config_path)
+    configured_model = load_model_settings(model_config_path, "analytics_image")
+    model = image_model if image_model is not None else configured_model
+    from .discovery import validate_model_eligibility
+    validate_model_eligibility(model, agent="analytics_image")
+    if image_model_config is not None:
+        with model_config_path.open(encoding="utf-8") as file:
+            settings = yaml.safe_load(file)
+        azure = settings.get("azure_openai", {})
+        endpoint, api_version = azure.get("endpoint"), azure.get("api_version")
+    else:
+        endpoint = analysis_manifest.get("endpoint")
+        api_version = analysis_manifest.get("api_version") or "v1"
+    endpoint = validate_endpoint(endpoint)
+    if (not isinstance(api_version, str) or not api_version.strip()
+            or any(char.isspace() for char in api_version)):
+        raise ValueError("Image configuration needs an explicit Azure API version without whitespace")
+    if file_hash(model_config_path) != config_digest:
+        raise ValueError("Image configuration changed while loading")
+    return {
+        "model_config_path": model_config_path, "model_config_sha256": config_digest,
+        "endpoint": endpoint, "api_version": api_version, "model": model,
+    }
+
+
+def create_advanced_report(config, config_dir, config_path, *, run_id=None, infographics=False, image_model=None,
+                           image_model_config=None, report_name="reports"):
     root, validated, students, questions_text, overview, approval = read_approved_analysis(
         config, config_dir, config_path, run_id=run_id
     )
     approval_hash = file_hash(root / "approval.json")
+    if image_model_config is not None and not infographics:
+        raise ValueError("An image model configuration requires --infographics")
+    image_settings = None
     if infographics:
-        with (root / "manifest.json").open(encoding="utf-8") as file:
-            analysis_manifest = json.load(file)
-        model_config_path = Path(analysis_manifest["model_config_path"])
-        if file_hash(model_config_path) != analysis_manifest["model_config_sha256"]:
-            raise ValueError("Model configuration changed before image generation")
-        configured_image_model = load_model_settings(model_config_path, "analytics_image")
-        img_model = image_model if image_model is not None else configured_image_model
-        from .discovery import validate_model_eligibility
-        validate_model_eligibility(img_model, agent="analytics_image")
-        endpoint = analysis_manifest.get("endpoint")
-        api_version = analysis_manifest.get("api_version") or "v1"
-        if not endpoint:
-            raise ValueError("Analysis manifest requires an Azure endpoint for infographics")
-    report = root / "reports"
+        image_settings = image_report_settings(root, image_model_config, image_model)
+        model_config_path = image_settings["model_config_path"]
+        img_model = image_settings["model"]
+        endpoint, api_version = image_settings["endpoint"], image_settings["api_version"]
+    report = report_directory(root, report_name)
     try:
         report.mkdir(mode=0o700)
     except FileExistsError as exc:
@@ -449,10 +483,11 @@ def create_advanced_report(config, config_dir, config_path, *, run_id=None, info
     infographic_paths = {}
     failed_infographics = []
     if infographics:
-        if file_hash(model_config_path) != analysis_manifest["model_config_sha256"]:
+        if file_hash(model_config_path) != image_settings["model_config_sha256"]:
             raise ValueError("Model configuration changed before image generation")
         if endpoint:
-            info_dir = root / "infographics"
+            info_dir = (root / "infographics" if image_model_config is None and report_name == "reports"
+                        else report / "infographics")
             print(f"Generating Azure infographics for Class & {len(questions)} questions ({img_model}, no auto-retry)...", flush=True)
             with AzureClient(
                 endpoint=endpoint, api_version=api_version, max_retries=0,
@@ -473,7 +508,7 @@ def create_advanced_report(config, config_dir, config_path, *, run_id=None, info
                         f"Visually summarize the key concepts, strengths, and common student misconceptions below "
                         f"using clear icons, minimal readable labels, and structured visual blocks:\n{summary}"
                     )
-                    if file_hash(model_config_path) != analysis_manifest["model_config_sha256"]:
+                    if file_hash(model_config_path) != image_settings["model_config_sha256"]:
                         raise ValueError("Model configuration changed before image generation")
                     res, err = _generate_infographic(img_client, img_model, prompt, dest, label=label)
                     if res:
@@ -543,16 +578,21 @@ def create_advanced_report(config, config_dir, config_path, *, run_id=None, info
             or file_hash(root / "manifest.json") != approval["manifest_sha256"]
             or file_hash(root / "approval.json") != approval_hash):
         raise ValueError("AI review changed during report generation")
-    atomic_json(report / "manifest.json", {"version": 1, "completed": True,
-                                            "analysis_approval_sha256": approval_hash,
-                                            "infographics_count": len(infographic_paths),
-                                            "failed_infographics": failed_infographics})
+    if image_settings is not None and file_hash(model_config_path) != image_settings["model_config_sha256"]:
+        raise ValueError("Image configuration changed during report generation")
+    report_manifest = {"version": 1, "completed": True, "analysis_approval_sha256": approval_hash,
+                       "infographics_count": len(infographic_paths), "failed_infographics": failed_infographics}
+    if image_settings is not None:
+        report_manifest["image_generation"] = {
+            **image_settings, "model_config_path": str(image_settings["model_config_path"]),
+        }
+    atomic_json(report / "manifest.json", report_manifest)
     if failed_infographics:
         labels = ", ".join(item["label"] for item in failed_infographics[:10])
         more = f" (+{len(failed_infographics) - 10} more)" if len(failed_infographics) > 10 else ""
         print(
             f"Warning: {len(failed_infographics)} infographic(s) failed ({labels}{more}); "
-            f"cached images are preserved in {root / 'infographics'}. "
+            f"cached images are preserved in {info_dir}. "
             f"Ask the user whether to retry failed images or keep the text-card fallback.",
             flush=True,
         )

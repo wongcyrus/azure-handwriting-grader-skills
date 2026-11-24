@@ -93,3 +93,19 @@ exam settings invalidates approvals; settle settings before reviewing artifacts.
 Excel may store an ID as a number even when it is displayed with leading
 zeroes. Confirm IDs against the original roster; do not assume the displayed
 format survives import.
+
+## Separate image-generation resource
+
+For infographics on a different Azure resource, use a separate private
+`image.config.yaml` with `azure_openai.endpoint`, explicit `api_version`,
+`models.analytics_image`, and that resource's reviewed image pricing evidence.
+Pass it with `advanced-report --infographics --image-model-config /private/image.config.yaml`.
+Do not edit the model configuration bound to an already-approved analysis.
+Use `--report-name reports-infographics` to preserve existing `reports/`.
+Named reports keep their infographic images separately, and refuse overwrite.
+Preview before `--confirm-cost`; image generation still requires current manual
+pricing review and separate consent. See [pricing](pricing.md).
+Azure Identity requests the `https://ai.azure.com/.default` audience for
+`*.services.ai.azure.com` resources, and `https://cognitiveservices.azure.com/.default`
+for Azure OpenAI resources. Resource access and model permissions still need
+independent verification.

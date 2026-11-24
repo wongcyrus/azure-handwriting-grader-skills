@@ -29,9 +29,9 @@ from handwriting_grader.advanced import create_analysis
 from handwriting_grader.analytics import question_boxplots, question_passing_policy
 from handwriting_grader.cli import check_exam, main
 from handwriting_grader.grade_review import approve_grading, read_approved_grading, validate_review
-from handwriting_grader.grading import AzureGrader, approved_inputs, grade_exam, resume_grading, safe_append
+from handwriting_grader.grading import AzureGrader, approved_inputs, grade_exam, resume_grading, retry_grading, safe_append
 from handwriting_grader.regions import atomic_json, file_hash, prepare_regions, verify_run
-from handwriting_grader.reporting import passing_policy, passing_rows, sample_rows, write_workbooks
+from handwriting_grader.reporting import passing_policy, passing_rows, report_rows, sample_rows, write_workbooks
 from handwriting_grader.rubric import approve_rubric, import_rubric, write_rubric
 from handwriting_grader.score_editor import ScoreServer
 
@@ -180,6 +180,35 @@ class GradingTests(unittest.TestCase):
             response = error
         with response:
             return response.status, response.read()
+
+    def test_alignment_retry_restores_original_pages_and_preserves_history(self):
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        review_hash = file_hash(root / "review.xlsx")
+        pristine_hash = file_hash(root / "images" / "0.jpg")
+        results_before = json.loads((root / "results.json").read_text())
+        with Image.open(root / "images" / "0.jpg") as image:
+            shifted = image.transform(
+                image.size, Image.Transform.AFFINE, (1, 0, 0, 0, 1, -40),
+                fillcolor=(255, 255, 255),
+            )
+        shifted.save(root / "images" / "0.jpg", format="JPEG", quality=95)
+        damaged_hash = file_hash(root / "images" / "0.jpg")
+        manifest = json.loads((root / "manifest.json").read_text())
+        manifest["image_sha256"][0] = damaged_hash
+        atomic_json(root / "manifest.json", manifest)
+
+        with patch("handwriting_grader.grading.AzureClient", side_effect=AssertionError("No AI needed")):
+            retry_grading(self.config, self.root, self.exam, self.summary, align_images=True)
+
+        self.assertEqual(file_hash(root / "images" / "0.jpg"), pristine_hash)
+        self.assertEqual(json.loads((root / "results.json").read_text()), results_before)
+        backup, = (root / "alignment-history").iterdir()
+        self.assertEqual(file_hash(backup / "images" / "0.jpg"), damaged_hash)
+        self.assertEqual(file_hash(backup / "review.xlsx"), review_hash)
+        restored_manifest = json.loads((root / "manifest.json").read_text())
+        self.assertEqual(restored_manifest["image_sha256"][0], pristine_hash)
+        self.assertTrue(restored_manifest["aligned_to_regions"])
 
     def test_score_editor_security_concurrency_and_review_invalidation(self):
         root = self.run_grading()
@@ -804,6 +833,8 @@ class GradingTests(unittest.TestCase):
             approved_inputs(self.config, self.root, self.exam)
 
     def test_reports_require_approval_and_use_reviewed_marks(self):
+        from handwriting_grader.moodle import export_moodle
+
         root = self.run_grading()
         self.fill_review(root / "review.xlsx", flagged_override=2)
         arguments = ["report", "--exam", str(self.exam)]
@@ -816,7 +847,7 @@ class GradingTests(unittest.TestCase):
         book = load_workbook(reports / "score_report.xlsx", read_only=True)
         try:
             rows = list(book["Marks"].values)
-            self.assertEqual(rows[1], ("001", "One", "A", 2, "pdfs/script-00001.pdf"))
+            self.assertEqual(rows[1], ("001", "One", "A", 2, "pdfs/001_One_script-00001.pdf"))
             self.assertEqual(rows[2][3], 1)
         finally:
             book.close()
@@ -824,14 +855,45 @@ class GradingTests(unittest.TestCase):
         try:
             self.assertEqual(book.sheetnames, ["Marks", "Answers", "Reasoning", "AnswersRaw", "ReasoningRaw"])
             self.assertEqual(book["Marks"]["D2"].value, 2)
+            self.assertEqual(book["Marks"]["F2"].value, "pdfs/001_One_script-00001.pdf")
             self.assertEqual(book["Answers"]["D2"].value, "Example answer")
         finally:
             book.close()
-        self.assertEqual(len(PdfReader(reports / "pdfs" / "script-00001.pdf").pages), 2)
+        self.assertEqual(len(PdfReader(reports / "pdfs" / "001_One_script-00001.pdf").pages), 2)
         self.assertEqual(len(PdfReader(reports / "all.pdf").pages), 4)
         self.assertEqual(file_hash(root / "images" / "0.jpg"), image_hash)
-        self.assertTrue(json.loads((reports / "manifest.json").read_text())["completed"])
+        manifest = json.loads((reports / "manifest.json").read_text())
+        self.assertTrue(manifest["completed"])
+        self.assertEqual(manifest["version"], 2)
+        self.assertIn("pdfs/001_One_script-00001.pdf", manifest["script_pdf_sha256"])
+        export_moodle(self.config, self.root, self.exam)
+        self.assertEqual(
+            (root.parent / "moodle" / "student_pdfs" / "001_One.pdf").read_bytes(),
+            (reports / "pdfs" / "001_One_script-00001.pdf").read_bytes(),
+        )
         self.assertEqual(main(arguments), 1)
+
+    def test_report_paths_include_safe_unicode_identity_and_remain_unique(self):
+        from handwriting_grader.rubric import question_key
+
+        ids = ["00/1", "00:1", "003"]
+        name = "Zo\u00eb \u674e\u5c0f\u660e / .."
+        roster = {
+            sid: {"name": name if index < 2 else "\u674e" * 100, "class": "A"}
+            for index, sid in enumerate(ids)
+        }
+        identities = dict(enumerate(ids))
+        results = {"marks": [{"script_index": index, "question": "Q1"} for index in identities]}
+        marks = {(index, question_key("Q1")): 1 for index in identities}
+        rows, _ = report_rows((None, None, results, [{"question_number": "Q1"}], roster, identities, marks))
+        self.assertEqual(rows[0]["pdf"], "pdfs/00_1_Zo\u00eb_\u674e\u5c0f\u660e_script-00001.pdf")
+        self.assertEqual(rows[1]["pdf"], "pdfs/00_1_Zo\u00eb_\u674e\u5c0f\u660e_script-00002.pdf")
+        self.assertEqual(len({row["pdf"].casefold() for row in rows}), 3)
+        for row in rows:
+            path = Path(row["pdf"])
+            self.assertEqual(path.parent, Path("pdfs"))
+            self.assertLessEqual(len(path.name.encode("utf-8")), 255)
+            self.assertEqual(row["name"], roster[row["id"]]["name"])
 
     def test_stale_review_cannot_generate_reports(self):
         root = self.run_grading()
@@ -1110,11 +1172,39 @@ class GradingTests(unittest.TestCase):
             self.assertEqual(server.sendmail.call_count, 2)
             self.assertEqual(server.sendmail.call_args_list[0].args[1], ["one@example.test"])
             self.assertIn(b"application/pdf", server.sendmail.call_args_list[0].args[2])
+            self.assertIn(b"001_One_script-00001.pdf", server.sendmail.call_args_list[0].args[2])
             self.assertEqual(main(send + ["--confirm-send"]), 1)
             self.assertEqual(server.sendmail.call_count, 2)
         delivery = json.loads((root.parent / "email" / "delivery.json").read_text())
         self.assertEqual(delivery["status"], "completed")
         self.assertEqual(len(delivery["sent"]), 2)
+
+    def test_legacy_report_paths_remain_usable_and_integrity_checked(self):
+        from handwriting_grader.distribution import approved_report
+        from handwriting_grader.moodle import export_moodle
+
+        root, settings, recipients = self.prepare_email()
+        _, rows, reports = approved_report(self.config, self.root, self.exam)
+        manifest = json.loads((reports / "manifest.json").read_text())
+        hashes = {}
+        for row in rows:
+            legacy = f"pdfs/script-{row['script_index'] + 1:05d}.pdf"
+            (reports / row["pdf"]).rename(reports / legacy)
+            hashes[legacy] = manifest["script_pdf_sha256"][row["pdf"]]
+        manifest.update(version=1, script_pdf_sha256=hashes)
+        atomic_json(reports / "manifest.json", manifest)
+        _, legacy_rows, _ = approved_report(self.config, self.root, self.exam)
+        self.assertEqual(legacy_rows[0]["pdf"], "pdfs/script-00001.pdf")
+        self.assertEqual(main(["preview-email", "--exam", str(self.exam), "--settings", str(settings),
+                               "--recipients", str(recipients)]), 0)
+        export_moodle(self.config, self.root, self.exam)
+        self.assertEqual(
+            (root.parent / "moodle" / "student_pdfs" / "001_One.pdf").read_bytes(),
+            (reports / "pdfs" / "script-00001.pdf").read_bytes(),
+        )
+        (reports / "pdfs" / "script-00001.pdf").write_bytes(b"changed")
+        with self.assertRaisesRegex(ValueError, "changed"):
+            approved_report(self.config, self.root, self.exam)
 
     def test_email_refuses_changed_recipients_or_attachment(self):
         root, settings, recipients = self.prepare_email()
@@ -1124,7 +1214,7 @@ class GradingTests(unittest.TestCase):
         self.assertEqual(main(["approve-email", "--exam", str(self.exam), "--confirm-reviewed"]), 1)
         self.assertFalse((root.parent / "email" / "approval.json").exists())
         recipients.write_text("ID,EMAIL\n001,one@example.test\n002,two@example.test\n")
-        (root.parent / "reports" / "pdfs" / "script-00001.pdf").write_bytes(b"changed")
+        (root.parent / "reports" / "pdfs" / "001_One_script-00001.pdf").write_bytes(b"changed")
         self.assertEqual(main(["approve-email", "--exam", str(self.exam), "--confirm-reviewed"]), 1)
 
     def test_email_delivery_failure_is_not_retried_automatically(self):

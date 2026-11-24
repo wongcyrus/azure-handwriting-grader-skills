@@ -49,6 +49,9 @@ Scanners commonly introduce vertical/horizontal shifts, slight skew, upside-down
   Run `handwriting-grader check-scans --exam /path/to/exam.yaml` (offline, 0 AI cost) **before** `prepare-regions` (and `grade` also runs it automatically before any Azure OpenAI calls). Using majority consensus across scripts, it flags any upside-down (`180°`), sideways (`90°/270°`), blank, or out-of-sequence page (including Script 1 itself) by exact PDF page number and script number. **Never auto-flip or auto-reorder pages** — instruct the user to fix the physical paper or source PDF manually and re-run `check-scans`.
 - **Automatic alignment during `grade`**: Every rendered page is automatically aligned (rigid translation + small rotation via 4-quadrant phase correlation with outlier-quadrant rejection) to `output_dir/regions/images/` before cropping.
 - **Recovering an existing unaligned run**:
+  `--align-images` rebuilds pages from the original PDF instead of transforming
+  already-aligned images again. Previous images, manifest, results and review
+  workbook are preserved in `grading/alignment-history/recovery-*/`.
   1. Run offline alignment (0 AI cost) and targeted re-OCR / regrade:
      - Align + re-OCR IDs: `handwriting-grader retry-grading --exam /path/to/exam.yaml --align-images --re-ocr-id`
      - Align + re-OCR all metadata (`ID`, `CLASS`, `NAME`): `--align-images --re-ocr-metadata`
