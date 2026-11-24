@@ -1,13 +1,13 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Fail-Closed Cost Governance: Retail Price Verification, Token Math, and Caching</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Fail-Closed Cost Governance: Retail Price Verification, Token Accounting, and Scoped Caching</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>Fail-Closed Cost Governance: Retail Price Verification, Token Math, and Caching</h1>
-<p><em>Part 7 of 8 · MS MVP Technical Series · Azure Pricing API, Runtime Latches &amp; Telemetry</em></p>
-<p><img alt="AI-generated conceptual banner for Fail-Closed Cost and Data Governance." src="media/07-banner.png" /></p>
+</style></head><body><article><h1>Fail-Closed Cost Governance: Retail Price Verification, Token Accounting, and Scoped Caching</h1>
+<p><em>Part 4 of 5 · MS MVP Technical Series · Azure Pricing API, Runtime Latches &amp; Telemetry</em></p>
+<p><img alt="AI-generated conceptual banner for Fail-Closed Cost and Data Governance." src="media/04-banner.png" /></p>
 <p>Asking an LLM "how much will this cost?" is a recipe for silent budget surprises. Hardcoding stale per-token constants in Python isn't much better—regional Azure rates differ, long-context thresholds change per-token pricing, and image generation or hosted search tools carry completely separate meters.</p>
 <p>In <code>azure-handwriting-grader-skills</code>, cost governance is <strong>fail-closed</strong>: zero guessed default rates, live verification against Microsoft's public Retail Prices API, explicit <code>--confirm-cost</code> consent before every paid stage, and honest <code>UNPRICED</code> (<code>null</code>) accounting whenever pricing or usage is incomplete.</p>
 <p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> specifies:</p>
@@ -100,5 +100,5 @@ for key, count in counts.items():
 <p>Two critical boundaries apply:
 - <strong><code>verify-rubric</code> is deliberately uncached</strong>: Search-grounded fact checking should reflect current web results, not stale cached snippets.
 - <strong>Cache hits do not bypass governance</strong>: Even when a response is served from local cache, <code>--confirm-cost</code> consent (where required by the command) and full human review (<code>review-grading</code> / <code>approve-*</code>) remain mandatory. Similarly, <code>store=False</code> on Responses API requests is a request-level setting, not a substitute for institutional review of Azure data-retention, access-control, and compliance policies.</p>
-<p>Next: <a href="08-pilot-and-outputs.html">Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup</a>.</p>
+<p>Next: <a href="05-analytics-lms-email-and-pilot.html">Post-Approval Delivery: Offline Analytics, Office Reports, Moodle/Email Gates, and Pilot Measurement</a>.</p>
 <p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/pricing.py">price verification</a>, <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/telemetry.py">usage accounting</a>, and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cache.py">scoped caching</a>.</p></article></body></html>

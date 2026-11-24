@@ -76,14 +76,11 @@ run or alteration of the example. It is not a historical exam event trace.
 
 ## Articles
 
-1. [Designing an Agent Skill for Exam Grading: Architecture, Preflight, and Scan Consensus](01-first-marking-run.md)
-2. [Human-in-the-Loop by Design: Rubrics, Blind Score Review, and Cryptographic Approvals](02-review-and-return.md)
-3. [Cryptographic State Machines, Atomic Checkpoints, and Isolated Child Regrading](03-logic-and-recovery.md)
-4. [Region Extraction, Localhost Review UI, and FFT Page Alignment](04-scans-crops-alignment.md)
-5. [Multi-Role Azure OpenAI Routing, Multimodal Batching, and Adversarial Prompt Safety](05-azure-openai.md)
-6. [Multi-Agent Orchestration: Skill Policy vs. Microsoft Agent Framework](06-agent-framework.md)
-7. [Fail-Closed Cost Governance: Retail Price Verification, Token Math, and Caching](07-pricing-and-data.md)
-8. [Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup](08-pilot-and-outputs.md)
+1. [Designing an Agent Skill for Exam Grading: Architecture, Preflight, and Computer Vision Pipeline](01-skill-architecture-and-preflight.md)
+2. [Multi-Role Azure OpenAI & Microsoft Agent Framework: Orchestration Without Surrendering Control](02-multimodal-grading-and-agent-framework.md)
+3. [Human-in-the-Loop by Design: Blind Score Review, Cryptographic State Machines, and Isolated Regrades](03-hil-review-and-state-machine.md)
+4. [Fail-Closed Cost Governance: Retail Price Verification, Token Accounting, and Scoped Caching](04-cost-governance-and-telemetry.md)
+5. [Post-Approval Delivery: Offline Analytics, Office Reports, Moodle/Email Gates, and Pilot Measurement](05-analytics-lms-email-and-pilot.md)
 
 ## Evidence and editorial caveats
 

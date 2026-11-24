@@ -51,25 +51,24 @@ def expect_prompt(part, prompt):
 
 
 expect_prompt(1, assignment(tree("rubric.py"), "PROMPT").value)
-expect_prompt(4, assignment(tree("suggestions.py"), "PROMPT").value)
-expect_prompt(5, render(assignment(function("grading.py", "grade"), "prompt")))
-expect_prompt(5, render(assignment(function("grading.py", "grade_question_batch"), "prompt")))
+expect_prompt(1, assignment(tree("suggestions.py"), "PROMPT").value)
+expect_prompt(2, render(assignment(function("grading.py", "grade"), "prompt")))
+expect_prompt(2, render(assignment(function("grading.py", "grade_question_batch"), "prompt")))
 metadata = function("grading.py", "ocr_metadata_batch")
 roster_branch = next(node for node in metadata.body if isinstance(node, ast.If)
                      and isinstance(node.test, ast.Name) and node.test.id == "roster_list")
-suffix = next(node.value for node in roster_branch.body if isinstance(node, ast.AugAssign)
-              and isinstance(node.target, ast.Name) and node.target.id == "prompt")
-expect_prompt(2, render(assignment(metadata, "prompt")) + render(suffix))
-expect_prompt(8, render(assignment(function("advanced.py", "_run_info"), "prompt")))
+suffix = next(node.value for node in roster_branch.body if isinstance(node.target, ast.Name) and node.target.id == "prompt") if False else next(node.value for node in roster_branch.body if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name) and node.target.id == "prompt")
+expect_prompt(3, render(assignment(metadata, "prompt")) + render(suffix))
+expect_prompt(5, render(assignment(function("advanced.py", "_run_info"), "prompt")))
 for method in ("_student_task", "_question_task"):
-    expect_prompt(8, assignment(function("advanced.py", method), "task").value)
-expect_prompt(8, assignment(function("advanced.py", "create_analysis"), "overview_task").value)
+    expect_prompt(5, assignment(function("advanced.py", method), "task").value)
+expect_prompt(5, assignment(function("advanced.py", "create_analysis"), "overview_task").value)
 
 for part, filename, name in (
-    (6, "workflow.py", "build_grading_workflow"),
-    (6, "workflow.py", "run_grading_workflow"),
-    (4, "grading.py", "crop_image"),
-    (8, "analytics.py", "describe"),
+    (2, "workflow.py", "build_grading_workflow"),
+    (2, "workflow.py", "run_grading_workflow"),
+    (1, "grading.py", "crop_image"),
+    (5, "analytics.py", "describe"),
 ):
     expected = ast.dump(function(filename, name), include_attributes=False)
     blocks = re.findall(r"```python\n(.*?)\n```", articles[part], flags=re.DOTALL)
@@ -84,7 +83,7 @@ route = next(node for node in ast.walk(tree("cli.py"))
                      for target in node.body[0].targets))
 expected_route = ast.dump(ast.Module(body=route.body[:4], type_ignores=[]), include_attributes=False)
 assert any(ast.dump(ast.parse(block), include_attributes=False) == expected_route
-           for block in re.findall(r"```python\n(.*?)\n```", articles[6], flags=re.DOTALL))
+           for block in re.findall(r"```python\n(.*?)\n```", articles[2], flags=re.DOTALL))
 
 skill = (SOURCE.parents[1] / "skills/handwriting-grading/SKILL.md").read_text()
 
@@ -122,11 +121,11 @@ for part, text in articles.items():
         json.loads(block)
         json_blocks += 1
 observed = (ROOT / "observed/offline-framework-smoke.txt").read_text().strip()
-assert observed in articles[6]
+assert observed in articles[2]
 smoke = ast.dump(ast.parse((ROOT / "snippets/offline-framework-smoke.py").read_text()),
                  include_attributes=False)
 assert any(ast.dump(ast.parse(block), include_attributes=False) == smoke
-           for block in re.findall(r"```python\n(.*?)\n```", articles[6], flags=re.DOTALL))
+           for block in re.findall(r"```python\n(.*?)\n```", articles[2], flags=re.DOTALL))
 print(f"Verified nine production prompt/task templates, four complete functions, the CLI handoff, "
-      f"the complete offline smoke script, eight published skill contracts, "
+      f"the complete offline smoke script, five published skill contracts, "
       f"{python_blocks} Python blocks and {json_blocks} JSON blocks.")

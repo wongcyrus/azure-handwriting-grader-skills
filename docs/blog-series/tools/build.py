@@ -423,7 +423,7 @@ with (ROOT / "ASSETS.csv").open("w", newline="", encoding="utf-8") as file:
 for path in MEDIA.glob("*.png"):
     with Image.open(path) as image:
         image.verify()
-for index in range(1, 9):
+for index in range(1, 6):
     with Image.open(MEDIA / f"{index:02}-banner.png") as image:
         assert image.size == (1200, 630)
 for path in [*ROOT.glob("*.html"), ROOT / "branding/README.html"]:
@@ -431,5 +431,5 @@ for path in [*ROOT.glob("*.html"), ROOT / "branding/README.html"]:
         if ":" not in target and not target.startswith("#"):
             assert (path.parent / target.split("#")[0]).exists(), (path, target)
     assert "token=" not in path.read_text().lower()
-assert len(articles) == 8
-print(f"Verified eight articles, {len(assets)} image placements, all local links and PNGs.")
+assert len(articles) == 5
+print(f"Verified five articles, {len(assets)} image placements, all local links and PNGs.")

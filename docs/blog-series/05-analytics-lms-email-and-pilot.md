@@ -1,8 +1,8 @@
-# Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup
+# Post-Approval Delivery: Offline Analytics, Office Reports, Moodle/Email Gates, and Pilot Measurement
 
-*Part 8 of 8 · MS MVP Technical Series · Analytics, LMS Export, Gated Email & Pilot Measurement*
+*Part 5 of 5 · MS MVP Technical Series · Analytics, LMS Export, Gated Email & Pilot Measurement*
 
-![AI-generated conceptual banner for Reports, LMS, Email and Cleanup.](media/08-banner.png)
+![AI-generated conceptual banner for Reports, LMS, Email and Cleanup.](media/05-banner.png)
 
 Once `grading/approval.json` is recorded, a teacher shouldn't have to memorize ten CLI subcommands—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why [SKILL.md](../../skills/handwriting-grading/SKILL.md) enforces a **Post-Approval Menu**:
 
@@ -10,7 +10,7 @@ Once `grading/approval.json` is recorded, a teacher shouldn't have to memorize t
 Immediately after `grading/approval.json` is recorded (or whenever the user finishes reviewing), **always proactively present all post-approval options** so a general user knows what is available:
 ```
 
-Microsoft Agent Framework's job ended at the draft boundary in Part 6. From here on, every downstream tool independently verifies `grading/approval.json` via SHA-256 digests and separates zero-cost local packaging from opt-in AI analysis, LMS export, double-gated email, and archival cleanup.
+Microsoft Agent Framework's job ended at the draft boundary in Part 2. From here on, every downstream tool independently verifies `grading/approval.json` via SHA-256 digests and separates zero-cost local packaging from opt-in AI analysis, LMS export, double-gated email, and archival cleanup.
 
 ![Post-Approval Outputs: Analytics, LMS Export, Email & Cleanup](media/31-hil-delivery.png)
 
@@ -147,6 +147,6 @@ def compare_marks(proposed, reference, material_error_threshold):
 
 A pilot should enforce explicit **No-Go conditions**: stop on unresolved identity mappings, clipped answers affecting marks, unexplained report disagreements, missing consent, or unverified pricing. The goal of this entire architecture is an inspectable chain—from original scan and crop, through Skill policy, Agent Framework graph, and Azure OpenAI proposal, to cryptographically approved teacher output.
 
-Return to the [series index](README.md) for all eight articles, editable Mermaid diagrams, and publishing assets.
+Return to the [series index](README.md) for all five articles, editable Mermaid diagrams, and publishing assets.
 
 **Implementation references:** [offline statistics](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/analytics.py), [AI analysis & Office reports](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/advanced.py), [Moodle export](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/moodle.py), and [cleanup & retention](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cleanup.py).

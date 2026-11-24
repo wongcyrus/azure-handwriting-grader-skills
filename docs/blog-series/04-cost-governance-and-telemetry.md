@@ -1,8 +1,8 @@
-# Fail-Closed Cost Governance: Retail Price Verification, Token Math, and Caching
+# Fail-Closed Cost Governance: Retail Price Verification, Token Accounting, and Scoped Caching
 
-*Part 7 of 8 · MS MVP Technical Series · Azure Pricing API, Runtime Latches & Telemetry*
+*Part 4 of 5 · MS MVP Technical Series · Azure Pricing API, Runtime Latches & Telemetry*
 
-![AI-generated conceptual banner for Fail-Closed Cost and Data Governance.](media/07-banner.png)
+![AI-generated conceptual banner for Fail-Closed Cost and Data Governance.](media/04-banner.png)
 
 Asking an LLM "how much will this cost?" is a recipe for silent budget surprises. Hardcoding stale per-token constants in Python isn't much better—regional Azure rates differ, long-context thresholds change per-token pricing, and image generation or hosted search tools carry completely separate meters.
 
@@ -137,6 +137,6 @@ Two critical boundaries apply:
 - **`verify-rubric` is deliberately uncached**: Search-grounded fact checking should reflect current web results, not stale cached snippets.
 - **Cache hits do not bypass governance**: Even when a response is served from local cache, `--confirm-cost` consent (where required by the command) and full human review (`review-grading` / `approve-*`) remain mandatory. Similarly, `store=False` on Responses API requests is a request-level setting, not a substitute for institutional review of Azure data-retention, access-control, and compliance policies.
 
-Next: [Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup](08-pilot-and-outputs.md).
+Next: [Post-Approval Delivery: Offline Analytics, Office Reports, Moodle/Email Gates, and Pilot Measurement](05-analytics-lms-email-and-pilot.md).
 
 **Implementation references:** [price verification](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/pricing.py), [usage accounting](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/telemetry.py), and [scoped caching](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cache.py).

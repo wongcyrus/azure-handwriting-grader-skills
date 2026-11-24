@@ -18,14 +18,11 @@ SOURCES = ("mvp.png", "azure-openai.svg", "microsoft-foundry.svg", "agent-framew
            *(f"artworks/{index:02}.jpg" for index in range(1, 9)),
            *(f"prompts/{index:02}.txt" for index in range(1, 9)))
 TITLES = [
-    (("Agent Skills &", "Architecture"), "SKILL.MD / PREFLIGHT / FFT SCAN CONSENSUS"),
-    (("Rubrics &", "Blind Review"), "EXTRACTION / BLIND EDITOR / HIL GATES"),
-    (("State Machine", "& Regrades"), "SHA-256 BINDING / ATOMIC LEDGER / ISOLATION"),
-    (("Regions &", "FFT Alignment"), "PYPDFIUM2 / 0-1000 BOXES / 4-QUADRANT FIT"),
-    (("Multi-Role", "Azure OpenAI"), "ROLE ROUTING / SYNC BATCH / STRICT SCHEMA"),
-    (("Microsoft Agent", "Framework"), "WORKFLOWBUILDER / THREAD BRIDGE / SUPPLY CHAIN"),
+    (("Agent Skills,", "Preflight & CV"), "SKILL.MD / CHECK-SCANS / REGIONS & FFT"),
+    (("Azure OpenAI &", "Agent Framework"), "ROLE ROUTING / SYNC BATCH / WORKFLOWBUILDER"),
+    (("HIL Review &", "State Machine"), "BLIND EDITOR / SHA-256 GATES / REGRADES"),
     (("Fail-Closed", "Cost Control"), "RETAIL PRICING API / TOKEN MATH / CACHE KEYS"),
-    (("Reports, LMS,", "Email & Clean"), "ANALYTICS / MOODLE / STARTTLS / SLIM ARCHIVE"),
+    (("Analytics, LMS,", "Email & Pilot"), "MOODLE / STARTTLS / SLIM ARCHIVE / 160 TESTS"),
 ]
 STYLES = [
     ("left", False, "#100a26", "#f4bb67"),
@@ -33,9 +30,6 @@ STYLES = [
     ("left", False, "#080e22", "#e5bb81"),
     ("right", False, "#032124", "#70e4d7"),
     ("left", True, "#ded1f0", "#62449e"),
-    ("right", False, "#061712", "#91d3b2"),
-    ("left", False, "#0a0908", "#e5bb68"),
-    ("right", True, "#f3e5cf", "#28727a"),
 ]
 
 
@@ -134,7 +128,7 @@ def build_banners():
             draw.text((x * scale, y * scale), value, font=face(size, bold), fill=color)
 
         text(origin, 49, "AZURE HANDWRITING GRADER", 13, accent, True)
-        text(origin, 77, f"PART {index:02} / 08  ·  MS MVP TECHNICAL SERIES", 12, secondary)
+        text(origin, 77, f"PART {index:02} / 05  ·  MS MVP TECHNICAL SERIES", 12, secondary)
         draw.rectangle((origin * scale, 124 * scale, (origin + 53) * scale, 127 * scale), fill=accent)
         for offset, line in enumerate(lines):
             assert draw.textlength(line, font=face(50, True)) <= 530 * scale

@@ -1,17 +1,17 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Post-Approval Delivery: Offline Analytics, Office Reports, Moodle/Email Gates, and Pilot Measurement</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup</h1>
-<p><em>Part 8 of 8 · MS MVP Technical Series · Analytics, LMS Export, Gated Email &amp; Pilot Measurement</em></p>
-<p><img alt="AI-generated conceptual banner for Reports, LMS, Email and Cleanup." src="media/08-banner.png" /></p>
+</style></head><body><article><h1>Post-Approval Delivery: Offline Analytics, Office Reports, Moodle/Email Gates, and Pilot Measurement</h1>
+<p><em>Part 5 of 5 · MS MVP Technical Series · Analytics, LMS Export, Gated Email &amp; Pilot Measurement</em></p>
+<p><img alt="AI-generated conceptual banner for Reports, LMS, Email and Cleanup." src="media/05-banner.png" /></p>
 <p>Once <code>grading/approval.json</code> is recorded, a teacher shouldn't have to memorize ten CLI subcommands—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> enforces a <strong>Post-Approval Menu</strong>:</p>
 <pre><code class="language-markdown">Immediately after `grading/approval.json` is recorded (or whenever the user finishes reviewing), **always proactively present all post-approval options** so a general user knows what is available:
 </code></pre>
-<p>Microsoft Agent Framework's job ended at the draft boundary in Part 6. From here on, every downstream tool independently verifies <code>grading/approval.json</code> via SHA-256 digests and separates zero-cost local packaging from opt-in AI analysis, LMS export, double-gated email, and archival cleanup.</p>
+<p>Microsoft Agent Framework's job ended at the draft boundary in Part 2. From here on, every downstream tool independently verifies <code>grading/approval.json</code> via SHA-256 digests and separates zero-cost local packaging from opt-in AI analysis, LMS export, double-gated email, and archival cleanup.</p>
 <p><img alt="Post-Approval Outputs: Analytics, LMS Export, Email &amp; Cleanup" src="media/31-hil-delivery.png" /></p>
 <p><em>Figure 1. Post-approval choices: offline <code>report</code> &amp; <code>analytics</code>, gated <code>ai-analysis</code> -&gt; <code>advanced-report</code>, <code>moodle-export</code>, double-gated <code>send-email</code>, and <code>clean</code> slim/full <code>.zip</code> archival.</em></p>
 <h2>1. Offline <code>report</code> &amp; <code>analytics</code> (zero AI cost)</h2>
@@ -99,5 +99,5 @@ a{color:#0067b8}em{color:#4b6175}
     }
 </code></pre>
 <p>A pilot should enforce explicit <strong>No-Go conditions</strong>: stop on unresolved identity mappings, clipped answers affecting marks, unexplained report disagreements, missing consent, or unverified pricing. The goal of this entire architecture is an inspectable chain—from original scan and crop, through Skill policy, Agent Framework graph, and Azure OpenAI proposal, to cryptographically approved teacher output.</p>
-<p>Return to the <a href="index.html">series index</a> for all eight articles, editable Mermaid diagrams, and publishing assets.</p>
+<p>Return to the <a href="index.html">series index</a> for all five articles, editable Mermaid diagrams, and publishing assets.</p>
 <p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/analytics.py">offline statistics</a>, <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/advanced.py">AI analysis &amp; Office reports</a>, <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/moodle.py">Moodle export</a>, and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cleanup.py">cleanup &amp; retention</a>.</p></article></body></html>
