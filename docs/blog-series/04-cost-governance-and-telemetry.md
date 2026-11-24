@@ -4,9 +4,15 @@
 
 ![AI-generated conceptual banner for Fail-Closed Cost and Data Governance.](media/04-banner.png)
 
-Asking an LLM "how much will this cost?" is a recipe for silent budget surprises. Hardcoding stale per-token constants in Python isn't much better—regional Azure rates differ, long-context thresholds change per-token pricing, and image generation or hosted search tools carry completely separate meters.
+## Introduction
 
-In `azure-handwriting-grader-skills`, cost governance is **fail-closed**: zero guessed default rates, live verification against Microsoft's public Retail Prices API, explicit `--confirm-cost` consent before every paid stage, and honest `UNPRICED` (`null`) accounting whenever pricing or usage is incomplete.
+A major barrier to enterprise AI adoption is the fear of uncontrolled, runaway cloud expenditures. In multimodal systems processing thousands of high-resolution image crops alongside long system prompts, relying on coarse estimates or asking an LLM "how much will this cost?" invites catastrophic budget overruns. Stale, hardcoded per-token constants in code are equally hazardous when regional deployment prices change or when models switch between short-context and long-context billing tiers.
+
+In Part 4 of our technical series on [Azure Handwriting Grader Skills](https://github.com/wongcyrus/azure-handwriting-grader-skills), we break down the engineering of a **fail-closed cost governance system**:
+- **Live Unauthenticated Price Discovery**: Querying Microsoft's public Retail Prices API (`prices.azure.com`) across ARM regions and deployment types without transmitting keys, endpoints, or student data.
+- **The Runtime `RunPricingVerifier` Latch**: An immutable execution gate that calculates configuration fingerprints and halts execution before any model call if pricing attestation is missing or invalid.
+- **Token Accounting and Prompt Caching**: Measuring exact input, cached, output, and cache-write tokens to maximize Azure OpenAI prompt-caching cost reductions (up to 50–80%).
+- **Honest Partial Run Accounting**: Recording unpriced tools and free-tier resources with explicit `UNPRICED` markers rather than falsifying zero-dollar ledgers.
 
 As [SKILL.md](../../skills/handwriting-grading/SKILL.md) specifies:
 

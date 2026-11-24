@@ -8,8 +8,14 @@ a{color:#0067b8}em{color:#4b6175}
 </style></head><body><article><h1>Human-in-the-Loop by Design: Blind Score Review, Cryptographic State Machines, and Isolated Regrades</h1>
 <p><em>Part 3 of 5 · MS MVP Technical Series · HIL Engineering, SHA-256 Gates &amp; Recovery</em></p>
 <p><img alt="AI-generated conceptual banner for HIL Review and State Machine." src="media/03-banner.png" /></p>
-<p>Most AI grading demos fail in production because they treat <strong>human review</strong> as a checkbox next to a spreadsheet of raw LLM numbers—and treat pipeline state as a collection of timestamps. If a teacher edits a cell after approval, or spots an unfair rubric criterion after grading finishes, a naive pipeline either silently publishes stale scores or overwrites its own audit trail.</p>
-<p>In <code>azure-handwriting-grader-skills</code>, Human-in-the-Loop (HIL) is enforced by a <strong>six-gate SHA-256 state machine</strong>, a <strong>blind browser score editor</strong>, <strong>atomic keyed checkpoints</strong>, and <strong>isolated child regrading</strong>. As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> states:</p>
+<h2>Introduction</h2>
+<p>Most AI proof-of-concept projects fail when transitioning to production because they treat <strong>Human-in-the-Loop (HIL)</strong> as an afterthought—typically a simple spreadsheet exported at the end of a black-box run. In educational grading, this naive approach collapses immediately: teachers face confirmation bias when reviewing AI-suggested marks, post-approval spreadsheet edits silently diverge from digital audit trails, and minor corrections to an exam rubric require re-grading the entire student cohort at immense financial cost.</p>
+<p>In Part 3 of our series on <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills">Azure Handwriting Grader Skills</a>, we examine the cryptographic and architectural patterns required to make human oversight mathematically sound and crash-resilient:
+- <strong>The Six-Gate Cryptographic State Machine</strong>: Binding every pipeline milestone with SHA-256 digests so that modifying an upstream asset (such as attendance, rubric, or bounding boxes) instantly invalidates downstream approvals.
+- <strong>Blind Browser Review UI</strong>: Eliminating confirmation bias by forcing human reviewers to independently score student responses before revealing the model's suggested marks.
+- <strong>Atomic Crash-Safe Checkpoints</strong>: Persisting intermediate grading batches in keyed JSON files to survive network disruptions or container restarts without duplicating spend.
+- <strong>Isolated Child Regrading</strong>: Re-evaluating disputed questions or modified rubric criteria in isolated branch workspaces without overwriting historical audit trails.</p>
+<p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> states:</p>
 <pre><code class="language-markdown">Never infer approval from a saved file, a passing test or a model response.
 </code></pre>
 <p><img alt="Six-Gate Cryptographic HIL State Machine &amp; Pipeline" src="media/11-architecture.png" /></p>

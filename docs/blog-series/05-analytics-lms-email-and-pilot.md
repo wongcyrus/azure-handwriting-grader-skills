@@ -4,6 +4,16 @@
 
 ![AI-generated conceptual banner for Reports, LMS, Email and Cleanup.](media/05-banner.png)
 
+## Introduction
+
+The ultimate benchmark of an enterprise AI grading system is not how well it invokes models, but how safely and effectively it delivers value after the grading is complete. Once human educators verify and approve student scores, the pipeline must provide rich pedagogical analytics, package grades for Learning Management Systems (LMS), deliver individualized feedback to students, and cleanly archive workspace artifacts—all while preventing unauthorized data leaks or unintended cloud charges.
+
+In the final installment of our series on [Azure Handwriting Grader Skills](https://github.com/wongcyrus/azure-handwriting-grader-skills), we explore the post-approval lifecycle:
+- **Zero-Cost Offline Analytics & Reports**: Generating comprehensive Excel scorebooks, facility/discrimination psychometrics, and Matplotlib score distribution box plots using local Python algorithms.
+- **Opt-In AI Misconception Analysis**: Providing narrative student feedback and cohort misconception analysis under explicit user consent and separate approval gates.
+- **Moodle LMS Export & Double-Gated Email**: Formatting sanitized grades for LMS ingestion and executing dry-run-validated, rate-limited email dispatches to students.
+- **Workspace Hygiene & Pilot Economics**: Generating compact audit archives and analyzing real-world pilot data comparing human grading hours against AI assistance.
+
 Once `grading/approval.json` is recorded, a teacher shouldn't have to memorize ten CLI subcommands—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why [SKILL.md](../../skills/handwriting-grading/SKILL.md) enforces a **Post-Approval Menu**:
 
 ```markdown

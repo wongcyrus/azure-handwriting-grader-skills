@@ -4,9 +4,17 @@
 
 ![AI-generated conceptual banner for HIL Review and State Machine.](media/03-banner.png)
 
-Most AI grading demos fail in production because they treat **human review** as a checkbox next to a spreadsheet of raw LLM numbers—and treat pipeline state as a collection of timestamps. If a teacher edits a cell after approval, or spots an unfair rubric criterion after grading finishes, a naive pipeline either silently publishes stale scores or overwrites its own audit trail.
+## Introduction
 
-In `azure-handwriting-grader-skills`, Human-in-the-Loop (HIL) is enforced by a **six-gate SHA-256 state machine**, a **blind browser score editor**, **atomic keyed checkpoints**, and **isolated child regrading**. As [SKILL.md](../../skills/handwriting-grading/SKILL.md) states:
+Most AI proof-of-concept projects fail when transitioning to production because they treat **Human-in-the-Loop (HIL)** as an afterthought—typically a simple spreadsheet exported at the end of a black-box run. In educational grading, this naive approach collapses immediately: teachers face confirmation bias when reviewing AI-suggested marks, post-approval spreadsheet edits silently diverge from digital audit trails, and minor corrections to an exam rubric require re-grading the entire student cohort at immense financial cost.
+
+In Part 3 of our series on [Azure Handwriting Grader Skills](https://github.com/wongcyrus/azure-handwriting-grader-skills), we examine the cryptographic and architectural patterns required to make human oversight mathematically sound and crash-resilient:
+- **The Six-Gate Cryptographic State Machine**: Binding every pipeline milestone with SHA-256 digests so that modifying an upstream asset (such as attendance, rubric, or bounding boxes) instantly invalidates downstream approvals.
+- **Blind Browser Review UI**: Eliminating confirmation bias by forcing human reviewers to independently score student responses before revealing the model's suggested marks.
+- **Atomic Crash-Safe Checkpoints**: Persisting intermediate grading batches in keyed JSON files to survive network disruptions or container restarts without duplicating spend.
+- **Isolated Child Regrading**: Re-evaluating disputed questions or modified rubric criteria in isolated branch workspaces without overwriting historical audit trails.
+
+As [SKILL.md](../../skills/handwriting-grading/SKILL.md) states:
 
 ```markdown
 Never infer approval from a saved file, a passing test or a model response.

@@ -18,7 +18,7 @@ syntax to that site's [authoring reference](https://learn.microsoft.com/en-us/co
 The actual publishing platform and editorial requirements still need confirmation.
 These are editorial drafts, not a claim of Microsoft acceptance or endorsement.
 
-Banner exports are 1200 x 630 PNG with 2400 x 1260 JPEG layout masters. That is our working
+Banner exports are 1200 x 500 PNG with 2400 x 1000 JPEG layout masters. That is our working
 recommendation, not a verified mandatory Microsoft banner dimension. Confirm the
 destination editor's requirements and cropping. Keep in-body infographic artwork
 separate from banners.

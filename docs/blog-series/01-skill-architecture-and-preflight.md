@@ -4,9 +4,17 @@
 
 ![AI-generated conceptual banner for Agent Skills and Exam Architecture.](media/01-banner.png)
 
-When building AI workflows for real-world domains like education, the hardest engineering problem is rarely the model call itself. It is **where the AI stops and deterministic software takes over**.
+## Introduction
 
-In [Azure Handwriting Grader Skills](https://github.com/wongcyrus/azure-handwriting-grader-skills), we intentionally separated the system into four distinct layers: teacher intent in a coding assistant (such as GitHub Copilot CLI), reusable **Agent Skill** policy in `skills/handwriting-grading/SKILL.md`, a deterministic **Python CLI**, and **Microsoft Agent Framework** wrapping **Azure OpenAI**. Understanding why these layers are decoupled—and how the pipeline validates inputs, rubrics, and bounding-box geometry before spending a single grading token—is the foundation of the architecture.
+Grading handwritten student examinations is one of the most time-consuming and high-stakes responsibilities in education. While multimodal large language models (LLMs) possess impressive visual recognition capabilities, deploying them directly in an academic grading workflow introduces severe risks: hallucinated criteria, inconsistent scoring rubrics, unpredictable token consumption, and accidental exposure of student data. The solution is not to surrender the process to autonomous AI loops, but to construct a **deterministic software harness** where AI operates under strict boundary conditions.
+
+In this 5-part Microsoft MVP technical series, we dissect the architecture of [Azure Handwriting Grader Skills](https://github.com/wongcyrus/azure-handwriting-grader-skills)—an open-source, enterprise-grade system designed to grade handwritten exams with human-in-the-loop oversight on Azure OpenAI. The hardest engineering problem in real-world AI is rarely the model call itself; it is **where the AI stops and deterministic software takes over**.
+
+In Part 1, we focus on the architectural foundation:
+- **The Four-Layer Architecture**: Decoupling teacher intent in a conversational assistant, reusable **Agent Skill** policy in `skills/handwriting-grading/SKILL.md`, deterministic Python command-line tooling, and **Microsoft Agent Framework** workflow orchestration.
+- **Fail-Fast Preflight Validation**: Path jailing, student roster reconciliation, and strict multi-page scan verification before touching a model or spending a token.
+- **Two-Pass Rubric Engineering**: Transforming unformatted teacher Word and Excel documents into structured JSON schemas with cross-criteria validation.
+- **Computer Vision Region Pipeline**: Sub-millimeter bounding-box extraction, image resolution normalization, and coordinate anchoring for handwriting crops.
 
 ![Four-Layer Agent Skill Architecture](media/28-skill-layers.png)
 

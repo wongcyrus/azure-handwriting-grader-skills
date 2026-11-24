@@ -98,7 +98,7 @@ def build_banners():
             zip(TITLES, STYLES), start=1):
         with Image.open(BRANDING / "artworks" / f"{index:02}.jpg") as original:
             artwork = original.convert("RGB")
-        hero = ImageOps.fit(artwork, (2400, 1030), Image.Resampling.LANCZOS)
+        hero = ImageOps.fit(artwork, (2400, 830), Image.Resampling.LANCZOS)
         hero = hero.filter(ImageFilter.GaussianBlur(28 * scale))
         full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
         x = hero.width - full_scene.width if side == "left" else 0
@@ -117,7 +117,7 @@ def build_banners():
             edge = offset if side == "left" else hero.width - offset - 1
             shading.line((edge, 0, edge, hero.height), fill=(*rgb, alpha))
         hero = Image.alpha_composite(hero.convert("RGBA"), shade).convert("RGB")
-        image = Image.new("RGB", (2400, 1260), "white")
+        image = Image.new("RGB", (2400, 1000), "white")
         image.paste(hero, (0, 0))
         draw = ImageDraw.Draw(image)
         origin = 56 if side == "left" else 645
@@ -127,42 +127,42 @@ def build_banners():
         def text(x, y, value, size, color, bold=False):
             draw.text((x * scale, y * scale), value, font=face(size, bold), fill=color)
 
-        text(origin, 49, "AZURE HANDWRITING GRADER", 13, accent, True)
-        text(origin, 77, f"PART {index:02} / 05  ·  MS MVP TECHNICAL SERIES", 12, secondary)
-        draw.rectangle((origin * scale, 124 * scale, (origin + 53) * scale, 127 * scale), fill=accent)
+        text(origin, 35, "AZURE HANDWRITING GRADER", 12, accent, True)
+        text(origin, 58, f"PART {index:02} / 05  ·  MS MVP TECHNICAL SERIES", 11, secondary)
+        draw.rectangle((origin * scale, 88 * scale, (origin + 53) * scale, 91 * scale), fill=accent)
         for offset, line in enumerate(lines):
-            assert draw.textlength(line, font=face(50, True)) <= 530 * scale
-            text(origin - 3, 161 + offset * 66, line, 50, ink, True)
-        assert draw.textlength(topic, font=face(13, True)) <= 550 * scale
-        text(origin, 321, topic, 13, accent, True)
-        text(origin, 420, "AI drafts. Teachers decide.", 21, secondary)
+            assert draw.textlength(line, font=face(44, True)) <= 530 * scale
+            text(origin - 3, 115 + offset * 56, line, 44, ink, True)
+        assert draw.textlength(topic, font=face(12, True)) <= 550 * scale
+        text(origin, 245, topic, 12, accent, True)
+        text(origin, 325, "AI drafts. Teachers decide.", 18, secondary)
 
         for x in (287, 555, 833):
-            draw.line((x * scale, 532 * scale, x * scale, 613 * scale), fill="#dbe4ed", width=2)
-        text(43, 526, "AUTHOR / MICROSOFT MVP", 10, "#48596c", True)
-        place(image, mvp, 43, 546, 190, 77)
-        place(image, icons["azure-openai"], 311, 548, 60, 60)
-        text(390, 548, "Azure", 20, "#17344f", True)
-        text(390, 577, "OpenAI", 20, "#17344f", True)
-        place(image, icons["microsoft-foundry"], 583, 548, 60, 60)
-        text(663, 548, "Microsoft", 16, "#17344f")
-        text(663, 575, "Foundry", 21, "#17344f", True)
-        place(image, framework, 857, 524, 98, 98)
+            draw.line((x * scale, 425 * scale, x * scale, 490 * scale), fill="#dbe4ed", width=2)
+        text(43, 422, "AUTHOR / MICROSOFT MVP", 9, "#48596c", True)
+        place(image, mvp, 43, 438, 170, 54)
+        place(image, icons["azure-openai"], 311, 428, 54, 54)
+        text(380, 430, "Azure", 17, "#17344f", True)
+        text(380, 455, "OpenAI", 17, "#17344f", True)
+        place(image, icons["microsoft-foundry"], 583, 428, 54, 54)
+        text(652, 430, "Microsoft", 14, "#17344f")
+        text(652, 454, "Foundry", 18, "#17344f", True)
+        place(image, framework, 857, 418, 76, 76)
         for offset, line in enumerate(("Microsoft", "Agent", "Framework")):
-            text(979, 539 + offset * 25, line, 17, "#17344f", offset > 0)
+            text(950, 428 + offset * 21, line, 14, "#17344f", offset > 0)
 
-        image.save(ROOT / "masters" / f"{index:02}-banner-2400x1260.jpg",
+        image.save(ROOT / "masters" / f"{index:02}-banner-2400x1000.jpg",
                    quality=88, subsampling=0, optimize=True)
-        image.resize((1200, 630), Image.Resampling.LANCZOS).save(
+        image.resize((1200, 500), Image.Resampling.LANCZOS).save(
             ROOT / "media" / f"{index:02}-banner.png", optimize=True,
         )
-        (ROOT / "masters" / f"{index:02}-banner-2400x1260.png").unlink(missing_ok=True)
+        (ROOT / "masters" / f"{index:02}-banner-2400x1000.png").unlink(missing_ok=True)
 
-    sheet = Image.new("RGB", (1200, 1260), "white")
-    for index in range(8):
+    sheet = Image.new("RGB", (1200, 1000), "white")
+    for index in range(min(len(TITLES), 5)):
         with Image.open(ROOT / "media" / f"{index + 1:02}-banner.png") as banner:
-            tile = banner.resize((600, 315), Image.Resampling.LANCZOS)
-        sheet.paste(tile, ((index % 2) * 600, (index // 2) * 315))
+            tile = banner.resize((600, 250), Image.Resampling.LANCZOS)
+        sheet.paste(tile, ((index % 2) * 600, (index // 2) * 250))
     sheet.save(ROOT / "banner-prototypes/04-distinct-banners-preview.jpg", quality=90, optimize=True)
     originals = Image.new("RGB", (1200, 1600), "white")
     for index in range(8):

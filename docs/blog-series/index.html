@@ -10,15 +10,17 @@ a{color:#0067b8}em{color:#4b6175}
 the assistant's decisions, Python implementation, Azure prompts and real outputs.
 Prepared 24 November 2026 using the existing cleared example and saved reports.</p>
 <h2>Read and publish</h2>
-<p>Open <code>index.html</code> for the article list. Each article has a Markdown master and a
-rendered HTML version. For a rich-text blog editor, copy the rendered article
-body, paste, then upload numbered images separately and check heading/code
-formatting. Do not paste raw Learn-specific Markdown into a rich-text editor.
+<p>Open <code>index.html</code> for the article list. Each article has a Markdown master, a
+rendered HTML version, and an MS Word (<code>.docx</code>) export in <code>word/</code> with embedded
+images, tables, code blocks, and hyperlinks ready for copy-pasting into a
+rich-text blog editor. For a rich-text blog editor, you can copy directly from
+the <code>.docx</code> file (or from the rendered HTML body and upload numbered images
+separately). Do not paste raw Learn-specific Markdown into a rich-text editor.
 For Microsoft Learn's documentation pipeline, use Markdown and adapt image
 syntax to that site's <a href="https://learn.microsoft.com/en-us/contribute/content/markdown-reference">authoring reference</a>.</p>
 <p>The actual publishing platform and editorial requirements still need confirmation.
 These are editorial drafts, not a claim of Microsoft acceptance or endorsement.</p>
-<p>Banner exports are 1200 x 630 PNG with 2400 x 1260 JPEG layout masters. That is our working
+<p>Banner exports are 1200 x 500 PNG with 2400 x 1000 JPEG layout masters. That is our working
 recommendation, not a verified mandatory Microsoft banner dimension. Confirm the
 destination editor's requirements and cropping. Keep in-body infographic artwork
 separate from banners.</p>
@@ -115,7 +117,8 @@ documentation. Other skill hosts can have different discovery/registration rules
 <a href="https://github.com/wongcyrus/azure-image-generation-skills">image-generation repository</a>
 is a companion tool, not a grader dependency.</p>
 <h2>What this package contains</h2>
-<p><code>media/</code>: numbered output images and eight banners.
+<p><code>media/</code>: numbered output images and banners.
+<code>word/</code>: MS Word (<code>.docx</code>) exports for all five articles, with embedded images and formatting.
 <code>masters/</code>: larger banner masters.
 <code>branding/</code>: publication artwork, original marks and provenance.
 <code>diagrams/</code>: editable Mermaid for explanatory diagrams, accompanied by PNGs.

@@ -4,9 +4,15 @@
 
 ![AI-generated conceptual banner for Multi-Role Azure OpenAI and Agent Framework.](media/02-banner.png)
 
-Sending every task to a single "do-everything" model alias is expensive and brittle. Equally dangerous is the opposite extreme: building an autonomous multi-agent debate loop where LLM personas argue over marks without deterministic bounds or supply-chain hygiene.
+## Introduction
 
-In `azure-handwriting-grader-skills`, we combine **multi-role Azure OpenAI routing** with **Microsoft Agent Framework** (`WorkflowBuilder`, `Executor`, `WorkflowContext`, `@handler`) to create **explicit, typed, auditable state transitions** around a synchronous Python grading engine—while keeping `SKILL.md` as the conversational router and keeping human approval strictly outside the automated graph.
+In modern enterprise AI systems, sending every multimodal payload to a single monolithic "flagship" model alias is both financially unsustainable and operationally fragile. Routine tasks like OCRing student identifiers or extracting metadata do not warrant expensive multi-billion parameter reasoning engines, while nuanced multi-step diagram evaluation fails when delegated to lightweight models. At the same time, constructing open-ended autonomous agent debate loops introduces non-deterministic grading variances and race conditions that have no place in high-stakes academic grading.
+
+In Part 2 of our technical series on [Azure Handwriting Grader Skills](https://github.com/wongcyrus/azure-handwriting-grader-skills), we explore how to orchestrate high-throughput multimodal vision-language models without surrendering engineering control. We demonstrate how to combine **multi-role Azure OpenAI model routing** with **Microsoft Agent Framework** (`WorkflowBuilder`, `Executor`, `WorkflowContext`, `@handler`) to achieve typed, predictable, and auditable grading workflows:
+- **Specialized Deployment Routing**: Mapping discrete pipeline phases (spatial annotation, student metadata OCR, synchronous batch grading, and cohort analytics) to dedicated model tiers.
+- **Synchronous Multi-Image Batching**: Demystifying `--mode batch` vs. `--mode item` and executing synchronous multi-image requests (`responses.create()`) within token limits.
+- **Microsoft Agent Framework Orchestration**: Constructing typed execution graphs that enforce strict precondition checks and cleanly isolate model execution from the conversational shell.
+- **Zero Public Fallback**: Enforcing enterprise network boundaries with strict Azure private endpoint validation.
 
 ![Multi-Role Azure OpenAI Routing & Execution Modes](media/30-model-routing.png)
 

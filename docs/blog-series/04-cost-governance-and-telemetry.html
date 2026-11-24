@@ -8,8 +8,13 @@ a{color:#0067b8}em{color:#4b6175}
 </style></head><body><article><h1>Fail-Closed Cost Governance: Retail Price Verification, Token Accounting, and Scoped Caching</h1>
 <p><em>Part 4 of 5 · MS MVP Technical Series · Azure Pricing API, Runtime Latches &amp; Telemetry</em></p>
 <p><img alt="AI-generated conceptual banner for Fail-Closed Cost and Data Governance." src="media/04-banner.png" /></p>
-<p>Asking an LLM "how much will this cost?" is a recipe for silent budget surprises. Hardcoding stale per-token constants in Python isn't much better—regional Azure rates differ, long-context thresholds change per-token pricing, and image generation or hosted search tools carry completely separate meters.</p>
-<p>In <code>azure-handwriting-grader-skills</code>, cost governance is <strong>fail-closed</strong>: zero guessed default rates, live verification against Microsoft's public Retail Prices API, explicit <code>--confirm-cost</code> consent before every paid stage, and honest <code>UNPRICED</code> (<code>null</code>) accounting whenever pricing or usage is incomplete.</p>
+<h2>Introduction</h2>
+<p>A major barrier to enterprise AI adoption is the fear of uncontrolled, runaway cloud expenditures. In multimodal systems processing thousands of high-resolution image crops alongside long system prompts, relying on coarse estimates or asking an LLM "how much will this cost?" invites catastrophic budget overruns. Stale, hardcoded per-token constants in code are equally hazardous when regional deployment prices change or when models switch between short-context and long-context billing tiers.</p>
+<p>In Part 4 of our technical series on <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills">Azure Handwriting Grader Skills</a>, we break down the engineering of a <strong>fail-closed cost governance system</strong>:
+- <strong>Live Unauthenticated Price Discovery</strong>: Querying Microsoft's public Retail Prices API (<code>prices.azure.com</code>) across ARM regions and deployment types without transmitting keys, endpoints, or student data.
+- <strong>The Runtime <code>RunPricingVerifier</code> Latch</strong>: An immutable execution gate that calculates configuration fingerprints and halts execution before any model call if pricing attestation is missing or invalid.
+- <strong>Token Accounting and Prompt Caching</strong>: Measuring exact input, cached, output, and cache-write tokens to maximize Azure OpenAI prompt-caching cost reductions (up to 50–80%).
+- <strong>Honest Partial Run Accounting</strong>: Recording unpriced tools and free-tier resources with explicit <code>UNPRICED</code> markers rather than falsifying zero-dollar ledgers.</p>
 <p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> specifies:</p>
 <pre><code class="language-markdown">**Cost governance**: Before every paid stage, preview target, transferred data and
 estimated requests; independently verify current regional deployment rates and

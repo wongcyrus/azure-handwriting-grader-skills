@@ -426,7 +426,7 @@ for path in MEDIA.glob("*.png"):
         image.verify()
 for index in range(1, 6):
     with Image.open(MEDIA / f"{index:02}-banner.png") as image:
-        assert image.size == (1200, 630)
+        assert image.size == (1200, 500)
 for path in [*ROOT.glob("*.html"), ROOT / "branding/README.html"]:
     for target in re.findall(r'(?:src|href)="([^"]+)"', path.read_text()):
         if ":" not in target and not target.startswith("#"):
