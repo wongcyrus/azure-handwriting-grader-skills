@@ -1,0 +1,5 @@
+Scan orientation/sequence issues found (3):
+- PDF page 1 (Script #1, page 1): out of sequence — matches template page 2 instead of page 1. Fix page order manually.
+- PDF page 3 (Script #2, page 1): out of sequence — matches template page 2 instead of page 1. Fix page order manually.
+- PDF page 5 (Script #3, page 1): out of sequence — matches template page 2 instead of page 1. Fix page order manually.
+Fix the flagged pages manually in the source PDF or physical scan and re-run check-scans.

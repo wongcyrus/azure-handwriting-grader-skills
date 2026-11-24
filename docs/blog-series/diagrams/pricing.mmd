@@ -1,0 +1,6 @@
+flowchart TD
+  A[Offline preview] --> B[Explicit cost and data consent]
+  B --> C{Required prices verified?}
+  C -->|No| D[Block; review evidence]
+  C -->|Yes| E[Authorized SDK request]
+  E --> F[Usage evidence and estimated cost]

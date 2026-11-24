@@ -1,0 +1,30 @@
+article,step,evidence,status
+01,Original exam page,media/01-original-page.png,Actual PDF rendering
+01,Structural preflight,media/02-preflight.png,Fresh read-only command output
+01,Scan order check,media/03-scan-check.png,Fresh read-only blocking output; unresolved
+01,Rubric content,media/04-rubric.png,Actual saved workbook excerpt
+01,Answer boxes,media/05-region-overlay.png,Saved coordinates overlaid locally; not browser UI
+02,Identity review,media/06-identity-comparison.png,Actual raw JSON versus saved scorebook; not a replay of edits
+02,Answer inspection,media/07-john-q3-crop.png,Current saved-image reconstruction; historical request payload unknown
+02,Flagged mark review,media/08-review-flags.png,Actual saved workbook fields
+02,Review consistency check,observed/review-check.txt,Fresh read-only output; not an approval
+02,Marked report,media/09-marked-peter-page.png,Actual historical version-1 PDF rendering
+02,Scorebook,media/10-scorebook.png,Actual saved workbook excerpt with legacy filenames
+02,Email and Moodle delivery,,Procedure only; no preview or delivery captured
+03,Approval binding,media/12-approval-evidence.png,Selected saved artifact fields; not fresh current-approval certification
+03,Recovery and child regrade,,Source/command examples only; no recovery run captured
+04,Page and crop comparison,media/13-john-page.png,Actual saved image with explanatory overlay
+04,Alignment guard,snippets/alignment-source.py.txt,Source contract; no repaired-run outcome claimed
+05,Batch grading,media/14-grading-evidence.png,Actual saved mode and checkpoint counts
+05,Model grading result,media/15-q2-result.png,Actual saved result excerpt
+06,Executor sequence,diagrams/framework.mmd,Code-derived diagram; no historical framework event trace captured
+07,Price verification,media/18-pricing-evidence.png,Whitelisted saved journal evidence; no fresh lookup
+07,Cost accounting,media/19-cost-phases.png,Actual accumulated summary; not grading-only or provider invoice
+08,Statistics,media/20-statistics.png,Actual saved workbook excerpt
+08,Question distributions,media/21-question-boxplots.png,Actual saved chart
+08,AI feedback,media/22-analysis-excerpt.png,Actual saved reviewed-workbook excerpt
+08,Office report inventory,media/23-office-outputs.png,Actual file/package inspection
+08,Failed and later successful images,media/24-report-attempts.png,Actual historical manifests
+08,Generated infographic,media/25-class-infographic.png,Actual saved AI artwork; branding limitations disclosed
+08,Word report,media/26-teacher-report-page.png,Actual document rendering; visible Markdown-formatting limitation
+08,PowerPoint chart,media/27-class-chart-slide.png,Actual saved slide rendering

@@ -1,0 +1,51 @@
+# Source: src/handwriting_grader/reporting.py; lines 1-48
+# Excerpt from inspected source, not a runnable standalone program.
+
+"""Generate reviewed score workbooks and scored script PDFs."""
+
+import math
+import re
+import unicodedata
+
+from openpyxl import Workbook
+from PIL import Image, ImageDraw, ImageFont
+from pypdf import PdfReader, PdfWriter
+
+from .grade_review import read_approved_grading
+from .grading import safe_append
+from .regions import atomic_json, file_hash, resolve_path
+from .rubric import question_key
+
+
+def script_pdf_name(student_id, name, script_index):
+    def component(value):
+        text = unicodedata.normalize("NFC", str(value))
+        text = re.sub(r"[^\w-]+", "_", text).strip("_") or "student"
+        # Bound bytes rather than characters for portable Unicode filenames.
+        return text.encode("utf-8")[:96].decode("utf-8", errors="ignore")
+
+    return f"{component(student_id)}_{component(name)}_script-{script_index + 1:05d}.pdf"
+
+
+def report_rows(validated):
+    _, _, results, questions, roster, identities, marks = validated
+    baselines = {
+        (item["script_index"], question_key(item["question"])): item
+        for item in results["marks"]
+    }
+    rows = []
+    for index in sorted(identities):
+        student_id = identities[index]
+        question_marks = [marks[(index, question_key(q["question_number"]))] for q in questions]
+        rows.append({
+            "script_index": index,
+            "id": student_id,
+            "name": roster[student_id]["name"],
+            "class": roster[student_id]["class"],
+            "marks": question_marks,
+            "total": math.fsum(question_marks),
+            "pdf": f"pdfs/{script_pdf_name(student_id, roster[student_id]['name'], index)}",
+        })
+    return rows, baselines
+
+

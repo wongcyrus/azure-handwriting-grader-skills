@@ -1,5 +1,8 @@
 # Azure Handwriting Grader Skills
 
+**Blog series:** [Read the eight output-led articles](docs/blog-series/README.md).
+The articles include prompts, code, actual example outputs and publishing assets.
+
 Human-reviewed handwriting grading with **Azure OpenAI** and **Microsoft Agent
 Framework**. This is an Azure-only port of
 [gemini-handwriting-grader-skills](https://github.com/wongcyrus/gemini-handwriting-grader-skills).

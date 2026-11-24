@@ -1,0 +1,67 @@
+# Source: src/handwriting_grader/alignment.py; lines 42-105
+# Excerpt from inspected source, not a runnable standalone program.
+
+    cur_arr: np.ndarray,
+    full_w: int,
+    full_h: int,
+    *,
+    max_shift_px: float = 150.0,
+    max_angle_deg: float = 5.0,
+) -> tuple[float, float, float]:
+    """Estimate (tx, ty, theta_rad) to align cur_arr onto ref_arr via 4-quadrant phase correlation."""
+    h, w = ref_arr.shape
+    if ref_arr.shape != cur_arr.shape or h < 32 or w < 32:
+        return 0.0, 0.0, 0.0
+    if float(ref_arr.max()) <= 0.0 or float(cur_arr.max()) <= 0.0:
+        return 0.0, 0.0, 0.0
+
+    quads = (
+        (0, h // 2, 0, w // 2, full_w * 0.25, full_h * 0.25),
+        (0, h // 2, w // 2, w, full_w * 0.75, full_h * 0.25),
+        (h // 2, h, 0, w // 2, full_w * 0.25, full_h * 0.75),
+        (h // 2, h, w // 2, w, full_w * 0.75, full_h * 0.75),
+    )
+    pts = []
+    for y0, y1, x0, x1, cx, cy in quads:
+        dx, dy, score = _phase_correlation(ref_arr[y0:y1, x0:x1], cur_arr[y0:y1, x0:x1])
+        pts.append((cx - full_w / 2.0, cy - full_h / 2.0, dx, dy, score))
+
+    weights = np.array([max(p[4], 0.0) for p in pts], dtype=np.float64)
+    if float(weights.sum()) < 0.15:
+        return 0.0, 0.0, 0.0
+
+    # Reject a single outlier quadrant (e.g. heavy handwriting/diagram) if the other 3 agree
+    dx_all = np.array([p[2] for p in pts], dtype=np.float64)
+    dy_all = np.array([p[3] for p in pts], dtype=np.float64)
+    med_dx = float(np.median(dx_all))
+    med_dy = float(np.median(dy_all))
+    dists = np.hypot(dx_all - med_dx, dy_all - med_dy)
+    inliers = dists <= 15.0
+    if int(np.sum(inliers)) >= 3:
+        weights = np.where(inliers, weights, 0.0)
+        if float(weights.sum()) <= 0.0:
+            return 0.0, 0.0, 0.0
+
+    weights /= weights.sum()
+
+    px = np.array([p[0] for p in pts], dtype=np.float64)
+    py = np.array([p[1] for p in pts], dtype=np.float64)
+    dx = dx_all
+    dy = dy_all
+
+    tx = float(np.sum(weights * dx))
+    ty = float(np.sum(weights * dy))
+    denom = float(np.sum(weights * (px ** 2 + py ** 2)))
+    theta = float(np.sum(weights * ((dy - ty) * px - (dx - tx) * py)) / denom) if denom > 0.0 else 0.0
+
+    # Different answers can yield unrelated peaks; require a shared rigid motion.
+    residuals = np.hypot(dx - (tx - theta * py), dy - (ty + theta * px))
+    if np.count_nonzero((weights > 0.0) & (residuals <= 15.0)) < 3:
+        return 0.0, 0.0, 0.0
+
+    if abs(tx) > max_shift_px or abs(ty) > max_shift_px or abs(math.degrees(theta)) > max_angle_deg:
+        return 0.0, 0.0, 0.0
+    return tx, ty, theta
+
+
+def warp_image_to_reference(image: Image.Image, tx: float, ty: float, theta: float) -> Image.Image:

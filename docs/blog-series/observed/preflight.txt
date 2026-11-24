@@ -1,0 +1,2 @@
+Preflight passed: 4 students, 0 absent, 8 pages, 2 pages per script.
+Human confirmation of scan order and layout is still required.

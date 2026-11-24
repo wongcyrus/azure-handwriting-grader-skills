@@ -1,0 +1,141 @@
+{
+  "repository": "wongcyrus/azure-handwriting-grader-skills",
+  "revision": "b6af53dd1cf4cf74b9a50591f0e775a3b1533133",
+  "captured_date": "2026-11-24",
+  "sources": [
+    {
+      "path": "example/VTC Test.pdf",
+      "sha256": "316b167bbdd1c31717bfe6565a0cfda30017cbd20cb577b906347c9b0e60d385"
+    },
+    {
+      "path": "example/output/reports/pdfs/script-00001.pdf",
+      "sha256": "4ea64f2dab877483e36372ed7cf9feff1a1bec148d84ec628aa5dac43716607e"
+    },
+    {
+      "path": "docs/blog-series/previews/teacher-report.pdf",
+      "sha256": "1fbfa26b3f34c2a3cfabeacbbe0fd7074a56e5c974e1f53ead4674c571a0acec"
+    },
+    {
+      "path": "docs/blog-series/previews/class-presentation.pdf",
+      "sha256": "0dea3a8f587b07ebd64af70d160b919c78caf3be8be701148b8ea6b9e2d8c11c"
+    },
+    {
+      "path": "example/output/rubric/rubric.xlsx",
+      "sha256": "4d45c052c3339c81dadfd3b74ad789733e31088ac92d998af6e523a156770295"
+    },
+    {
+      "path": "example/output/regions/annotations.json",
+      "sha256": "e83e755a7c3e95d9e6120281783508ae30966202caea0be143e0217bfe2e706d"
+    },
+    {
+      "path": "example/output/regions/images/0.jpg",
+      "sha256": "182451e91e8902d49e97c4b0d1fd9c6ccfcf89b104e7e9219092bdcb9cd945dc"
+    },
+    {
+      "path": "example/output/grading/results.json",
+      "sha256": "1d57a7b623ed10d797058671979abf7747b66dea2b1e9ecb4e1e3401648890e0"
+    },
+    {
+      "path": "example/output/reports/score_report.xlsx",
+      "sha256": "c7ae6ca979d3a81a69f4903abf4c2b0c015b4e79231a06b11138a24a303a3310"
+    },
+    {
+      "path": "example/output/grading/images/4.jpg",
+      "sha256": "1bbb7ebfeee38363b2760954b5cb543d953e5156a2d2e7623a5b520303d8cba8"
+    },
+    {
+      "path": "example/output/grading/review.xlsx",
+      "sha256": "6196dd87e99cc75535cd9cf3645c2d8bdcdbfe324469ef80503466932a0b0e5f"
+    },
+    {
+      "path": "example/output/grading/approval.json",
+      "sha256": "c9f59d49f66488573b608f2e9d96d00cbfa19afcc040062c761d045047c34d60"
+    },
+    {
+      "path": "example/output/grading/manifest.json",
+      "sha256": "272ce18253f09887963cae96d622aa7dd20b46a301fbedc89272948cbb265a9c"
+    },
+    {
+      "path": "example/output/rubric/telemetry/azure_price_checks.jsonl",
+      "sha256": "0adb7358404351b80e1044f24b870065795e828bbafa9edd2a9870ea10b0497d"
+    },
+    {
+      "path": "example/output/regions/telemetry/azure_price_checks.jsonl",
+      "sha256": "13e905e0be46e94c4f55c291c919807da78a26fb82c3dae5780b62b051b0ef3b"
+    },
+    {
+      "path": "example/output/grading/telemetry/azure_price_checks.jsonl",
+      "sha256": "5e6f49bde800ede09f54374a98dd82ff8f5ecd552330ed997a356dad94dd7b4e"
+    },
+    {
+      "path": "example/output/ai-analysis/telemetry/azure_price_checks.jsonl",
+      "sha256": "63691355feb3147625dff060e9258b8af86fb6a9df9c69f3b1bd79d8247161b7"
+    },
+    {
+      "path": "example/output/grading/cost_summary.json",
+      "sha256": "a447ce26ade8f4c39fd4e14388a405985d4c5799469cb2b0101ed549cc1d88d3"
+    },
+    {
+      "path": "example/output/analytics/statistics.xlsx",
+      "sha256": "377fedd0a4516c3a1b439b4a09779f2e40014ffee0a05f84b9576136237156e5"
+    },
+    {
+      "path": "example/output/analytics/question-boxplots-001.png",
+      "sha256": "de48717ad4800bb63282ae32cc87374b39c1c2faba80205ed3366e06f5b70471"
+    },
+    {
+      "path": "example/output/ai-analysis/review.xlsx",
+      "sha256": "fdd74d160bd37a248fd01ca9d8d909ce910200e281ba2adcfdb0eadacd9677f2"
+    },
+    {
+      "path": "example/output/ai-analysis/reports/class-presentation.pptx",
+      "sha256": "3fa4fefce6a4492ae09c2af9907200399e1ed23611a02f07adbc818381c4a601"
+    },
+    {
+      "path": "example/output/ai-analysis/reports/teacher-report.docx",
+      "sha256": "eb7c319d4a7a1a0f439e908b0b9cb52a620404d5189dc9ec3969878677831b4d"
+    },
+    {
+      "path": "example/output/ai-analysis/reports/manifest.json",
+      "sha256": "0b8f543b83905734a12e7f0ecaccc7d16afbee31a8e26035a212ec3ba53ed41f"
+    },
+    {
+      "path": "example/output/ai-analysis/reports-infographics/manifest.json",
+      "sha256": "226eeb975058c78edfb081971eb95a0909b581a5e47258091eece147c19b2559"
+    },
+    {
+      "path": "example/output/ai-analysis/reports-infographics-v2/manifest.json",
+      "sha256": "e9536e8a1b85180d42985279c1f4973c0f4a2f0660d6aac8f7d9438214964df2"
+    },
+    {
+      "path": "example/output/ai-analysis/reports-infographics-v2/infographics/class.png",
+      "sha256": "2e45e8d655ac92b7b30d1b8f717c99545e132ebcf208eedc535c4590b975d4ff"
+    },
+    {
+      "path": "src/handwriting_grader/workflow.py",
+      "sha256": "0f9a7adfeaa3daf64aca95fa4efd6bd145441ead3f9370204b1967e428f24812"
+    },
+    {
+      "path": "src/handwriting_grader/grading.py",
+      "sha256": "0f583b611ce8b3b0d962d4ce185789b39f0a6568cb653760f9bcf34e4201a880"
+    },
+    {
+      "path": "src/handwriting_grader/azure_ai.py",
+      "sha256": "27d1d6b9bfcbe5904cd23368d86b0744d115f06dbd550c1a802b500d32cf4006"
+    },
+    {
+      "path": "src/handwriting_grader/alignment.py",
+      "sha256": "54563cf6ad55cdc69b6863d97ea0a5048d72f3ea9f421094e029c786fdd0cdd6"
+    },
+    {
+      "path": "src/handwriting_grader/analytics.py",
+      "sha256": "5b016d2122d86198dd1c98dc9e7c00e83923934dc1b6af321842d785731630fb"
+    },
+    {
+      "path": "src/handwriting_grader/reporting.py",
+      "sha256": "d9d90baeee515be1ee48f70e0ad78494be7c002ea6538f6a8740f8cd445340a6"
+    }
+  ],
+  "publication_permission": "Owner confirmed existing example details may be retained.",
+  "paid_calls_for_article_preparation": 0
+}

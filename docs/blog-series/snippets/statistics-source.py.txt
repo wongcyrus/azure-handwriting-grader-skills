@@ -1,0 +1,43 @@
+# Source: src/handwriting_grader/analytics.py; lines 1-40
+# Excerpt from inspected source, not a runnable standalone program.
+
+"""Offline statistics from explicitly approved scores."""
+
+import statistics
+
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
+from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference
+
+from .grade_review import read_approved_grading
+from .grading import safe_append
+from .regions import atomic_json, file_hash
+from .reporting import passing_policy, passing_rows, question_passing_policy, report_rows
+from .rubric import question_key
+
+
+def describe(scores):
+    return [len(scores), statistics.mean(scores), statistics.median(scores),
+            statistics.stdev(scores) if len(scores) > 1 else None, min(scores), max(scores)]
+
+
+def question_boxplots(root, rows, questions):
+    paths = []
+    for start in range(0, len(questions), 20):
+        selected = questions[start:start + 20]
+        values = [[row["marks"][index] for row in rows]
+                  for index in range(start, start + len(selected))]
+        labels = [str(question["question_number"]) for question in selected]
+        figure = Figure(figsize=(max(8, len(selected) * 0.6), 6), layout="constrained")
+        FigureCanvasAgg(figure)
+        axis = figure.subplots()
+        axis.boxplot(values, tick_labels=labels, patch_artist=True)
+        axis.set_title("Question score distributions")
+        axis.set_xlabel("Question")
+        axis.set_ylabel("Reviewed marks")
+        axis.tick_params(axis="x", labelrotation=45)
+        filename = f"question-boxplots-{len(paths) + 1:03}.png"
+        figure.savefig(root / filename, dpi=150)
+        figure.clear()
+        paths.append(filename)

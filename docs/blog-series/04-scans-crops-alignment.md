@@ -1,0 +1,124 @@
+# Getting the image right: scans, crops and alignment
+
+*Part 4 of 8 · For developers and technical educators*
+
+![Series banner: Getting the image right, with full pages, crop boundaries and conservative alignment.](media/04-banner.png)
+
+A handwriting model cannot grade content it never receives. In this example, the model's own saved comments repeatedly say that writing is cut off. The useful debugging path starts with pixels and coordinates, not a stronger grading prompt.
+
+This article compares saved page images, saved crop coordinates and the actual grading warnings. It also examines a conservative alignment guard in the source. We do not claim to have repaired or regraded the example during publication preparation.
+
+## Step 1: Establish page structure before cropping
+
+The current preflight reports four two-page scripts across eight pages. The subsequent scan check flags possible page-sequence problems on PDF pages 1, 3 and 5.
+
+![Scan-check output identifying three possible page-order problems.](media/03-scan-check.png)
+
+*Figure 1. Real read-only check captured on 24 November 2026. A detector warning requires inspection; it is not proof that page order is definitely wrong.*
+
+Do not “fix” an apparent alignment problem before confirming that the compared pages have the same layout. A rigid transform cannot turn a Q4–Q5 page into a Q1–Q3 page.
+
+**Suggested diagnostic prompt**
+
+```text
+Compare the flagged original pages with the expected two-page layout.
+Show full pages and the relevant crop boundaries.
+Do not modify scans, approvals or saved grading outputs.
+```
+
+There is deliberately no production model prompt for this comparison in the article. The overlays and crop exports below are local image operations.
+
+## Step 2: Put saved coordinates on the saved image
+
+The saved region image is 1654 × 2338 pixels. The first page has NAME, ID, CLASS and three question boxes. Q3 is recorded as:
+
+```json
+{
+  "x": 222,
+  "y": 1153,
+  "width": 1191,
+  "height": 254,
+  "label": "Q3"
+}
+```
+
+![Actual saved region image with approved-coordinate boxes drawn on it for explanation.](media/05-region-overlay.png)
+
+*Figure 2. Offline annotation overlay using the saved pixel coordinate system. It is not a browser-editor screenshot.*
+
+The original PDF-to-PNG exports were rendered at 150 DPI for publication. The grading/region images have their own dimensions. Never apply the 1654-pixel coordinate system directly to a differently sized publication image without scaling.
+
+This is a common source of convincing but incorrect debugging diagrams: the rectangle looks sensible, yet it was drawn on the wrong image scale.
+
+## Step 3: Inspect the saved grading image for the flagged student
+
+![John's saved grading page with Q3 boundary highlighted.](media/13-john-page.png)
+
+*Figure 3. Saved grading page for script index 2, with a locally drawn Q3 boundary.*
+
+![Enlarged crop of John's Q3 using saved coordinates.](media/07-john-q3-crop.png)
+
+*Figure 4. Reconstructed saved-coordinate crop. This is not a recorded historical HTTP payload.*
+
+The stored answer says:
+
+```text
+brain powe[r] to doing [continuation cut off]
+```
+
+The stored moderator note asks the reviewer to verify the continuation. Q1 and Q2 for the same script also mention cut-off text. That pattern suggests investigating page/crop positioning before debating individual mark allocations.
+
+There is an important discrepancy: the reconstructed crop shown here contains a visible “hand-on” continuation that the stored transcription did not capture. We cannot infer the exact historical request image from the current saved image alone. Show both pieces of evidence, and investigate their lineage before claiming that a crop fix succeeded or failed.
+
+The full-page view is essential. If a viewer shows only the same clipped crop at a larger size, it has not supplied the missing evidence.
+
+## Step 4: Understand why alignment must be conservative
+
+The alignment implementation estimates translation and a small rotation from four quadrant matches. Handwriting and diagrams can produce correlation peaks unrelated to scanner motion. A proposed correction should explain a shared geometric displacement rather than chase unrelated answer content.
+
+The actual guard is:
+
+```python
+residuals = np.hypot(
+    dx - (tx - theta * py),
+    dy - (ty + theta * px),
+)
+if np.count_nonzero((weights > 0.0) & (residuals <= 15.0)) < 3:
+    return 0.0, 0.0, 0.0
+```
+
+This is a reformatted source excerpt from `alignment.py`. At least three positively weighted quadrant matches must fit the estimated rigid motion within the 15-pixel threshold. Other checks bound translation and rotation.
+
+**Output of a rejected estimate:** the function returns zero transform. That is a code contract, not a before/after repair result for this exam. We have not manufactured an alignment success image.
+
+A conservative refusal can protect a correctly positioned identifier from a bad global correction. It cannot guarantee that every accepted correction is right or that handwriting outside the template is recovered.
+
+## Step 5: Separate local recovery from paid reassessment
+
+The CLI supports a local realignment option:
+
+```bash
+handwriting-grader retry-grading --exam /private/exam.yaml \
+  --align-images
+```
+
+Its help describes re-rendering original PDF pages and preserving previous artifacts. Re-OCR or question regrading has different data/cost implications:
+
+```bash
+handwriting-grader retry-grading --exam /private/exam.yaml \
+  --re-ocr-metadata
+```
+
+These are documented command examples, not executions against the article's saved run. Preview and understand the selected action; obtain fresh consent before any paid request. For changed crops requiring a new assessment, use the reviewed crop-proposal/child-run workflow described in the repository.
+
+The full original source should remain available. Repeatedly transforming an already transformed JPEG can compound damage and make comparisons unreliable.
+
+## What to check before trusting the next result
+
+Compare the same student, same question and same coordinate scale. Verify that identity fields and neighboring answers have not been displaced. Read the full answer outside the crop when a continuation is suspected. Only then assess whether new inference is needed.
+
+The key output from this investigation is a defensible diagnosis: the saved run contains visible crop concerns and explicit warnings. It is not evidence that a model upgrade alone would improve the grade.
+
+Next: [follow a crop through Azure OpenAI and Python validation](05-azure-openai.md).
+
+**Implementation reference:** [alignment implementation at the inspected revision](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/alignment.py).

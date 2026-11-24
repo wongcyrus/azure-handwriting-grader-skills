@@ -1,0 +1,93 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>What Microsoft Agent Framework actually orchestrates in a grading application</title><style>
+body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
+h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
+img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
+code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
+td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
+a{color:#0067b8}em{color:#4b6175}
+</style></head><body><article><h1>What Microsoft Agent Framework actually orchestrates in a grading application</h1>
+<p><em>Part 6 of 8 · For agent and application developers</em></p>
+<p><img alt="Series banner: Microsoft Agent Framework, three Executors with a separate human review boundary." src="media/06-banner.png" /></p>
+<p>An “agentic” architecture diagram can easily imply more autonomy than the code provides. This application uses real Microsoft Agent Framework Executors and a workflow, but it does not ask a group of autonomous agents to negotiate grades or grant approval.</p>
+<p>The workflow is deliberately small: validate inputs, execute the existing grading engine, and return a draft location for human review. Pricing and review policy remain application responsibilities.</p>
+<p>This article shows the actual code and the saved artifacts the grading engine produces. No framework event log was captured for the existing example, so those artifacts are not presented as proof of which orchestrator ran historically.</p>
+<h2>Step 1: State the workflow's contract</h2>
+<p>The workflow imports:</p>
+<pre><code class="language-python">from agent_framework import Executor, WorkflowBuilder, WorkflowContext, handler
+</code></pre>
+<p>Its input is a grading request with the configured exam context captured by the builder. Its output is one path to generated grading artifacts.</p>
+<p><img alt="Code-derived workflow diagram: validate approvals, execute grading, yield draft path, then separate teacher review." src="media/16-framework.png" /></p>
+<p><em>Figure 1. Diagram of actual workflow structure, not a runtime event visualization.</em></p>
+<p>The last box is particularly important. “Human review boundary” means the automated workflow stops without granting approval. It does <strong>not</strong> mean the Executor waits for a teacher response and persists that approval.</p>
+<h2>Step 2: Validate before executing</h2>
+<p>The first Executor's handler calls application validation:</p>
+<pre><code class="language-python">class ValidateApproval(Executor):
+    @handler
+    async def process(self, request: str, ctx: WorkflowContext[str]) -&gt; None:
+        approved_inputs(config, config_dir, config_path)
+        await ctx.send_message(request)
+</code></pre>
+<p><strong>Output:</strong> the request is forwarded only if validation returns successfully. A failing validation stops this path before the grading Executor is invoked.</p>
+<p>The framework provides orchestration primitives. The application supplies the meaning of “approved inputs,” including rubric/region checks. Adding an Executor does not automatically implement those policies.</p>
+<p>Part 1's actual scan warning is related but belongs to scan checking; do not label it as a captured <code>ValidateApproval</code> event.</p>
+<h2>Step 3: Run the synchronous engine without blocking the event loop</h2>
+<p>The second Executor uses:</p>
+<pre><code class="language-python">output = await asyncio.to_thread(
+    grade_function,
+    config, config_dir, config_path, model_config_path,
+    endpoint, api_version, summary,
+    mode=mode,
+    batch_concurrency=batch_concurrency,
+)
+await ctx.send_message(str(output))
+</code></pre>
+<p>This is a reformatted source excerpt. <code>asyncio.to_thread</code> bridges the existing synchronous grading function into the asynchronous handler. It does not transform each rubric rule into a separate agent or remove the engine's own concurrency and transport constraints.</p>
+<p>The engine writes outputs such as:</p>
+<pre><code class="language-text">grading/
+  manifest.json
+  results.json
+  review.xlsx
+  images/
+  telemetry/
+</code></pre>
+<p><img alt="Saved grading artifacts summarized from the actual completed result and workbook." src="media/14-grading-evidence.png" /></p>
+<p><em>Figure 2. Existing engine output: four scripts and twenty question-mark records. This is not a framework execution trace.</em></p>
+<p>A practical benefit is reuse: direct Python orchestration and the framework path call the same engine, preserving the review/checkpoint model.</p>
+<h2>Step 4: Yield drafts without inventing human approval</h2>
+<p>The final Executor does this:</p>
+<pre><code class="language-python">class RequireHumanReview(Executor):
+    @handler
+    async def process(self, output: str, ctx: WorkflowContext[Never, str]) -&gt; None:
+        await ctx.yield_output(output)
+</code></pre>
+<p>Despite the class name, there is no human response wait in that handler. It yields the draft output path. Review and approval occur through separate application operations.</p>
+<p><strong>Suggested operator prompt</strong></p>
+<pre><code class="language-text">Run the approved grading workflow only after I confirm cost.
+When it finishes, show the draft output location and flagged answers.
+Do not approve scores, generate a delivery approval or send email.
+</code></pre>
+<p>This is a suggested assistant request, not the model prompt used to grade handwriting. The assistant must still respect the explicit consent and local approval gates.</p>
+<h2>Step 5: Connect the real Executors</h2>
+<p>The builder creates these edges:</p>
+<pre><code class="language-python">return (
+    WorkflowBuilder(
+        start_executor=validate,
+        name=&quot;human-reviewed-azure-grading&quot;,
+        max_iterations=4,
+    )
+    .add_edge(validate, execute)
+    .add_edge(execute, review)
+    .build()
+)
+</code></pre>
+<p>The wrapper runs the workflow, requires exactly one output, and converts that output back to <code>Path</code>.</p>
+<p>The default CLI selects the framework path. <code>--orchestrator python</code> selects the direct implementation; <code>workflow-grade</code> forces the workflow route. These are application choices, not two different grading quality guarantees.</p>
+<p><strong>Evidence limitation:</strong> the saved manifest records grading mode, not a complete framework event history. This package includes the exact inspected <code>workflow.py</code>, but does not claim a new paid workflow run.</p>
+<h2>Step 6: Review the thing the workflow cannot approve</h2>
+<p>The saved workbook includes flagged answers with manual-review fields. The current read-only review diagnostic reports no discrepancies while explicitly reminding the operator that human review and approval remain required.</p>
+<p><img alt="Saved flagged workbook entries, illustrating work that remains after automated orchestration." src="media/08-review-flags.png" /></p>
+<p><em>Figure 3. Actual saved review records, not evidence that the final Executor granted approval.</em></p>
+<p>Deployment hygiene matters too. Use the reviewed lockfile and consult current advisories before changing framework dependencies. A historical pre-incident pin is not a permanent safety certification.</p>
+<p>The architectural lesson is straightforward: use the framework to make sequencing visible, but keep correctness, consent, pricing and release rules explicit in application code. A modest workflow that accurately describes its authority is preferable to a spectacular diagram that overstates it.</p>
+<p>Next: <a href="07-pricing-and-data.html">pricing and data boundaries before AI calls</a>.</p>
+<p><strong>Implementation reference:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/workflow.py">complete workflow source at the inspected revision</a>.</p></article></body></html>

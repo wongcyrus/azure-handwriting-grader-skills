@@ -1,0 +1,108 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Logic before AI: approvals, checkpoints and recovery</title><style>
+body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
+h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
+img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
+code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
+td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
+a{color:#0067b8}em{color:#4b6175}
+</style></head><body><article><h1>Logic before AI: approvals, checkpoints and recovery</h1>
+<p><em>Part 3 of 8 · For developers · Source walkthrough with saved artifact evidence</em></p>
+<p><img alt="Series banner: Logic before AI, from validation through checkpoints to separate approval." src="media/03-banner.png" /></p>
+<p>The most important architecture decision in this grader is not a model name. It is that model output cannot promote itself into an approved result.</p>
+<p>In <a href="02-review-and-return.html">Part 2</a>, OCR read John's class as <code>e: John</code> and his name as part of a printed heading. The saved report nevertheless associates his ID with John in class C. That separation between raw output and reviewed output must exist in the application logic, not only in a prompt.</p>
+<p>This article explains the boundaries using actual artifact structures and source excerpts. It does not pretend that every recovery path has been exercised against this saved exam.</p>
+<h2>Step 1: Make dependencies explicit</h2>
+<p>Inputs include the exam configuration, scans, roster, rubric and region definitions. The pipeline does not simply ask whether their files exist. It checks whether the appropriate approvals still match the relevant artifacts.</p>
+<p><img alt="Architecture diagram showing local preparation and approvals before Azure inference, and separate review before reporting." src="media/11-architecture.png" /></p>
+<p><em>Figure 1. Code-authored explanatory diagram, not a runtime trace. Editable source is included in <code>diagrams/architecture.mmd</code>.</em></p>
+<p>The actual <code>approved_inputs()</code> starts with these calls:</p>
+<pre><code class="language-python">approved_attendance(config, config_dir, config_path)
+questions = read_approved_rubric(config, config_dir, config_path)
+root, manifest = verify_run(config, config_dir, config_path)
+</code></pre>
+<p>It then loads the region draft, checks current region approval, validates complete annotations, and compares available question labels with the rubric.</p>
+<p><strong>Expected output of this boundary:</strong> either validated inputs for the next stage or an exception. This is a source contract, not a newly captured exception transcript. Part 1 supplies a real stopping case from the separate scan checker.</p>
+<h2>Step 2: Inspect what the saved approvals bind</h2>
+<p>The saved grading approval contains these keys:</p>
+<pre><code class="language-text">version
+review_sha256
+results_sha256
+manifest_sha256
+approved_at
+</code></pre>
+<p><img alt="Keys and hash prefixes from the saved grading approval, with the sensitive resource configuration excluded." src="media/12-approval-evidence.png" /></p>
+<p><em>Figure 2. Selected fields from a real local approval artifact. Hash prefixes are shortened for presentation.</em></p>
+<p>The source in <code>grade_review.py</code> checks:</p>
+<pre><code class="language-python">if (
+    approval.get(&quot;version&quot;) != 1
+    or approval.get(&quot;review_sha256&quot;) != file_hash(root / &quot;review.xlsx&quot;)
+    or approval.get(&quot;results_sha256&quot;) != file_hash(root / &quot;results.json&quot;)
+    or approval.get(&quot;manifest_sha256&quot;) != file_hash(root / &quot;manifest.json&quot;)
+):
+    raise ValueError(&quot;Grading review changed since approval&quot;)
+</code></pre>
+<p>This excerpt demonstrates how a change is detected. It does not establish that every historical artifact is currently valid. The current example also has a scan-check blocker, so the mere existence of <code>approval.json</code> is not a fresh readiness certificate.</p>
+<p>Hashes support local consistency checks. They do not make a directory tamper-proof against someone able to rewrite both files and approval records.</p>
+<h2>Step 3: Keep raw, reviewed and reported values distinct</h2>
+<p>The saved run gives us three useful views:</p>
+<table>
+<thead>
+<tr>
+<th>Artifact</th>
+<th>Role</th>
+<th>Actual example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>grading/results.json</code></td>
+<td>Raw inference/checkpoint data</td>
+<td>Cut-off Q3 transcription and moderator note</td>
+</tr>
+<tr>
+<td><code>grading/review.xlsx</code></td>
+<td>Teacher review fields</td>
+<td>Explicit manual mark 2 and <code>reviewed = yes</code></td>
+</tr>
+<tr>
+<td><code>reports/score_report.xlsx</code></td>
+<td>Saved report output</td>
+<td>John, class C, total 10</td>
+</tr>
+</tbody>
+</table>
+<p>A developer should resist flattening these into one mutable record. Otherwise a manual edit can erase what the model originally proposed, making later diagnosis difficult.</p>
+<p><strong>Suggested operator prompt</strong></p>
+<pre><code class="language-text">Explain the differences between raw results, review fields and reports.
+Show the affected script and question keys.
+Do not replace raw model results or record approval for me.
+</code></pre>
+<p><strong>Output to expect:</strong> a comparison keyed by script/question, not a silent rewrite. The figures in Part 2 provide the actual comparison for this exam.</p>
+<h2>Step 4: Use checkpoints without promising exactly-once billing</h2>
+<p>The saved <code>results.json</code> records:</p>
+<pre><code class="language-json">{
+  &quot;version&quot;: 1,
+  &quot;checkpoint_version&quot;: 1,
+  &quot;completed&quot;: true
+}
+</code></pre>
+<p>The completed run contains four script metadata records and 20 question-mark records. These counts describe the saved checkpoint; they do not mean 20 billable API requests.</p>
+<p>The application uses atomic checkpoint publication and a run lock to avoid conflicting writers. On a suitable interrupted run, an operator previews:</p>
+<pre><code class="language-bash">handwriting-grader resume-grading --exam /private/exam.yaml
+</code></pre>
+<p>New paid work still needs fresh consent. A request accepted by Azure just before a crash may not be checkpointed locally. Resumption can repeat that request and incur a second charge. “Resumable” therefore means preserving recorded work—not exactly-once provider execution.</p>
+<p>Do not run resume against a completed run simply to obtain a screenshot. Do not delete a live lock.</p>
+<h2>Step 5: Choose retry or child regrade deliberately</h2>
+<p>A completed run with failed work uses <code>retry-grading</code>; a revised rubric or crop can require an isolated child regrade.</p>
+<pre><code class="language-bash">handwriting-grader regrade --exam /private/exam.yaml \
+  --run q3-review-1 --question Q3 \
+  --model-config /private/priced-config.yaml \
+  --endpoint https://YOUR-RESOURCE.openai.azure.com --api-version v1
+</code></pre>
+<p>This is a preview example, not a run we performed. A crop/rubric change requires its separately reviewed proposal. The selected question is rerun for <strong>all present students</strong>, not just one student's chosen answer. The child has its own output directory and requires review of all identities and scores.</p>
+<p><strong>Output not captured:</strong> there is no child-run comparison image in this package. The saved flagged answer motivates the workflow, but it is not evidence that a corrected child run exists.</p>
+<h2>What this design buys you—and what it does not</h2>
+<p>It gives operators inspectable artifacts, explicit state transitions and opportunities to stop. It does not establish that a rubric is fair, a crop is complete or an approved score is educationally correct.</p>
+<p>The actual scan blocker and OCR failures show why these boundaries matter. A system that can explain why it stopped is more useful than one that turns every failure into an apparently complete report.</p>
+<p>Next: <a href="04-scans-crops-alignment.html">inspect the images and alignment logic</a>.</p>
+<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/grade_review.py">approval validation</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/skills/handwriting-grading/references/regrading.md">targeted regrading</a>.</p></article></body></html>

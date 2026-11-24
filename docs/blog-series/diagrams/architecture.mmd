@@ -1,0 +1,8 @@
+flowchart TD
+  A[Local inputs] --> B[Input checks and human input approvals]
+  B --> C[Cost consent and required-price verification]
+  C --> D[Azure OpenAI]
+  D --> E[Draft results and usage evidence]
+  E --> F[Separate teacher review and grading approval]
+  F --> G[Local reports and analytics]
+  G --> H[Separate distribution approval]

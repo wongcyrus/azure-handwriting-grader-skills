@@ -1,0 +1,87 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>From paper exams to teacher-reviewed AI grading on Azure</title><style>
+body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
+h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
+img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
+code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
+td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
+a{color:#0067b8}em{color:#4b6175}
+</style></head><body><article><h1>From paper exams to teacher-reviewed AI grading on Azure</h1>
+<p>Eight complete, output-led article drafts for Microsoft publishing review.
+Prepared 24 November 2026 using the existing cleared example and saved reports.</p>
+<h2>Read and publish</h2>
+<p>Open <code>index.html</code> for the article list. Each article has a Markdown master and a
+rendered HTML version. For a rich-text blog editor, copy the rendered article
+body, paste, then upload numbered images separately and check heading/code
+formatting. Do not paste raw Learn-specific Markdown into a rich-text editor.
+For Microsoft Learn's documentation pipeline, use Markdown and adapt image
+syntax to that site's <a href="https://learn.microsoft.com/en-us/contribute/content/markdown-reference">authoring reference</a>.</p>
+<p>The actual publishing platform and editorial requirements still need confirmation.
+These are editorial drafts, not a claim of Microsoft acceptance or endorsement.</p>
+<p>Banner exports are 1200 x 630 PNG with 2400 x 1260 masters. That is our working
+recommendation, not a verified mandatory Microsoft banner dimension. Confirm the
+destination editor's requirements and cropping. Keep in-body infographic artwork
+separate from banners.</p>
+<p>Each HTML file contains only the article, not this editorial guide. <code>ASSETS.csv</code>
+lists every article image's filename, alt text and caption for uploading.
+Image/table exports derived from workbook/JSON content are labelled accordingly;
+they are not fabricated Excel or product screenshots.
+<code>EVIDENCE-MAP.csv</code> maps each demonstrated step to its actual output and explicitly
+identifies source-only procedures or outcomes that were not captured.</p>
+<h2>Articles</h2>
+<ol>
+<li><a href="01-first-marking-run.html">Your first teacher-reviewed AI marking run</a></li>
+<li><a href="02-review-and-return.html">Review, correct and return results</a></li>
+<li><a href="03-logic-and-recovery.html">Logic before AI</a></li>
+<li><a href="04-scans-crops-alignment.html">Getting the image right</a></li>
+<li><a href="05-azure-openai.html">Inside Azure OpenAI multimodal grading</a></li>
+<li><a href="06-agent-framework.html">What Microsoft Agent Framework actually orchestrates</a></li>
+<li><a href="07-pricing-and-data.html">Check prices before AI</a></li>
+<li><a href="08-pilot-and-outputs.html">From demonstration to school pilot</a></li>
+</ol>
+<h2>Evidence and editorial caveats</h2>
+<ul>
+<li>The actual dataset is four students, eight pages and five ten-mark questions.
+  The owner confirmed that the current example PDFs are synthetic or cleared for
+  public publication and requested retention of their details.</li>
+<li>Fresh read-only preflight passes. Fresh scan checking flags possible sequence
+  problems on pages 1, 3 and 5. No repair or paid rerun was performed.</li>
+<li>Fresh review diagnostics report no discrepancies but explicitly retain the
+  human-review/approval requirement. This is not approval validation for reporting.</li>
+<li>Historical version-1 reports retain index-only PDF names. Newer source naming
+  behavior is explained but not misrepresented as an existing output.</li>
+<li>Saved OCR metadata includes a bad name/class extraction for John. Saved grades
+  include clipped-answer warnings and flagged manual-review rows.</li>
+<li>Existing cost accounting under the grading folder includes later phases.
+  Scope is explained rather than calling the accumulated total “grading cost.”</li>
+<li>Saved image-report manifests include both failures and a later successful
+  folder. No new paid image or text request was made for this publication package.</li>
+<li>No local browser UI, child regrade, delivery preview, Moodle export, live price
+  failure or framework event trace was captured. Those procedures are labelled
+  as command/source examples, not claimed executions.</li>
+</ul>
+<p>The source revision inspected was
+<code>b6af53dd1cf4cf74b9a50591f0e775a3b1533133</code> in
+<a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/tree/b6af53dd1cf4cf74b9a50591f0e775a3b1533133">azure-handwriting-grader-skills</a>.
+<code>sources.json</code> records local source hashes and selected evidence provenance.
+<code>snippets/</code> includes exact relevant source excerpts. Add appropriate editorial
+links to those pinned source files in the publishing editor.</p>
+<p>The independent
+<a href="https://github.com/wongcyrus/azure-image-generation-skills">image-generation repository</a>
+is a companion tool, not a grader dependency.</p>
+<h2>What this package contains</h2>
+<p><code>media/</code>: numbered output images and eight banners.
+<code>masters/</code>: larger banner masters.
+<code>diagrams/</code>: editable Mermaid for explanatory diagrams, accompanied by PNGs.
+<code>observed/</code>: selected read-only terminal outputs.
+<code>snippets/</code>: source excerpts, not claimed historical request payloads.
+<code>previews/</code>: actual Office document-to-PDF/PNG previews when available.</p>
+<p>Private configurations, complete price/usage journals, resource endpoints,
+credentials and review URLs are not copied into the article assets.</p>
+<h2>Rebuild and validate</h2>
+<p>From <code>docs/blog-series/</code>, the build is offline after installing its own dependencies:</p>
+<pre><code class="language-bash">uv run --project tools python tools/build.py
+</code></pre>
+<p>It reads the containing Azure checkout, exports whitelisted
+evidence, creates banners/diagrams locally and renders HTML. It never imports
+the grader or calls Azure. Do not rerun paid workflows merely for a screenshot.
+Review the articles and images before public upload; publication is not performed.</p></article></body></html>

@@ -1,0 +1,5 @@
+flowchart TD
+  A[ValidateApproval] --> B[ExecuteGrading]
+  B --> C[RequireHumanReview: yield draft path]
+  C -. separate operation .-> D[Teacher reviews]
+  D --> E[Explicit application approval]

@@ -1,0 +1,72 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Check prices before AI: consent, estimates and data boundaries</title><style>
+body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
+h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
+img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
+code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
+td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
+a{color:#0067b8}em{color:#4b6175}
+</style></head><body><article><h1>Check prices before AI: consent, estimates and data boundaries</h1>
+<p><em>Part 7 of 8 · For developers and school IT</em></p>
+<p><img alt="Series banner: Check prices before AI, from reviewed rates to an explicitly authorized request." src="media/07-banner.png" /></p>
+<p>“What did this cost?” and “May we send these images?” are different questions. A responsible workflow must address both before a paid request, and preserve enough evidence to explain its estimate afterwards.</p>
+<p>The grader checks required rates before the first paid request of each new run. Public lookup covers a curated set of supported text/vision families. Other operations need current manually reviewed evidence. This article uses saved price journals and cost summaries; no new model request or price refresh was made to write it.</p>
+<h2>Step 1: Separate preview, price verification and consent</h2>
+<p>A preview should show intended work without inference. It is not consent to execute. The relevant execution additionally needs <code>--confirm-cost</code>, and a configured deployment still needs verified rates.</p>
+<p><strong>Suggested teacher/IT prompt</strong></p>
+<pre><code class="language-text">Show the target resource and deployments locally.
+Explain which artifacts will leave the machine and preview the work.
+Do not make paid calls, accept changed rates or send reports.
+</code></pre>
+<p>Do not put the private resource details into public screenshots. The article's examples deliberately use placeholders.</p>
+<p><img alt="Pricing flow: preview, explicit consent, required-rate verification, request or block." src="media/17-pricing-gate.png" /></p>
+<p><em>Figure 1. Code-authored decision diagram, not a captured provider response.</em></p>
+<p>The order of authorization and checking is an application workflow; the invariant is that neither missing consent nor a failed price check may be bypassed to make the paid request.</p>
+<h2>Step 2: Understand what public lookup retrieves</h2>
+<p>The documented lookup command is:</p>
+<pre><code class="language-bash">handwriting-grader fetch-pricing \
+  --region eastus --deployment-type global-standard
+</code></pre>
+<p>To price aliases into a new private configuration:</p>
+<pre><code class="language-bash">handwriting-grader fetch-pricing \
+  --region eastus --deployment-type global-standard \
+  --model-config /private/config.yaml \
+  --write-config /private/priced-config.yaml
+</code></pre>
+<p>These are reproducible procedure examples, not newly executed transcripts. The saved journals provide actual evidence of earlier successful checks.</p>
+<p>The public Retail Prices API request does not need student data or Azure credentials. The application selects exact matching meters, checks units and effective dates, and retains provenance rather than guessing a family rate.</p>
+<p>Use the real ARM region and billing type. Public USD retail rates are estimates, not your institution's negotiated bill.</p>
+<h2>Step 3: Inspect saved evidence without publishing the private resource</h2>
+<p>The existing grading price journal contains two text-operation checks with retail evidence. Rubric and region journals each contain a text check. The analysis journal contains both text and image checks, with retail and manual evidence represented.</p>
+<p><img alt="Selected saved price-check fields, showing operation kinds and verification methods without endpoints or deployment aliases." src="media/18-pricing-evidence.png" /></p>
+<p><em>Figure 2. Selected actual journal fields. Resource identifiers, private paths and unrelated configuration are excluded.</em></p>
+<p>At the transport boundary the shared client calls:</p>
+<pre><code class="language-python">self._require_prices(model, tools=tuple(config.tools or ()))
+</code></pre>
+<p>That precedes image encoding and the Responses SDK request. A shared run verifier checks the configuration fingerprint, binds the intended request to reviewed configuration, and compares required fresh rates with saved reviewed rates. Failures latch the run as blocked.</p>
+<p><strong>What is not captured here:</strong> a fresh changed-price/network-failure execution. Those blocking branches are source behavior, not fabricated console output.</p>
+<h2>Step 4: Read the cost report's scope before quoting a number</h2>
+<p>The saved <code>grading/cost_summary.json</code> reports:</p>
+<pre><code class="language-json">{
+  &quot;total_calls&quot;: 26,
+  &quot;total_prompt_tokens&quot;: 26464,
+  &quot;total_candidate_tokens&quot;: 15234,
+  &quot;total_images&quot;: 6,
+  &quot;total_cost_usd&quot;: 0.33436,
+  &quot;unpriced_calls&quot;: 0
+}
+</code></pre>
+<p><img alt="Recorded costs by phase, including analysis and infographics rather than grading alone." src="media/19-cost-phases.png" /></p>
+<p><em>Figure 3. Actual stored summary, including its broader accumulated phase scope.</em></p>
+<p>Despite its location under <code>grading/</code>, this file includes rubric extraction, region suggestions, OCR, batch grading, AI analysis and image generation. <strong>US$0.33436 is not the price of grading four students alone.</strong></p>
+<p>The stored batch-grading phase is five logical calls and US$0.022736. The stored infographic phase is six calls and US$0.25453. These figures describe this saved accounting snapshot, not a promise about another exam.</p>
+<p>Failed responses and individual SDK retries are not fully represented in the grader's log. Do not turn logical calls into an authoritative count of billed attempts. Reconcile with Azure billing.</p>
+<h2>Step 5: Treat image generation as a separate pricing case</h2>
+<p>The independent <a href="https://github.com/wongcyrus/azure-image-generation-skills">Azure image-generation skill</a> has its own package and environment. It is not a grader dependency.</p>
+<p>Its current image-pricing gate checks <strong>manual evidence</strong>, not a live image-price lookup. Evidence must match the model/resource, region, supported billing mode, USD units, current UTC verification date, requested size and quality. The program validates the attestation; it cannot establish that a person actually reviewed the correct prices.</p>
+<p>The separately created workflow illustration used one image request and recorded an estimated US$0.04312. That separate run is not included in the grader's stored US$0.33436 snapshot. No new image call was made for these articles' banners; they were composed offline.</p>
+<h2>Step 6: Keep consent and data governance visible</h2>
+<p>Answer crops and selected metadata can leave the local machine during inference. Optional analysis and hosted tools have their own payloads and cost implications. Local previews, reports and offline statistics should not be described as paid AI operations.</p>
+<p>Keep credentials outside configuration committed to source control. Keep private review URLs, journals, scans and delivery settings out of public article assets. <code>store=False</code> is not a substitute for institutional review of access, retention, contractual terms and student-data handling.</p>
+<p>The output you want is a traceable estimate with known scope—and a clearly blocked request when essential evidence is missing—not an attractively formatted zero.</p>
+<p>Next: <a href="08-pilot-and-outputs.html">turn saved reports into a measured school pilot</a>.</p>
+<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/pricing.py">price verification</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/telemetry.py">usage accounting</a>.</p></article></body></html>

@@ -1,0 +1,54 @@
+# Source: src/handwriting_grader/azure_ai.py; lines 182-232
+# Excerpt from inspected source, not a runnable standalone program.
+
+    def generate_content(self, *, model, contents, config=None):
+        config = config or GenerationConfig()
+        values = [contents] if isinstance(contents, str) else list(contents)
+        if any(not isinstance(value, (str, ImagePart)) for value in values):
+            raise ValueError("Model contents must be text or image parts")
+        if config.tools and config.tools != ["web_search"]:
+            raise ValueError("Unsupported hosted tools")
+        self._require_prices(model, tools=tuple(config.tools or ()))
+        parts = []
+        for value in values:
+            if isinstance(value, str):
+                parts.append({"type": "input_text", "text": value})
+            elif isinstance(value, ImagePart):
+                encoded = base64.b64encode(value.data).decode("ascii")
+                parts.append({"type": "input_image", "image_url":
+                              f"data:{value.mime_type};base64,{encoded}", "detail": "high"})
+        request = {
+            "model": model, "input": [{"role": "user", "content": parts}],
+            "max_output_tokens": config.max_output_tokens,
+            "store": False,
+        }
+        if config.thinking_config is not None:
+            request["reasoning"] = {"effort": config.thinking_config.effort}
+        if config.response_schema is not None:
+            request["text"] = {"format": {
+                "type": "json_schema", "name": config.response_schema.__name__,
+                "schema": strict_schema(config.response_schema), "strict": True,
+            }}
+        elif config.response_mime_type == "application/json":
+            request["text"] = {"format": {"type": "json_object"}}
+        if config.tools:
+            request["tools"] = [{"type": "web_search"}]
+        result = self.client.responses.create(**request)
+        if getattr(result, "status", "completed") != "completed":
+            raise ValueError("Azure response is incomplete or failed; no result accepted")
+        text = getattr(result, "output_text", None)
+        sources = []
+        for item in getattr(result, "output", []) or []:
+            for content in getattr(item, "content", []) or []:
+                if getattr(content, "type", None) == "refusal":
+                    raise ValueError("Azure model refused the request")
+                for annotation in getattr(content, "annotations", []) or []:
+                    if getattr(annotation, "type", None) == "url_citation":
+                        sources.append({"title": annotation.title, "url": annotation.url})
+        parsed = None
+        if config.response_schema is not None:
+            if not text:
+                raise ValueError("Azure structured response did not return text")
+            parsed = config.response_schema.model_validate_json(text)
+        return AIResponse(text, parsed, normalize_usage(
+            getattr(result, "usage", None), cache_write_ttl="30m",

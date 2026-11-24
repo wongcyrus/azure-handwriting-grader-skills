@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Review, correct and return results—with the teacher in control</title><style>
+body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
+h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
+img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
+code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
+td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
+a{color:#0067b8}em{color:#4b6175}
+</style></head><body><article><h1>Review, correct and return results—with the teacher in control</h1>
+<p><em>Part 2 of 8 · For teachers · Saved outputs, not a new grading run</em></p>
+<p><img alt="Series banner: Review, correct and return, with separate teacher and delivery approvals." src="media/02-banner.png" /></p>
+<p>A complete spreadsheet is not the same as a trustworthy assessment. This article follows the existing example from OCR identities and draft marks to saved reports. The most useful evidence is not the highest score: it is a misread identity and an answer flagged as cut off.</p>
+<p>The example's current scan check is blocked, as shown in <a href="01-first-marking-run.html">Part 1</a>. We inspect existing artifacts without claiming that the current source can be graded again unchanged. No scores, approvals or files in the original run were modified to write this article.</p>
+<h2>Step 1: Compare OCR identity with reviewed identity</h2>
+<p><strong>Suggested teacher prompt</strong></p>
+<pre><code class="language-text">Show each script's OCR identity beside the reviewed student identity.
+Highlight disagreements. Do not approve results or send anything.
+</code></pre>
+<p>The raw <code>results.json</code> contains this metadata for zero-based script index 2
+(selected fields; the ID is visible in the cleared comparison figure below):</p>
+<pre><code class="language-json">{
+  &quot;script_index&quot;: 2,
+  &quot;class_ocr&quot;: &quot;e: John&quot;,
+  &quot;name_ocr&quot;: &quot;Understanding the Vocational Tra&quot;
+}
+</code></pre>
+<p>Those strings are observed OCR output, not a deliberately invented failure. The saved scorebook identifies the corresponding student as <strong>John, class C</strong>.</p>
+<p><img alt="Raw identity extraction compared with the saved reviewed scorebook identity for John." src="media/06-identity-comparison.png" /></p>
+<p><em>Figure 1. A comparison assembled from actual JSON and workbook cells, not a before/after browser screenshot.</em></p>
+<p>The correct ID helped here, but it does not make the name and class fields reliable. Check the original page and roster. Preserve leading zeroes in IDs and verify that each PDF belongs to the intended student.</p>
+<p>The saved artifacts show the raw/reported difference. They do not prove the exact sequence of mouse clicks that produced the reviewed result.</p>
+<h2>Step 2: Inspect the answer, not only the proposed mark</h2>
+<p>The saved result for John's Q3 includes:</p>
+<pre><code class="language-json">{
+  &quot;question&quot;: &quot;Q3&quot;,
+  &quot;answer&quot;: &quot;brain powe[r] to doing [continuation cut off]&quot;,
+  &quot;raw_mark&quot;: 2.0,
+  &quot;moderated_mark&quot;: 2.0,
+  &quot;moderator_flag&quot;: true,
+  &quot;moderator_note&quot;: &quot;The answer continues beyond the bottom of the image. Verify the full response and the partially legible wording.&quot;
+}
+</code></pre>
+<p><img alt="Actual saved Q3 crop for John, shown as image evidence rather than a reconstructed answer." src="media/07-john-q3-crop.png" /></p>
+<p><em>Figure 2. Crop reconstructed from the saved grading image and saved Q3 coordinates. It illustrates the saved crop boundary; it is not proof of the exact encoded payload of a historical request.</em></p>
+<p>The teacher's next question should be “What is outside that box?” rather than “Is two a plausible number?” Open the full page, inspect the continuation, and decide whether a manual correction or separately approved regrade is appropriate.</p>
+<p>A warning does not solve the underlying problem. Nor does <code>grading_failed: false</code> establish that the answer is complete.</p>
+<p>The reconstructed crop now visibly includes a second line resembling “hand-on,” while the stored transcription says the continuation was cut off. These saved artifacts are not a packet capture of the original request. Preserve that discrepancy: it is a reason to compare historical inputs and recovery history, not to assert that the current crop exactly reproduces what the model saw.</p>
+<h2>Step 3: Read the review workbook</h2>
+<p>Open the local review interface for your intended run:</p>
+<pre><code class="language-bash">handwriting-grader review-grading --exam /private/exam.yaml
+</code></pre>
+<p>Do not publish its token-bearing URL. This article uses workbook-derived images instead of opening a live review session.</p>
+<p>The saved <code>Marks</code> sheet records Q3 for script index 2 with raw mark 2, manual mark 2 and <code>reviewed = yes</code>. Q1, Q2 and Q5 for that script also contain flags and explicit manual marks.</p>
+<p><img alt="Flagged review rows showing raw marks, explicit manual marks and reviewed status." src="media/08-review-flags.png" /></p>
+<p><em>Figure 3. Actual workbook values. A manual mark equal to the proposal is still an explicit recorded choice; it is not a score change.</em></p>
+<p>This matters when describing “human correction.” The evidence supports a reviewed identity difference and explicit manual marks. It does not support a claim that the teacher changed every flagged score or recovered all clipped text.</p>
+<h2>Step 4: Run read-only discrepancy checks</h2>
+<p>We ran:</p>
+<pre><code class="language-bash">handwriting-grader check-grading-review --exam example/example.yaml
+</code></pre>
+<p><strong>Observed output</strong></p>
+<pre><code class="language-text">No review discrepancies found. Human review and explicit approval are still required.
+</code></pre>
+<p>This is a consistency check, not a pedagogical endorsement. It does not cancel the separate scan-check warning, establish current downstream approval validity, or prove that every grade is correct.</p>
+<p>For a fresh run, approval follows actual human review:</p>
+<pre><code class="language-bash">handwriting-grader approve-grading --exam /private/exam.yaml \
+  --confirm-reviewed
+</code></pre>
+<p>We did not run that approval command for this article.</p>
+<h2>Step 5: Inspect the actual marked PDF and scorebook</h2>
+<p>The existing report is a version-1 artifact. It contains four students with these saved totals:</p>
+<table>
+<thead>
+<tr>
+<th>Student</th>
+<th>Class</th>
+<th>Total / 50</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Peter</td>
+<td>A</td>
+<td>23</td>
+</tr>
+<tr>
+<td>Mary</td>
+<td>B</td>
+<td>10</td>
+</tr>
+<tr>
+<td>John</td>
+<td>C</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Susan</td>
+<td>D</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="First page of Peter's actual marked PDF, including question marks and total." src="media/09-marked-peter-page.png" /></p>
+<p><em>Figure 4. PDF-to-PNG rendering of the existing marked script.</em></p>
+<p><img alt="Saved scorebook rows, including each student's PDF path." src="media/10-scorebook.png" /></p>
+<p><em>Figure 5. Data rendered directly from the saved <code>score_report.xlsx</code>.</em></p>
+<p>A fresh, approved run produces reports with:</p>
+<pre><code class="language-bash">handwriting-grader report --exam /private/exam.yaml
+</code></pre>
+<p>Existing report directories are not an invitation to overwrite history. The saved report's filenames are still <code>pdfs/script-00001.pdf</code> and similar. Newer code produces names such as <code>123456789_Peter_script-00001.pdf</code>, using approved identity and roster name. <strong>The historical output has not been renamed.</strong> A new naming rule is not evidence that an old PDF already has that name.</p>
+<h2>Step 6: Separate reporting from distribution</h2>
+<p>Generating a PDF does not send it. Moodle export uses the <code>moodle-export</code> command; email requires a recipient/settings preview, separate review and explicit send consent.</p>
+<pre><code class="language-bash">handwriting-grader preview-email --exam /private/exam.yaml \
+  --settings /private/email.yaml --recipients /private/recipients.csv
+</code></pre>
+<p>This is a command example only. <strong>No delivery preview, Moodle export or email-send output was captured for this series.</strong> Do not label the marked PDF as evidence of delivery.</p>
+<p>The observable end state here is four saved totals, marked pages, identity-review evidence and explicit manual-review fields. For teachers, that evidence trail is more informative than a claim that marking was “fully automated.”</p>
+<p>Next: <a href="03-logic-and-recovery.html">the application logic behind these boundaries</a>.</p>
+<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/grade_review.py">grading review</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/reporting.py">report naming</a>.</p></article></body></html>
