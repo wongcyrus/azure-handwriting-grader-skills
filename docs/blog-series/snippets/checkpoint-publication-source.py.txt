@@ -1,0 +1,36 @@
+# Source: src/handwriting_grader/regions.py; lines 16-48
+# Excerpt from inspected source, not a runnable standalone program.
+
+def file_hash(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def config_hash(config):
+    return hashlib.sha256(yaml.safe_dump(config, sort_keys=True).encode()).hexdigest()
+
+
+def resolve_path(config_dir, value):
+    return (config_dir / Path(value).expanduser()).resolve()
+
+
+def atomic_json(path, value):
+    path = Path(path)
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, delete=False
+    ) as file:
+        temp = Path(file.name)
+        try:
+            json.dump(value, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+            file.flush()
+            os.fsync(file.fileno())
+        except BaseException:
+            temp.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temp, path)
+    finally:

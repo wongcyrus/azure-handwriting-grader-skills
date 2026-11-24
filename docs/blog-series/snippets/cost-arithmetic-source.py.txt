@@ -1,0 +1,51 @@
+# Source: src/handwriting_grader/telemetry.py; lines 128-175
+# Excerpt from inspected source, not a runnable standalone program.
+
+    def _priced_cost(self, model, prompt_tokens, candidate_tokens, cached_tokens,
+                     images_count=0, cache_write_tokens=None, cache_write_ttl=None):
+        rates = self.rates_table.get(model)
+        if not rates:
+            return None
+        tiered = "short" in rates or "long" in rates
+        if tiered:
+            threshold = rates.get("long_context_threshold")
+            if type(threshold) is not int or threshold <= 0:
+                return None
+            rates = rates.get("long" if prompt_tokens > threshold else "short", {})
+        if not isinstance(rates, dict):
+            return None
+        if any(type(value) is not int or value < 0
+               for value in (prompt_tokens, candidate_tokens, cached_tokens, images_count)):
+            return None
+        if cached_tokens > prompt_tokens:
+            return None
+        if cache_write_tokens is None:
+            if tiered or "cache_write" in rates or "cache_write_12h" in rates:
+                return None
+            cache_write_tokens = 0
+        if (type(cache_write_tokens) is not int or cache_write_tokens < 0
+                or cache_write_tokens + cached_tokens > prompt_tokens):
+            return None
+        write_key = "cache_write" if cache_write_ttl == "30m" else "cache_write_12h"
+        if cache_write_tokens and cache_write_ttl not in ("30m", "12h"):
+            return None
+        counts = {
+            "input": prompt_tokens - cached_tokens - cache_write_tokens,
+            "cached": cached_tokens, "output": candidate_tokens,
+            write_key: cache_write_tokens, "image": images_count,
+        }
+        cost = 0.0
+        for key, count in counts.items():
+            if count:
+                if not valid_rate(rates.get(key)):
+                    return None
+                cost += count * float(rates[key]) / (1 if key == "image" else 1_000_000)
+        return round(cost, 6) if math.isfinite(cost) else None
+
+    def record_call(
+        self,
+        phase: str,
+        step_label: str,
+        model: str,
+        usage_metadata: Any,
+        duration_sec: float,

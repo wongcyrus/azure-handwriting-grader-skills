@@ -1,0 +1,104 @@
+# Source: src/handwriting_grader/pricing.py; lines 400-500
+# Excerpt from inspected source, not a runnable standalone program.
+
+    def verify(self, endpoint, model, *, kind="text", tools=(), image_size=None):
+        with self._lock:
+            try:
+                if self._blocked_reason is not None:
+                    raise PriceVerificationError(self._blocked_reason)
+                endpoint = validate_endpoint(endpoint)
+                config, targets = self._load(endpoint, model)
+                family = targets[model]
+                roles = {"text": None, "embedding": "embedding", "image": "analytics_image"}
+                if kind not in roles:
+                    raise PriceVerificationError("Unsupported paid operation")
+                validate_model_eligibility(model, agent=roles[kind], base_model=family)
+                prefixes = {"embedding": "text-embedding-", "image": "gpt-image-"}
+                if (kind in prefixes and model not in config.get("deployment_models", {})
+                        and not family.startswith(prefixes[kind])):
+                    raise PriceVerificationError("Declare the underlying embedding/image family in deployment_models")
+                profile = self._profile(config, model, family, endpoint)
+                key = (endpoint.lower(), model, kind, tuple(tools), image_size)
+                if key in self._verified:
+                    return copy.deepcopy(self._verified[key])
+                now = self._now().astimezone(timezone.utc)
+                row = config.get("pricing", {}).get(model)
+                if kind == "text" and family in MODEL_VERSIONS:
+                    if profile not in self._reports:
+                        try:
+                            self._reports[profile] = lookup_pricing(
+                                *profile, targets, fetch_page=self._fetch_page, now=now,
+                            )
+                        except Exception as exc:
+                            self._reports[profile] = exc
+                    report = self._reports[profile]
+                    if isinstance(report, Exception):
+                        raise PriceVerificationError(f"Microsoft retail price refresh failed ({type(report).__name__})")
+                    entry = report["deployments"][model]
+                    required = ("input", "cached", "output", "cache_write")
+                    rates = self._rates({"long_context_threshold": report["long_context_threshold"],
+                                         **entry["tiers"]}, required, tiered=True)
+                    reviewed = self._rates(row, required, tiered=True)
+                    if (reviewed["long_context_threshold"] != rates["long_context_threshold"]
+                            or any(reviewed[tier][part] != rates[tier][part]
+                                   for tier in ("short", "long") for part in required)):
+                        raise PriceVerificationError("Current retail prices differ from reviewed rates")
+                    source = {**{name: value for name, value in report.items() if name != "deployments"},
+                              **entry, "verification": "retail", "azure_endpoint": endpoint}
+                else:
+                    source = config.get("pricing_sources", {}).get(model, {})
+                    self._manual_source(
+                        source, family, endpoint, profile, now,
+                        unit=("USD per million tokens; image USD per generated image"
+                              if kind == "image" else "USD per million tokens"),
+                    )
+                    if kind == "embedding":
+                        required, tiered = ("input",), False
+                    elif kind == "image":
+                        if source.get("image_size") != image_size or source.get("image_quality") != "auto":
+                            raise PriceVerificationError("Manual image rates must cover the requested size and auto quality")
+                        required, tiered = ("input", "cached", "output", "image"), False
+                    elif kind == "text":
+                        version = re.match(r"gpt-(\d+)(?:\.(\d+))?", family)
+                        writes = version and (int(version[1]) >= 6
+                                              or int(version[1]) == 5 and int(version[2] or 0) >= 6)
+                        required = ("input", "cached", "output") + (("cache_write",) if writes else ())
+                        tiered = bool(writes or isinstance(row, dict) and ("short" in row or "long" in row))
+                    else:
+                        raise PriceVerificationError("Unsupported paid operation")
+                    rates = self._rates(row, required, tiered=tiered)
+                tool_prices = {}
+                for tool in tools:
+                    if tool != "web_search":
+                        raise PriceVerificationError("Unsupported hosted tool pricing")
+                    evidence = config.get("pricing_tool_sources", {}).get(tool, {})
+                    self._manual_source(evidence, tool, endpoint, profile, now, unit="USD per 1000 calls")
+                    fee = self._rates(config.get("pricing_tools", {}).get(tool), ("per_1000_calls",))
+                    tool_prices[tool] = {"rates": fee, "source": evidence}
+                self.checks.append({
+                    "checked_at": now.isoformat(), "config_sha256": self._signature,
+                    "deployment": model, "kind": kind, "rates": copy.deepcopy(rates),
+                    "source": copy.deepcopy(source), "tools": copy.deepcopy(tool_prices),
+                })
+                self._persist()
+                self._verified[key] = copy.deepcopy(rates)
+                print(f"Pricing verified for {model} ({profile[0]}, {profile[1]}): "
+                      f"{json.dumps(rates, sort_keys=True)} "
+                      f"{source['unit']} ({source['verification']}).",
+                      flush=True)
+                if tool_prices:
+                    print(f"Verified hosted-tool fees (USD per 1000 calls): "
+                          f"{ {tool: item['rates']['per_1000_calls'] for tool, item in tool_prices.items()} }",
+                          flush=True)
+                return copy.deepcopy(rates)
+            except Exception as exc:
+                message = str(exc)
+                self._blocked_reason = message
+                if message not in self._errors:
+                    self._errors.add(message)
+                    print(f"AI request blocked by price verification: {message}. "
+                          "Use fetch-pricing to create a new priced configuration, review it, and start a new run; "
+                          "unsupported models/tools require current manual evidence.", file=sys.stderr)
+                raise PriceVerificationError(message) from exc
+
+    def _persist(self):

@@ -1,0 +1,72 @@
+# Source: src/handwriting_grader/rubric.py; lines 20-88
+# Excerpt from inspected source, not a runnable standalone program.
+
+from .telemetry import get_active_tracker, get_thinking_config
+
+
+class RubricQuestion(BaseModel):
+    question_number: StrictStr
+    question_text: StrictStr
+    marking_scheme: StrictStr
+    marks: float
+
+
+class ExtractedRubric(BaseModel):
+    general_grading_guide: StrictStr = ""
+    questions: list[RubricQuestion]
+
+
+PROMPT = """Extract the marking scheme from the document. Return every gradable
+question or sub-question as its own separate entry with its exact label,
+question text/context, marking criteria, and individual available marks.
+Whenever a numbered question contains separately marked sub-parts, sub-items,
+or fill-in-the-blank items (each having its own answer space or mark allocation),
+split each sub-part into its own entry using its combined label rather than
+collapsing multiple sub-parts into one parent entry. Include any general grading
+guidance separately. Do not invent missing information."""
+
+REQUIRED_COLUMNS = ("question_number", "question_text", "marking_scheme", "marks")
+
+
+def question_key(value):
+    label = str(value).strip().upper()
+    if label.startswith("Q") and len(label) > 1:
+        label = label[1:]
+    try:
+        number = float(label)
+        if math.isfinite(number) and number.is_integer():
+            return str(int(number))
+    except ValueError:
+        pass
+    return label
+
+
+def validate_questions(questions):
+    if not questions:
+        raise ValueError("The marking scheme contains no questions")
+    seen = set()
+    for question in questions:
+        for field in REQUIRED_COLUMNS[:-1]:
+            value = question.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Every question requires {field}")
+            if len(value) > 32767:
+                raise ValueError(f"{field} exceeds Excel's 32,767-character cell limit")
+        label = question["question_number"].strip()
+        if label in {".", ".."} or any(char in "/\\" or ord(char) < 32 for char in label):
+            raise ValueError("Question numbers cannot contain path separators or control characters")
+        key = question_key(label)
+        if key in {"NAME", "ID", "CLASS"}:
+            raise ValueError("Question numbers cannot use metadata labels")
+        if not key or key in seen:
+            raise ValueError("The marking scheme contains duplicate question numbers")
+        seen.add(key)
+        marks = question.get("marks")
+        if isinstance(marks, bool) or not isinstance(marks, (int, float)):
+            raise ValueError("Question marks must be numeric")
+        if not math.isfinite(marks) or marks <= 0:
+            raise ValueError("Question marks must be finite and greater than zero")
+    return questions
+
+
+def read_rubric(path):

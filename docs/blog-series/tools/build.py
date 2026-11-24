@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 import pypdfium2 as pdfium
 from pptx import Presentation
 from banners import build_banners, SOURCES as BANNER_SOURCES
+from article_walkthroughs import banner_walkthrough
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -314,6 +315,13 @@ snippet_ranges = {
     "alignment-source.py.txt": ("alignment.py", 42, 105),
     "statistics-source.py.txt": ("analytics.py", 1, 40),
     "report-naming-source.py.txt": ("reporting.py", 1, 48),
+    "rubric-source.py.txt": ("rubric.py", 20, 88),
+    "region-prompt-source.py.txt": ("suggestions.py", 18, 45),
+    "review-validation-source.py.txt": ("grade_review.py", 115, 204),
+    "checkpoint-publication-source.py.txt": ("regions.py", 16, 48),
+    "analysis-prompts-source.py.txt": ("advanced.py", 32, 70),
+    "price-verifier-source.py.txt": ("pricing.py", 400, 500),
+    "cost-arithmetic-source.py.txt": ("telemetry.py", 128, 175),
 }
 for target, (filename, start, end) in snippet_ranges.items():
     source = record(REPO / "src/handwriting_grader" / filename)
@@ -322,6 +330,10 @@ for target, (filename, start, end) in snippet_ranges.items():
     (ROOT / "snippets" / target).write_text(
         f"# Source: src/handwriting_grader/{filename}; lines {start}-{end or len(lines)}\n"
         "# Excerpt from inspected source, not a runnable standalone program.\n\n" + excerpt + "\n")
+
+for name in ("snippets/banner-generate-source.py.txt", "snippets/offline-framework-smoke.py",
+             "observed/offline-framework-smoke.txt"):
+    record(ROOT / name)
 
 revision = "b6af53dd1cf4cf74b9a50591f0e775a3b1533133"
 (ROOT / "sources.json").write_text(json.dumps({
@@ -333,6 +345,8 @@ revision = "b6af53dd1cf4cf74b9a50591f0e775a3b1533133"
     "banner_artwork_current_paid_calls": banner_provenance["logical_calls"],
     "banner_artwork_estimated_cost_usd": banner_provenance["estimated_total_cost_usd"],
     "banner_branding_paid_calls": 0,
+    "image_tool_source_revision": "ee6c616cdeac43a9c97b0261049cb278fd5449b5",
+    "framework_demonstration": "Synthetic offline run; no historical exam trace or Azure clients.",
 }, indent=2))
 
 STYLE = """
@@ -347,6 +361,11 @@ assets = []
 articles = sorted(ROOT.glob("[0-9][0-9]-*.md"))
 for source in articles + [ROOT / "README.md", ROOT / "branding/README.md"]:
     text = source.read_text()
+    if source in articles:
+        updated = banner_walkthrough(text, int(source.name[:2]), banner_provenance)
+        if updated != text:
+            source.write_text(updated, encoding="utf-8")
+        text = updated
     converted = markdown.markdown(text, extensions=["fenced_code", "tables", "sane_lists"])
     converted = re.sub(r'href="([^":#]+)\.md"', r'href="\1.html"', converted)
     converted = converted.replace('href="README.html"', 'href="index.html"')

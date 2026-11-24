@@ -1,0 +1,6 @@
+def generate(self, prompt):
+    self.verifier.verify()
+    return self.sdk.with_options(max_retries=0).images.generate(
+        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
+        quality=IMAGE_QUALITY, n=1,
+    )

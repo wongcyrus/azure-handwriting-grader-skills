@@ -218,6 +218,46 @@
     {
       "path": "src/handwriting_grader/reporting.py",
       "sha256": "d9d90baeee515be1ee48f70e0ad78494be7c002ea6538f6a8740f8cd445340a6"
+    },
+    {
+      "path": "src/handwriting_grader/rubric.py",
+      "sha256": "1a19d0f6681335d552ac324b09f17da1846f87f1f1514bef202ebfddd8ca539c"
+    },
+    {
+      "path": "src/handwriting_grader/suggestions.py",
+      "sha256": "7e4cbee87c4e1969fdf4bb1e0adfdf8230a340b9afbca28979cca1caac337c0f"
+    },
+    {
+      "path": "src/handwriting_grader/grade_review.py",
+      "sha256": "022b23414aa95b9e6319bdad0a0284bf62eeba287aa462035c6e535cee86097a"
+    },
+    {
+      "path": "src/handwriting_grader/regions.py",
+      "sha256": "1ddb31768367799df947711bbb0c9a8347cb8900c569e517ef4661ea0ef41804"
+    },
+    {
+      "path": "src/handwriting_grader/advanced.py",
+      "sha256": "60cecf82ca503ac2f1c80a37d07f12dc56b03e4a059b960f3da76e3c8ea9e518"
+    },
+    {
+      "path": "src/handwriting_grader/pricing.py",
+      "sha256": "bb25ce885bbecd23f8bc071b9d72f8cb1e39f9fa34274dff7436af2e49a153aa"
+    },
+    {
+      "path": "src/handwriting_grader/telemetry.py",
+      "sha256": "9929e8b51d326c710ccf831b0fb22c1633c1537319638925bd7ff2ce9441022a"
+    },
+    {
+      "path": "docs/blog-series/snippets/banner-generate-source.py.txt",
+      "sha256": "bde0c5caffeabc4553da6494487119d6475c55b1a3c4b45239be68f95eefbc9a"
+    },
+    {
+      "path": "docs/blog-series/snippets/offline-framework-smoke.py",
+      "sha256": "d2a544123ada3b0ad6847e253160e8c67d6df1cce91487572547158d766fde77"
+    },
+    {
+      "path": "docs/blog-series/observed/offline-framework-smoke.txt",
+      "sha256": "1a62ccacda090ab8fbac384b66ad7a348ad333756950d5b850797afb94acb8bb"
     }
   ],
   "publication_permission": "Owner confirmed existing example details may be retained.",
@@ -225,5 +265,7 @@
   "banner_artwork_prior_paid_calls": 1,
   "banner_artwork_current_paid_calls": 8,
   "banner_artwork_estimated_cost_usd": 0.06394,
-  "banner_branding_paid_calls": 0
+  "banner_branding_paid_calls": 0,
+  "image_tool_source_revision": "ee6c616cdeac43a9c97b0261049cb278fd5449b5",
+  "framework_demonstration": "Synthetic offline run; no historical exam trace or Azure clients."
 }

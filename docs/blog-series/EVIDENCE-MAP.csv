@@ -18,6 +18,7 @@ article,step,evidence,status
 05,Batch grading,media/14-grading-evidence.png,Actual saved mode and checkpoint counts
 05,Model grading result,media/15-q2-result.png,Actual saved result excerpt
 06,Executor sequence,diagrams/framework.mmd,Code-derived diagram; no historical framework event trace captured
+06,Offline typed workflow exercise,observed/offline-framework-smoke.txt,New synthetic Framework run with validation/grading stubs; zero Azure clients; not historical exam evidence
 07,Price verification,media/18-pricing-evidence.png,Whitelisted saved journal evidence; no fresh lookup
 07,Cost accounting,media/19-cost-phases.png,Actual accumulated summary; not grading-only or provider invoice
 08,Statistics,media/20-statistics.png,Actual saved workbook excerpt
@@ -28,3 +29,11 @@ article,step,evidence,status
 08,Generated infographic,media/25-class-infographic.png,Actual saved AI artwork; branding limitations disclosed
 08,Word report,media/26-teacher-report-page.png,Actual document rendering; visible Markdown-formatting limitation
 08,PowerPoint chart,media/27-class-chart-slide.png,Actual saved slide rendering
+01,Banner prompt and model output,branding/prompts/01.txt,Actual submitted brief; generated scene and hashes retained separately from grader results
+02,Banner prompt and model output,branding/prompts/02.txt,Actual submitted brief; generated scene and hashes retained separately from grader results
+03,Banner prompt and model output,branding/prompts/03.txt,Actual submitted brief; generated scene and hashes retained separately from grader results
+04,Banner prompt and model output,branding/prompts/04.txt,Actual submitted brief; generated scene and hashes retained separately from grader results
+05,Banner prompt and model output,branding/prompts/05.txt,Actual submitted brief; generated scene and hashes retained separately from grader results
+06,Banner prompt and model output,branding/prompts/06.txt,Actual submitted brief; generated scene and hashes retained separately from grader results
+07,Banner prompt and model output,branding/prompts/07.txt,Actual submitted brief; generated scene and hashes retained separately from grader results
+08,Banner prompt and model output,branding/prompts/08.txt,Actual submitted brief; generated scene and hashes retained separately from grader results

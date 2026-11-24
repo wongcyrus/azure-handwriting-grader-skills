@@ -1,0 +1,4 @@
+Execution order: validate -> grade_stub
+Validation calls: 1
+Workflow output: draft
+Azure clients constructed: 0

@@ -1,0 +1,31 @@
+# Source: src/handwriting_grader/suggestions.py; lines 18-45
+# Excerpt from inspected source, not a runnable standalone program.
+
+
+class SuggestedBox(BaseModel):
+    x: StrictInt
+    y: StrictInt
+    width: StrictInt
+    height: StrictInt
+    label: StrictStr
+
+
+class SuggestedBoxes(BaseModel):
+    boxes: list[SuggestedBox]
+
+
+PROMPT = """Identify answer and metadata regions on this scanned exam page.
+
+For metadata fields (NAME, ID, CLASS):
+- The bounding box MUST enclose the handwritten/input value area (the blank line, box, or write-in space where the student writes), NOT the printed label text (such as "Name:", "Student ID:", or "Class:").
+- For NAME: Allocate generous horizontal width across the entire designated answer line/blank to accommodate variable student name lengths.
+- For ID and CLASS: Enclose the complete write-in area or box designated for the student's ID and class.
+- Use exact labels "NAME", "ID", and "CLASS".
+
+For question answer areas:
+- Expected question IDs from the marking rubric: {question_ids}.
+{question_details}- Return ONE bounding box enclosing the complete student answer area/table for each expected question ID that appears on this page.
+- Use ONLY the exact question ID labels listed above. Do NOT invent, rename, or subdivide labels beyond that list.
+- Do not include printed question instructions or titles in the answer box.
+
+Coordinates must use a normalized 0-to-1000 scale: x and y are the top-left corner, and width and height are the box dimensions. Ensure all boxes lie entirely inside the page. Return an empty list if no regions can be identified."""

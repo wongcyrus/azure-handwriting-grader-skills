@@ -79,5 +79,167 @@ handwriting-grader review-regions --exam /private/exam.yaml
 </code></pre>
 <p>This placeholder command has not been run as part of this article. Paid execution additionally requires explicit consent and <code>--confirm-cost</code>. The application verifies required prices before the paid request; a failed check must block rather than guess.</p>
 <p><strong>The useful result of this first walkthrough is not “AI marked everything.”</strong> It is a visible exam, a verified structural summary, a real scan blocker and reviewable rubric/crop evidence. Knowing when not to run AI is part of a successful workflow.</p>
+<h2>Technical walkthrough: what the assistant and application actually do</h2>
+<p>There are two different kinds of prompt. The teacher's request tells the assistant
+which reviewed workflow to invoke; it is not sent verbatim to the handwriting
+model. The application constructs its own task-specific model prompt and attaches
+the relevant document or image. A sentence such as "do not send email" is useful
+operator intent, but the separate delivery commands and approvals enforce that
+boundary in code.</p>
+<h3>Why preflight is local, not an AI judgment</h3>
+<p><code>cli.check_exam()</code> reads YAML, checks readable input paths, opens the roster with
+<code>openpyxl</code>, checks unique IDs and required columns, and reads the PDF page count
+with <code>PdfReader</code>. If attendance is supplied, it counts the present students.
+Its structural comparison is this actual source excerpt:</p>
+<pre><code class="language-python">if roster_count and pdf_count is not None and pages and pdf_count != roster_count * pages:
+    errors.append(&quot;PDF page count does not equal roster count times pages_per_student&quot;)
+summary.update(exam=name, students=roster_count, absent=absent_count,
+               pdf_pages=pdf_count, pages_per_student=pages)
+return errors, summary
+</code></pre>
+<p>For the observed example, <code>4 * 2 == 8</code>, so this check passes. It cannot distinguish
+two correctly ordered pages from two swapped pages. The separate scan checker
+compares downsampled ink maps against expected page offsets and rotated
+alternatives. In the captured command it uses majority-consensus references from
+the PDF, not an AI opinion. This explains why the first command passes while the
+second reports a blocker.</p>
+<p><strong>Actual outputs:</strong> the preflight summary and the three scan warnings shown above.
+No model prompt is involved in either command.</p>
+<h3>The complete optional DOCX-extraction prompt</h3>
+<p>If the source marking scheme is DOCX rather than a ready-made XLSX, the application
+converts it to Markdown and supplies the following <strong>complete production prompt</strong>
+from <code>rubric.PROMPT</code>. This is current source, not a recovered transcript proving
+how the historical workbook was created:</p>
+<pre><code class="language-text">Extract the marking scheme from the document. Return every gradable
+question or sub-question as its own separate entry with its exact label,
+question text/context, marking criteria, and individual available marks.
+Whenever a numbered question contains separately marked sub-parts, sub-items,
+or fill-in-the-blank items (each having its own answer space or mark allocation),
+split each sub-part into its own entry using its combined label rather than
+collapsing multiple sub-parts into one parent entry. Include any general grading
+guidance separately. Do not invent missing information.
+</code></pre>
+<p>The split-subparts instruction prevents one parent question from swallowing
+several separately marked answer spaces. The "do not invent" instruction is not
+the only safeguard: the response must also satisfy these source-defined models:</p>
+<pre><code class="language-python">class RubricQuestion(BaseModel):
+    question_number: StrictStr
+    question_text: StrictStr
+    marking_scheme: StrictStr
+    marks: float
+
+
+class ExtractedRubric(BaseModel):
+    general_grading_guide: StrictStr = &quot;&quot;
+    questions: list[RubricQuestion]
+</code></pre>
+<p><code>BaseModel</code> and <code>StrictStr</code> are Pydantic types. The application supplies the
+document separately from the instruction:</p>
+<pre><code class="language-python">response = client.generate_content(
+    model=model,
+    contents=[PROMPT, content],
+    config=GenerationConfig(**rubric_config),
+)
+</code></pre>
+<p>Here <code>content</code> is the Markdown conversion, and <code>rubric_config</code> requests
+<code>ExtractedRubric</code> structured output with a 16,384-token output limit. Python then
+rejects missing question text, duplicate normalized question IDs, metadata labels
+used as question IDs, and nonfinite or nonpositive marks. General guidance is
+appended to each question's marking scheme so it reaches later grading prompts.
+Source and model-config hashes are checked again before publishing the workbook.</p>
+<p><strong>Actual output available:</strong> the five-question workbook in Figure 4. <strong>Not
+captured:</strong> a new DOCX request or its original raw JSON response. The XLSX import
+path instead validates and copies a workbook without calling Azure.</p>
+<h3>How a region becomes a crop</h3>
+<p><code>prepare_regions()</code> renders the first script at 200 DPI, records each page's
+dimensions and digest, and creates an empty annotation draft. A reviewed box is
+stored in the page's pixel coordinates. The example Q3 box is 1191 pixels wide
+and 254 pixels high; a label such as <code>Q3</code> is normalized to the rubric's question
+key before lookup.</p>
+<p>Later, <code>approved_inputs()</code> checks the rubric and region approvals and requires
+the set of question boxes to equal the rubric's question set. Missing Q3 is an
+error, not permission to omit that question. Part 4 shows the actual crop code,
+optional region-suggestion prompt and coordinate conversion.</p>
+<p>This separates four technical responsibilities: the assistant requests an
+operation, Python validates its prerequisites, Azure proposes task-specific
+content only where needed, and a teacher reviews the resulting artifacts.</p>
 <p>Next: <a href="02-review-and-return.html">review the existing proposed marks and reports</a>.</p>
+<!-- BEGIN BANNER WALKTHROUGH -->
+<h2>Reproduce this article's AI banner: full prompt, code and output</h2>
+<p>The banner is a separate illustration task, not an image of a running grader or
+evidence that an assessment succeeded. Its article title, description, visual
+metaphor, palette and composition are all in the <strong>complete actual submitted
+prompt</strong> below. No reference images or official logos were sent in this request.</p>
+<h3>Stage A: the actual Azure image prompt</h3>
+<pre><code class="language-text">Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: Your first teacher-reviewed AI marking run on Azure.
+Description: Teachers prepare handwritten exams, inspect scans and answer regions, and see evidence at each step before allowing AI to draft marks. Human review remains essential; a failed check means stop, not automatic approval.
+
+Creative concept: THE PAPER BRIDGE. A spectacular sculptural bridge made from folded ivory exam paper sweeps from the foreground toward a luminous blue gateway on the RIGHT side. Individual folded sheets gradually turn into tiny luminous geometric particles near the gateway. Warm amber light shines through the paper folds, against deep plum and midnight blue. Tactile paper fibers, cinematic volumetric light, elegant shallow depth of field and a strong sense of invitation. The gateway symbolizes beginning a carefully supervised workflow, not magical automatic grading.
+
+Use one dominant, unmistakable hero silhouette. It should be beautiful and intriguing at thumbnail size. No ordinary desk still life, laptop, generic cloud icon, rows of cards or stock-photo classroom.
+
+Composition: leave the LEFT 42 percent calm and dark plum for large typography added later. Put the bridge's main sculptural curve and blue gateway on the right. Compose all essential visual elements within the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, so a wide 1200x515 crop works without cutting the hero. Avoid important objects near the top and bottom. Full-bleed artwork, no borders.
+
+No rendered titles, letters, legible handwriting, numbers, logos, badges, watermarks, interfaces, score values or fabricated application outputs. Any paper marks are abstract strokes only. This is conceptual editorial art, not an observed grading result. Prioritize visual allure, rich light, contrast and a memorable composition over literal explanation.
+</code></pre>
+<p>This prompt's retained source is <code>branding/prompts/01.txt</code>. Asking for no
+rendered words leaves typography to local code; the quiet side reserves space
+for the headline. The image-size/crop instructions guide composition but do not
+guarantee the model obeys every visual constraint, so the result was inspected.</p>
+<h3>Stage B: preview and the real API boundary</h3>
+<p>Use the independent image-generation repository's own environment and a newly
+reviewed private Azure configuration. The following command is an <strong>offline
+preview example</strong>, not a paid request executed while rebuilding this article:</p>
+<pre><code class="language-bash">&quot;/path/to/azure-image-generation-skills/.venv/bin/azure-image&quot; \
+  --model-config /private/image.config.yaml \
+  --prompt-file &quot;/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/01.txt&quot; \
+  --output-dir /private/new-banner-part-01
+</code></pre>
+<p>Paid execution adds <code>--confirm-cost</code> only after explicit approval for one request.
+The attempt directory must be new. Pricing is checked before SDK construction
+and again at this actual source method from the independent tool:</p>
+<pre><code class="language-python">def generate(self, prompt):
+    self.verifier.verify()
+    return self.sdk.with_options(max_retries=0).images.generate(
+        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
+        quality=IMAGE_QUALITY, n=1,
+    )
+</code></pre>
+<p><code>IMAGE_SIZE</code> is <code>1536x1024</code> and <code>IMAGE_QUALITY</code> is <code>auto</code>. <code>n=1</code> requests one
+image; SDK and per-call retries are disabled. The SDK returns inline base64
+image data. The tool decodes it, verifies PNG format and exact dimensions, saves
+the original and keeps private usage/price journals. The published method
+excerpt is from
+<a href="https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py">image-tool commit ee6c616</a>;
+it is not a standalone script and is not installed as part of the grader.</p>
+<p><strong>Observed output for this article:</strong> one successful text-to-image request using
+<code>gpt-image-2.5-sunburst</code>, with estimated cost <strong>US$0.006655</strong>.
+This is historical usage evidence, not a guaranteed future quote or an invoice.</p>
+<p><img alt="Actual Azure-generated scene for article 1, before headline and brand composition." src="branding/artworks/01.jpg" /></p>
+<p><em>Banner stage B output. A metadata-free JPEG publication derivative of the actual
+1536 x 1024 generated PNG, before local typography and logos; not a fabricated
+application screenshot.</em></p>
+<h3>Stage C: preserve the scene, then add exact words and retained brand assets</h3>
+<p>The publication builder creates a blurred background extension and fits the
+complete generated scene without stretching it. Its relevant Pillow excerpt is:</p>
+<pre><code class="language-python">full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
+hero.paste(full_scene, (x, 0), mask)
+</code></pre>
+<p><code>hero</code> is the upper banner canvas, <code>x</code> anchors the scene opposite the headline,
+and <code>mask</code> feathers the quiet edge into the background. The builder varies
+left/right placement and light/dark text by article. <code>ImageDraw.text()</code> writes
+the exact headline; the four retained brand assets are resized proportionally
+and composited into a separate strip. AI is not asked to redraw those marks.</p>
+<p><strong>Final output:</strong> the <a href="media/01-banner.png">1200 x 630 PNG shown at the top</a>,
+plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
+artwork; it is not newly generated high-resolution detail. Original PNG and
+submitted-prompt hashes are retained in <code>branding/artwork-provenance.json</code>.
+<a href="tools/banners.py">Local composition source</a> and
+<a href="branding/README.html">brand-source/permission caveats</a> are included.</p>
+<p>Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
+not regenerate artwork, refresh prices or authorize any new paid operation.</p>
+<!-- END BANNER WALKTHROUGH -->
+
 <p><strong>Implementation reference:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/README.md">installation and reviewed workflow at the inspected revision</a>.</p></article></body></html>

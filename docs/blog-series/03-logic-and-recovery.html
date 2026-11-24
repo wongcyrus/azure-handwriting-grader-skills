@@ -104,5 +104,172 @@ Do not replace raw model results or record approval for me.
 <h2>What this design buys you—and what it does not</h2>
 <p>It gives operators inspectable artifacts, explicit state transitions and opportunities to stop. It does not establish that a rubric is fair, a crop is complete or an approved score is educationally correct.</p>
 <p>The actual scan blocker and OCR failures show why these boundaries matter. A system that can explain why it stopped is more useful than one that turns every failure into an apparently complete report.</p>
+<h2>Technical walkthrough: state transitions, not approval by prompt</h2>
+<p>An operator can ask the assistant to resume safely:</p>
+<pre><code class="language-text">Inspect the run manifest and checkpoint first.
+Explain which script/question pairs are missing and which inputs are bound by hashes.
+Preview resume or an isolated child regrade, as appropriate.
+Do not remove a lock, replace an approval, alter raw results or make a paid request.
+</code></pre>
+<p>This is an operator prompt, not an Azure model prompt. The following Python
+mechanisms enforce the important parts even if an operator request is vague.</p>
+<h3>The prerequisite gate returns a concrete crop map</h3>
+<p>The first half of <code>approved_inputs()</code> validates attendance, reads the approved
+rubric and checks the region run. Its second half is:</p>
+<pre><code class="language-python">if not approval_is_current(root, manifest, draft):
+    raise ValueError(&quot;Current region review has not been approved&quot;)
+annotations = draft[&quot;annotations&quot;]
+validate_annotations(annotations, manifest[&quot;pages&quot;], complete=True)
+boxes = {}
+for page, page_boxes in annotations.items():
+    for box in page_boxes:
+        boxes[question_key(box[&quot;label&quot;])] = (int(page), box)
+expected = {question_key(q[&quot;question_number&quot;]) for q in questions}
+actual = set(boxes) - {&quot;NAME&quot;, &quot;ID&quot;, &quot;CLASS&quot;}
+if actual != expected:
+    raise ValueError(&quot;Approved region labels do not match the approved rubric&quot;)
+return questions, root, manifest, boxes
+</code></pre>
+<p>The returned map relates a normalized question key to a page offset and pixel
+box. This is why a changed rubric or missing answer box must be resolved before
+inference, not interpreted as a model's blank answer.</p>
+<h3>A checkpoint is a keyed ledger, not a count of API calls</h3>
+<p><code>continue_grading()</code> reconstructs dictionaries from saved records:</p>
+<pre><code class="language-python">scripts = {row[&quot;script_index&quot;]: row for row in results[&quot;scripts&quot;]}
+marks = {(row[&quot;script_index&quot;], question_key(row[&quot;question&quot;])): row for row in results[&quot;marks&quot;]}
+missing_scripts = [si for si in range(summary[&quot;students&quot;]) if si not in scripts]
+</code></pre>
+<p>It rejects duplicates and unexpected keys before continuing. Batch workers
+publish records keyed by <code>(script_index, question_key)</code> under a result lock.
+Completion requires four metadata records, all twenty student/question pairs,
+and coverage of every moderated question in this example. The engine also checks
+model configuration, roster, rubric and region-approval hashes before setting
+<code>completed = true</code>. Completion means a full ledger exists; human review is a
+later state transition.</p>
+<h3>How atomic JSON publication works</h3>
+<p>The exact publication core in <code>regions.atomic_json()</code> is:</p>
+<pre><code class="language-python">with tempfile.NamedTemporaryFile(
+    mode=&quot;w&quot;, encoding=&quot;utf-8&quot;, dir=path.parent, delete=False
+) as file:
+    temp = Path(file.name)
+    try:
+        json.dump(value, file, ensure_ascii=False, indent=2)
+        file.write(&quot;\n&quot;)
+        file.flush()
+        os.fsync(file.fileno())
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+try:
+    os.replace(temp, path)
+finally:
+    temp.unlink(missing_ok=True)
+</code></pre>
+<p>The caller has already converted <code>path</code> to a <code>Path</code>. A temporary file in the same
+directory is flushed before <code>os.replace()</code> publishes the new name, so a reader
+does not see half-written JSON. This is not a transaction spanning Azure,
+<code>results.json</code>, the review workbook and every directory entry. In particular,
+a provider response can be billed before its record is published locally.</p>
+<h3>Why the processing lock is separate</h3>
+<p>The source uses exclusive file creation, not "check then create":</p>
+<pre><code class="language-python">lock = target / &quot;processing.lock&quot;
+try:
+    with lock.open(&quot;x&quot;, encoding=&quot;utf-8&quot;) as file:
+        file.write(&quot;Grading in progress; inspect stale locks before removing.\n&quot;)
+except FileExistsError as exc:
+    raise ValueError(&quot;Another grading process or a stale lock exists&quot;) from exc
+</code></pre>
+<p>The surrounding context manager removes its lock on exit. A terminated process
+can leave a stale lock, which needs investigation rather than automatic deletion.
+Atomic JSON prevents partial records; the run lock prevents two writers from
+independently advancing the same checkpoint. They solve different problems.</p>
+<h3>What changes when an input changes</h3>
+<p>Resume uses the original run's bound inputs and missing-record ledger. A changed
+question rubric or crop belongs to a separately reviewed proposal and child run,
+with fresh review afterwards. Copying an old approval into a child folder would
+not make its digests match. Neither path provides exactly-once provider billing:
+the application can know which results were recorded, not whether a request
+accepted just before a crash was charged.</p>
+<p><strong>Observed evidence remains:</strong> the completed four-script/twenty-mark checkpoint
+and saved approval fields above. No interrupted-run, stale-lock deletion or child
+regrade was performed to illustrate these source contracts.</p>
 <p>Next: <a href="04-scans-crops-alignment.html">inspect the images and alignment logic</a>.</p>
+<!-- BEGIN BANNER WALKTHROUGH -->
+<h2>Reproduce this article's AI banner: full prompt, code and output</h2>
+<p>The banner is a separate illustration task, not an image of a running grader or
+evidence that an assessment succeeded. Its article title, description, visual
+metaphor, palette and composition are all in the <strong>complete actual submitted
+prompt</strong> below. No reference images or official logos were sent in this request.</p>
+<h3>Stage A: the actual Azure image prompt</h3>
+<pre><code class="language-text">Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
+
+Article title: Logic before AI: approvals, checkpoints and recovery.
+Description: Application logic validates approved inputs, separates drafts from approved results, records checkpoints and permits conservative recovery. AI output cannot promote itself into an approved result.
+
+Creative concept: THE ARCHITECTURE OF TRUST. On the RIGHT, a monumental miniature architectural sculpture: a graceful illuminated path passes through three tall transparent glass gates, separated by deep gaps bridged by precise narrow walkways. Small solid amber checkpoint stones sit at the gate thresholds. One final gate is visibly closed, creating a beautiful visual boundary rather than an implication of unrestricted autonomy. Obsidian ground, frosted violet glass, cool white luminous edges and a restrained amber accent. Dramatic architectural lighting, deep indigo atmosphere and a premium museum-installation aesthetic.
+
+This is a striking sculptural metaphor, not a labeled flowchart. No paper desk, laptops, robot mascot, hexagon swarm or generic cybersecurity padlock. The geometry must feel intentional, precise and beautiful.
+
+Composition: leave the LEFT 42 percent dark and visually quiet for large typography added later. Gates and bridges occupy the right with a strong diagonal rhythm. Keep the gate tops and path inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
+
+No titles, letters, numbers, logos, badges, watermarks, UI panels or fabricated runtime evidence. This is conceptual editorial art rather than a reconstruction of an actual execution. Prioritize memorable architecture, restrained luxury, contrast and light.
+</code></pre>
+<p>This prompt's retained source is <code>branding/prompts/03.txt</code>. Asking for no
+rendered words leaves typography to local code; the quiet side reserves space
+for the headline. The image-size/crop instructions guide composition but do not
+guarantee the model obeys every visual constraint, so the result was inspected.</p>
+<h3>Stage B: preview and the real API boundary</h3>
+<p>Use the independent image-generation repository's own environment and a newly
+reviewed private Azure configuration. The following command is an <strong>offline
+preview example</strong>, not a paid request executed while rebuilding this article:</p>
+<pre><code class="language-bash">&quot;/path/to/azure-image-generation-skills/.venv/bin/azure-image&quot; \
+  --model-config /private/image.config.yaml \
+  --prompt-file &quot;/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/03.txt&quot; \
+  --output-dir /private/new-banner-part-03
+</code></pre>
+<p>Paid execution adds <code>--confirm-cost</code> only after explicit approval for one request.
+The attempt directory must be new. Pricing is checked before SDK construction
+and again at this actual source method from the independent tool:</p>
+<pre><code class="language-python">def generate(self, prompt):
+    self.verifier.verify()
+    return self.sdk.with_options(max_retries=0).images.generate(
+        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
+        quality=IMAGE_QUALITY, n=1,
+    )
+</code></pre>
+<p><code>IMAGE_SIZE</code> is <code>1536x1024</code> and <code>IMAGE_QUALITY</code> is <code>auto</code>. <code>n=1</code> requests one
+image; SDK and per-call retries are disabled. The SDK returns inline base64
+image data. The tool decodes it, verifies PNG format and exact dimensions, saves
+the original and keeps private usage/price journals. The published method
+excerpt is from
+<a href="https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py">image-tool commit ee6c616</a>;
+it is not a standalone script and is not installed as part of the grader.</p>
+<p><strong>Observed output for this article:</strong> one successful text-to-image request using
+<code>gpt-image-2.5-sunburst</code>, with estimated cost <strong>US$0.006505</strong>.
+This is historical usage evidence, not a guaranteed future quote or an invoice.</p>
+<p><img alt="Actual Azure-generated scene for article 3, before headline and brand composition." src="branding/artworks/03.jpg" /></p>
+<p><em>Banner stage B output. A metadata-free JPEG publication derivative of the actual
+1536 x 1024 generated PNG, before local typography and logos; not a fabricated
+application screenshot.</em></p>
+<h3>Stage C: preserve the scene, then add exact words and retained brand assets</h3>
+<p>The publication builder creates a blurred background extension and fits the
+complete generated scene without stretching it. Its relevant Pillow excerpt is:</p>
+<pre><code class="language-python">full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
+hero.paste(full_scene, (x, 0), mask)
+</code></pre>
+<p><code>hero</code> is the upper banner canvas, <code>x</code> anchors the scene opposite the headline,
+and <code>mask</code> feathers the quiet edge into the background. The builder varies
+left/right placement and light/dark text by article. <code>ImageDraw.text()</code> writes
+the exact headline; the four retained brand assets are resized proportionally
+and composited into a separate strip. AI is not asked to redraw those marks.</p>
+<p><strong>Final output:</strong> the <a href="media/03-banner.png">1200 x 630 PNG shown at the top</a>,
+plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
+artwork; it is not newly generated high-resolution detail. Original PNG and
+submitted-prompt hashes are retained in <code>branding/artwork-provenance.json</code>.
+<a href="tools/banners.py">Local composition source</a> and
+<a href="branding/README.html">brand-source/permission caveats</a> are included.</p>
+<p>Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
+not regenerate artwork, refresh prices or authorize any new paid operation.</p>
+<!-- END BANNER WALKTHROUGH -->
+
 <p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/grade_review.py">approval validation</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/skills/handwriting-grading/references/regrading.md">targeted regrading</a>.</p></article></body></html>

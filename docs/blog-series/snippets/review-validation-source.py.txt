@@ -1,0 +1,92 @@
+# Source: src/handwriting_grader/grade_review.py; lines 115-204
+# Excerpt from inspected source, not a runnable standalone program.
+
+def validate_review(config, config_dir, config_path, *, run_id=None, _seen=()):
+    from .attendance import present_roster
+
+    root, manifest, results, questions = verify_grading_run(config, config_dir, config_path,
+                                                             run_id=run_id, _seen=_seen)
+    roster = present_roster(config, config_dir, config_path)
+    expected_scripts = set(range(len(roster)))
+    scripts = results.get("scripts")
+    raw_marks = results.get("marks")
+    if not isinstance(scripts, list) or not isinstance(raw_marks, list):
+        raise ValueError("Grading results have an invalid structure")
+    indices = [script.get("script_index") for script in scripts]
+    if (len(indices) != len(expected_scripts) or any(type(index) is not int for index in indices)
+            or set(indices) != expected_scripts):
+        raise ValueError("Grading results do not cover the roster")
+    rubric = {question_key(q["question_number"]): q for q in questions}
+    expected_marks = {(index, key) for index in expected_scripts for key in rubric}
+    baseline = {}
+    for item in raw_marks:
+        pair = (item.get("script_index"), question_key(item.get("question", "")))
+        if pair not in expected_marks or pair in baseline:
+            raise ValueError("Grading results contain unexpected or duplicate marks")
+        baseline[pair] = item
+    if set(baseline) != expected_marks:
+        raise ValueError("Grading results are incomplete")
+    path = root / "review.xlsx"
+    before = file_hash(path)
+    workbook = load_workbook(path, read_only=True, data_only=False, keep_links=False)
+    try:
+        identities = {}
+        for row in reviewed_rows(workbook, "Scripts", ("script_index", "reviewed_id", "reviewed")):
+            index = row["script_index"]
+            if type(index) is not int or index not in expected_scripts or index in identities:
+                raise ValueError("Review contains an invalid or duplicate script")
+            if not confirmed(row["reviewed"]) or row["reviewed_id"] is None:
+                raise ValueError("Every script ID needs explicit human review")
+            student_id = str(row["reviewed_id"]).strip()
+            if student_id not in roster or student_id in identities.values():
+                raise ValueError("Reviewed IDs must match distinct roster IDs")
+            identities[index] = student_id
+        if set(identities) != expected_scripts or set(identities.values()) != set(roster):
+            raise ValueError("Reviewed IDs do not cover the complete roster")
+        marks = {}
+        corrections = {}
+        for row in reviewed_rows(workbook, "Marks", (
+                "script_index", "question", "answer", "reasoning", "manual_mark", "reviewed")):
+            if type(row["script_index"]) is not int or row["question"] is None:
+                raise ValueError("Review contains an invalid script or question")
+            pair = (row["script_index"], question_key(row["question"]))
+            if pair not in expected_marks or pair in marks:
+                raise ValueError("Review contains an invalid or duplicate mark")
+            if not confirmed(row["reviewed"]):
+                raise ValueError("Every mark needs explicit human review")
+            original = baseline[pair]
+            answer = row["answer"] if row["answer"] is not None else ""
+            reasoning = row["reasoning"] if row["reasoning"] is not None else ""
+            if not isinstance(answer, str) or not isinstance(reasoning, str):
+                raise ValueError("Reviewed answers and reasoning must be text")
+            manual = row["manual_mark"]
+            has_manual = manual is not None and str(manual).strip() != ""
+            if (original["grading_failed"] or original["moderator_flag"]) and not has_manual:
+                raise ValueError("Failed or flagged grades require a manual mark")
+            if answer != original["answer"] and not has_manual:
+                raise ValueError("A corrected answer requires a manual mark")
+            mark = manual if has_manual else original["moderated_mark"]
+            if isinstance(mark, bool):
+                raise ValueError("Marks must be numeric")
+            try:
+                mark = float(mark)
+            except (TypeError, ValueError):
+                raise ValueError("Marks must be numeric") from None
+            if not math.isfinite(mark) or not 0 <= mark <= rubric[pair[1]]["marks"]:
+                raise ValueError("A reviewed mark is outside its question's range")
+            marks[pair] = mark
+            corrections[pair] = (answer, reasoning)
+        if set(marks) != expected_marks:
+            raise ValueError("Reviewed marks do not cover every student and question")
+    finally:
+        workbook.close()
+    if file_hash(path) != before:
+        raise ValueError("Review workbook changed during validation")
+    results = dict(results)
+    results["marks"] = [
+        {**item, "answer_original": item["answer"], "reasoning_original": item["reasoning"],
+         "answer": corrections[(item["script_index"], question_key(item["question"]))][0],
+         "reasoning": corrections[(item["script_index"], question_key(item["question"]))][1]}
+        for item in raw_marks
+    ]
+    return root, manifest, results, questions, roster, identities, marks

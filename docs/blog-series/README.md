@@ -40,6 +40,25 @@ they are not fabricated Excel or product screenshots.
 `EVIDENCE-MAP.csv` maps each demonstrated step to its actual output and explicitly
 identifies source-only procedures or outcomes that were not captured.
 
+## Technical reading and prompt conventions
+
+Each article now includes a self-contained technical walkthrough: relevant
+production prompt templates or an explicit explanation that the operation is
+local and has no LLM prompt, implementation code, data flow, validation and
+interpretation of the observed outputs. Teacher/operator prompts are labelled
+separately from application-generated model prompts. Template placeholders show
+runtime insertion; they are not asserted historical HTTP payloads.
+
+Every article also contains its **complete actual banner-generation prompt**,
+the image API method, the generated scene before composition, exact local
+typography/branding mechanics and its recorded estimate. No sidebar download is
+needed to read the prompt. `branding/prompts/` retains the original briefs.
+
+Part 6 includes a new real Framework execution with synthetic validation/grading
+stubs and an explicitly forbidden Azure client, alongside its complete script
+and captured output. It demonstrates typed sequencing without a paid grading
+run or alteration of the example. It is not a historical exam event trace.
+
 ## Articles
 
 1. [Your first teacher-reviewed AI marking run](01-first-marking-run.md)
@@ -74,6 +93,8 @@ identifies source-only procedures or outcomes that were not captured.
 - No local browser UI, child regrade, delivery preview, Moodle export, live price
   failure or framework event trace was captured. Those procedures are labelled
   as command/source examples, not claimed executions.
+  The separately labelled offline synthetic Framework smoke test is new evidence,
+  not a replay of that historical exam.
 
 The source revision inspected was
 `b6af53dd1cf4cf74b9a50591f0e775a3b1533133` in
@@ -105,9 +126,17 @@ From `docs/blog-series/`, the build is offline after installing its own dependen
 
 ```bash
 uv run --project tools python tools/build.py
+uv run --project tools python tools/check_articles.py
 ```
 
 It reads the containing Azure checkout, exports whitelisted
 evidence, creates banners/diagrams locally and renders HTML. It never imports
 the grader or calls Azure. Do not rerun paid workflows merely for a screenshot.
+It refreshes only the explicitly marked banner-walkthrough sections of the
+Markdown masters from retained prompts, images and provenance, then renders HTML.
+The technical prose remains editorially authored; markers are not a new runtime
+dependency or a skill instruction.
+The second command checks complete inline prompt templates and Framework
+functions against canonical source, banner-section freshness, and Python/JSON
+block syntax without importing the grader or making model calls.
 Review the articles and images before public upload; publication is not performed.
