@@ -126,7 +126,7 @@ The failed folder's manifest records 404 deployment-not-found errors. A later na
 
 This image also shows why review is necessary: generated institutional wordmarks and the IVE expansion should not be treated as official branding or authoritative names. The article displays the artifact as diagnostic evidence, not as approved institutional artwork. Correct or replace those elements before reusing the infographic as a standalone teaching resource.
 
-The publishing banners in this series are independent, offline artwork. They did not require additional paid requests.
+The publishing banners reuse a previously approved Azure-generated editorial illustration. Their titles and four-mark brand strips are composed locally, without additional paid requests. MVP identifies the author; the product marks identify technologies, not Microsoft endorsement. See the [brand provenance and publication caveats](branding/README.md) before uploading the user-supplied MVP and Framework graphics.
 
 ## Step 5: Define a pilot that can disprove your assumptions
 

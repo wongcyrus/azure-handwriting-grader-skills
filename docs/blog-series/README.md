@@ -15,10 +15,18 @@ syntax to that site's [authoring reference](https://learn.microsoft.com/en-us/co
 The actual publishing platform and editorial requirements still need confirmation.
 These are editorial drafts, not a claim of Microsoft acceptance or endorsement.
 
-Banner exports are 1200 x 630 PNG with 2400 x 1260 masters. That is our working
+Banner exports are 1200 x 630 PNG with 2400 x 1260 JPEG layout masters. That is our working
 recommendation, not a verified mandatory Microsoft banner dimension. Confirm the
 destination editor's requirements and cropping. Keep in-body infographic artwork
 separate from banners.
+
+All eight now use the approved editorial artwork with locally composited MVP,
+Azure OpenAI, Microsoft Foundry and Microsoft Agent Framework marks.
+[Brand provenance and publication caveats](branding/README.md) distinguish
+official Azure icons from the two user-supplied third-party copies. The MVP
+badge identifies the author, not Microsoft endorsement. Confirm asset permission
+with the publishing editor before upload.
+[Preview all eight branded banners](banner-prototypes/02-branded-series-preview.jpg).
 
 Each HTML file contains only the article, not this editorial guide. `ASSETS.csv`
 lists every article image's filename, alt text and caption for uploading.
@@ -54,7 +62,9 @@ identifies source-only procedures or outcomes that were not captured.
 - Existing cost accounting under the grading folder includes later phases.
   Scope is explained rather than calling the accumulated total “grading cost.”
 - Saved image-report manifests include both failures and a later successful
-  folder. No new paid image or text request was made for this publication package.
+  folder. No grading or reporting rerun was performed. The editorial banner
+  artwork reuses one previously approved paid prototype; this branding update
+  makes no new model requests.
 - No local browser UI, child regrade, delivery preview, Moodle export, live price
   failure or framework event trace was captured. Those procedures are labelled
   as command/source examples, not claimed executions.
@@ -74,6 +84,7 @@ is a companion tool, not a grader dependency.
 
 `media/`: numbered output images and eight banners.
 `masters/`: larger banner masters.
+`branding/`: publication artwork, original marks and provenance.
 `diagrams/`: editable Mermaid for explanatory diagrams, accompanied by PNGs.
 `observed/`: selected read-only terminal outputs.
 `snippets/`: source excerpts, not claimed historical request payloads.

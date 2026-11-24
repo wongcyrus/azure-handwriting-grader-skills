@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Banner artwork and brand provenance</title><style>
+body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
+h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
+img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
+code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
+td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
+a{color:#0067b8}em{color:#4b6175}
+</style></head><body><article><h1>Banner artwork and brand provenance</h1>
+<p>All eight banners reuse the previously approved editorial artwork. The original
+1536 x 1024 image was generated once with Azure OpenAI for the earlier prototype
+(one request, estimated US$0.00713). This update makes <strong>no new image requests</strong>.
+<code>editorial-art.jpg</code> is a metadata-free publication derivative; the original PNG,
+prompt and private billing journals remain outside this publication package.
+The 2400 x 1260 layout masters upscale the artwork; they do not contain newly
+generated higher-resolution detail.</p>
+<p>The four brand assets are composited locally, not generated or redrawn by AI.
+Full aspect ratios and colors are preserved, with separate whitespace and
+nearby product labels. The MVP badge denotes the author's affiliation;
+the other marks identify technologies discussed, not application branding
+or Microsoft endorsement.</p>
+<table>
+<thead>
+<tr>
+<th>Asset</th>
+<th>Source</th>
+<th>SHA-256 of retained source asset</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>azure-openai.svg</code></td>
+<td>Official Azure architecture icon bundle V25; <code>Icons/ai + machine learning/03438-icon-service-Azure-OpenAI.svg</code></td>
+<td><code>4859f2c78b6b81acbbaf94e7348cb7dcbe97955a038be903de01cf46a7206aad</code></td>
+</tr>
+<tr>
+<td><code>microsoft-foundry.svg</code></td>
+<td>Same official bundle; <code>Icons/ai + machine learning/035746832-icon-service-AI-Foundry.svg</code></td>
+<td><code>fab039a771f72780ae34e59065d61c66a02d3c347d50923ef2956f34912ea02c</code></td>
+</tr>
+<tr>
+<td><code>mvp.png</code></td>
+<td><a href="https://upload.wikimedia.org/wikipedia/commons/2/2a/Microsoft_MVP_banner.png">User-selected Wikimedia image</a></td>
+<td><code>125cfc4c17d5e0b022235956dccc1ff8b3a078ab27d1f2f5da4bc45771140d0b</code></td>
+</tr>
+<tr>
+<td><code>agent-framework.png</code></td>
+<td><a href="https://ravichaganti.com/images/maf.png">User-selected third-party graphic</a></td>
+<td><code>1d3c1e781eaf33ce1d40e839284fa579d33ab656d57a42f876043ab272ad65e1</code></td>
+</tr>
+</tbody>
+</table>
+<p>Azure sources:
+<a href="https://learn.microsoft.com/en-us/azure/architecture/icons/">icon page and usage guidance</a>;
+<a href="https://arch-center.azureedge.net/icons/Azure_Public_Service_Icons_V25.zip">downloaded V25 ZIP</a>.
+The icon guidance permits documentation and training use, requires nearby
+product names, and prohibits cropping, distortion, recoloring and representing
+one's own product with Microsoft's icons.</p>
+<p>The MVP and Framework images are user-supplied third-party copies, <strong>not
+authenticated official downloads</strong>. Their redistribution rights and current
+brand suitability have not been independently established. Confirm permission
+and publication-editor approval before uploading; replace them with authorized
+brand-kit originals if required. The entire supplied Framework square is kept,
+including its background and text; no symbol was extracted or repurposed as an
+Agent Service logo. This provenance note does not grant trademark rights.</p>
+<p><code>../sources.json</code> records hashes of the publication artwork and all four assets.
+<code>../tools/banners.py</code> produces the eight exports offline using Pillow and
+CairoSVG. No brand image is transmitted to Azure during composition.</p></article></body></html>

@@ -14,6 +14,7 @@ from openpyxl import load_workbook
 from PIL import Image, ImageDraw, ImageFont
 import pypdfium2 as pdfium
 from pptx import Presentation
+from banners import build_banners, SOURCES as BANNER_SOURCES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,36 +120,9 @@ def pdf_page(source, filename, page_index=0):
         page.close()
 
 
-TITLES = [
-    ("Your first marking run", "PREPARE / INSPECT / STOP WHEN NEEDED"),
-    ("Review, correct and return", "IDENTITY / MARKS / SEPARATE RELEASE"),
-    ("Logic before AI", "APPROVALS / CHECKPOINTS / RECOVERY"),
-    ("Getting the image right", "PAGES / CROPS / CONSERVATIVE ALIGNMENT"),
-    ("Inside Azure OpenAI", "IMAGES / STRUCTURED OUTPUT / VALIDATION"),
-    ("Microsoft Agent Framework", "THREE EXECUTORS / HUMAN REVIEW OUTSIDE"),
-    ("Check prices before AI", "CONSENT / VERIFIED RATES / KNOWN SCOPE"),
-    ("From demonstration to pilot", "VISIBLE OUTPUTS / MEASUREMENT / LIMITS"),
-]
-for index, (title, subtitle) in enumerate(TITLES, start=1):
-    image = Image.new("RGB", (2400, 1260), "#09233f")
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((1600, 180, 2240, 1080), radius=60, fill="#0e3c66")
-    for offset in range(3):
-        y = 300 + 230 * offset
-        draw.rounded_rectangle((1700, y, 2140, y + 140), radius=22,
-                               fill=("#1a80d5", "#e7a437", "#289a82")[offset])
-        draw.text((1740, y + 33), ("INPUT", "REVIEW", "OUTPUT")[offset],
-                  font=font(48, bold=True), fill="white")
-    draw.text((130, 120), f"AZURE HANDWRITING GRADER  /  PART {index:02} OF 08",
-              font=font(34), fill="#8ac4fa")
-    lines = wrapped(title, font(100, bold=True), 1400)
-    for line_index, line in enumerate(lines):
-        draw.text((130, 290 + 125 * line_index), line, font=font(100, bold=True), fill="white")
-    draw.text((135, 780), subtitle, font=font(31, bold=True), fill="#f3bd58")
-    draw.text((135, 920), "AI drafts. Teachers decide.", font=font(48), fill="#d2e7fb")
-    draw.text((135, 1100), "OUTPUT-LED TECHNICAL SERIES", font=font(28), fill="#8ac4fa")
-    image.save(ROOT / "masters" / f"{index:02}-banner-2400x1260.png")
-    image.resize((1200, 630), Image.Resampling.LANCZOS).save(MEDIA / f"{index:02}-banner.png")
+for name in BANNER_SOURCES:
+    record(ROOT / "branding" / name)
+build_banners()
 
 pdf_page(REPO / "example/VTC Test.pdf", "01-original-page.png")
 pdf_page(OUTPUT / "reports/pdfs/script-00001.pdf", "09-marked-peter-page.png")
@@ -347,6 +321,8 @@ revision = "b6af53dd1cf4cf74b9a50591f0e775a3b1533133"
     "captured_date": "2026-11-24", "sources": SOURCES,
     "publication_permission": "Owner confirmed existing example details may be retained.",
     "paid_calls_for_article_preparation": 0,
+    "banner_artwork_prior_paid_calls": 1,
+    "banner_branding_paid_calls": 0,
 }, indent=2))
 
 STYLE = """
@@ -359,14 +335,14 @@ a{color:#0067b8}em{color:#4b6175}
 """
 assets = []
 articles = sorted(ROOT.glob("[0-9][0-9]-*.md"))
-for source in articles + [ROOT / "README.md"]:
+for source in articles + [ROOT / "README.md", ROOT / "branding/README.md"]:
     text = source.read_text()
     converted = markdown.markdown(text, extensions=["fenced_code", "tables", "sane_lists"])
     converted = re.sub(r'href="([^":#]+)\.md"', r'href="\1.html"', converted)
     converted = converted.replace('href="README.html"', 'href="index.html"')
     title_match = re.search(r"^# (.+)$", text, re.MULTILINE)
     title = title_match[1]
-    target = ROOT / (source.stem + ".html" if source.name != "README.md" else "index.html")
+    target = ROOT / "index.html" if source == ROOT / "README.md" else source.with_suffix(".html")
     target.write_text(
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'

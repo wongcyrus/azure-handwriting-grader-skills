@@ -101,7 +101,7 @@ The independent [Azure image-generation skill](https://github.com/wongcyrus/azur
 
 Its current image-pricing gate checks **manual evidence**, not a live image-price lookup. Evidence must match the model/resource, region, supported billing mode, USD units, current UTC verification date, requested size and quality. The program validates the attestation; it cannot establish that a person actually reviewed the correct prices.
 
-The separately created workflow illustration used one image request and recorded an estimated US$0.04312. That separate run is not included in the grader's stored US$0.33436 snapshot. No new image call was made for these articles' banners; they were composed offline.
+The separately created workflow illustration used one image request and recorded an estimated US$0.04312. That separate run is not included in the grader's stored US$0.33436 snapshot. The editorial banners reuse another previously approved single-request prototype (estimated US$0.00713); their typography and brand strips were composed offline, with no new model calls for this update.
 
 ## Step 6: Keep consent and data governance visible
 

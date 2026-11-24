@@ -4,6 +4,26 @@
   "captured_date": "2026-11-24",
   "sources": [
     {
+      "path": "docs/blog-series/branding/editorial-art.jpg",
+      "sha256": "b2aee456692d9b2fc3d28d63f5c11e58385cf11b46e5447b31131971110a1132"
+    },
+    {
+      "path": "docs/blog-series/branding/mvp.png",
+      "sha256": "125cfc4c17d5e0b022235956dccc1ff8b3a078ab27d1f2f5da4bc45771140d0b"
+    },
+    {
+      "path": "docs/blog-series/branding/azure-openai.svg",
+      "sha256": "4859f2c78b6b81acbbaf94e7348cb7dcbe97955a038be903de01cf46a7206aad"
+    },
+    {
+      "path": "docs/blog-series/branding/microsoft-foundry.svg",
+      "sha256": "fab039a771f72780ae34e59065d61c66a02d3c347d50923ef2956f34912ea02c"
+    },
+    {
+      "path": "docs/blog-series/branding/agent-framework.png",
+      "sha256": "1d3c1e781eaf33ce1d40e839284fa579d33ab656d57a42f876043ab272ad65e1"
+    },
+    {
       "path": "example/VTC Test.pdf",
       "sha256": "316b167bbdd1c31717bfe6565a0cfda30017cbd20cb577b906347c9b0e60d385"
     },
@@ -137,5 +157,7 @@
     }
   ],
   "publication_permission": "Owner confirmed existing example details may be retained.",
-  "paid_calls_for_article_preparation": 0
+  "paid_calls_for_article_preparation": 0,
+  "banner_artwork_prior_paid_calls": 1,
+  "banner_branding_paid_calls": 0
 }
