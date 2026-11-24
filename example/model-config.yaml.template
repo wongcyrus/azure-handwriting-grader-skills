@@ -1,5 +1,6 @@
 # Copy to config.yaml locally; never add credentials to this file.
 # Set your actual HTTPS Azure endpoint and verified deployment aliases.
+# Use the resource root without /openai/v1; the client appends that path.
 # Paid stages require a preview, verified rates and separate --confirm-cost.
 azure_openai:
   endpoint: null
