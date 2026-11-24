@@ -6,10 +6,12 @@ Prepared 24 November 2026 using the existing cleared example and saved reports.
 
 ## Read and publish
 
-Open `index.html` for the article list. Each article has a Markdown master and a
-rendered HTML version. For a rich-text blog editor, copy the rendered article
-body, paste, then upload numbered images separately and check heading/code
-formatting. Do not paste raw Learn-specific Markdown into a rich-text editor.
+Open `index.html` for the article list. Each article has a Markdown master, a
+rendered HTML version, and an MS Word (`.docx`) export in `word/` with embedded
+images, tables, code blocks, and hyperlinks ready for copy-pasting into a
+rich-text blog editor. For a rich-text blog editor, you can copy directly from
+the `.docx` file (or from the rendered HTML body and upload numbered images
+separately). Do not paste raw Learn-specific Markdown into a rich-text editor.
 For Microsoft Learn's documentation pipeline, use Markdown and adapt image
 syntax to that site's [authoring reference](https://learn.microsoft.com/en-us/contribute/content/markdown-reference).
 
@@ -125,7 +127,8 @@ is a companion tool, not a grader dependency.
 
 ## What this package contains
 
-`media/`: numbered output images and eight banners.
+`media/`: numbered output images and banners.
+`word/`: MS Word (`.docx`) exports for all five articles, with embedded images and formatting.
 `masters/`: larger banner masters.
 `branding/`: publication artwork, original marks and provenance.
 `diagrams/`: editable Mermaid for explanatory diagrams, accompanied by PNGs.

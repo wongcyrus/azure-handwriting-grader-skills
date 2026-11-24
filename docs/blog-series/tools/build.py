@@ -16,6 +16,7 @@ import pypdfium2 as pdfium
 from pptx import Presentation
 from banners import build_banners, SOURCES as BANNER_SOURCES
 from article_content import without_banner_appendix
+from export_word import export_all_word
 from svg_diagrams import build_all_diagrams
 
 
@@ -432,4 +433,5 @@ for path in [*ROOT.glob("*.html"), ROOT / "branding/README.html"]:
             assert (path.parent / target.split("#")[0]).exists(), (path, target)
     assert "token=" not in path.read_text().lower()
 assert len(articles) == 5
-print(f"Verified five articles, {len(assets)} image placements, all local links and PNGs.")
+export_all_word(ROOT)
+print(f"Verified five articles, {len(assets)} image placements, Word exports, all local links and PNGs.")
