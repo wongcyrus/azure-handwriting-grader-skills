@@ -4,13 +4,13 @@
 
 ![AI-generated conceptual banner for Reports, LMS, Email and Cleanup.](media/08-banner.png)
 
-Once `grading/approval.json` is recorded, a teacher shouldn't have to guess what commands exist next—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why [SKILL.md](../../skills/handwriting-grading/SKILL.md) enforces a **Post-Approval Menu**:
+Once `grading/approval.json` is recorded, a teacher shouldn't have to memorize ten CLI subcommands—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why [SKILL.md](../../skills/handwriting-grading/SKILL.md) enforces a **Post-Approval Menu**:
 
 ```markdown
 Immediately after `grading/approval.json` is recorded (or whenever the user finishes reviewing), **always proactively present all post-approval options** so a general user knows what is available:
 ```
 
-Microsoft Agent Framework's job ended at the draft boundary in Part 6. From here on, every output verifies `grading/approval.json` locally and separates offline packaging from opt-in AI analysis, LMS export, gated email, and archival cleanup.
+Microsoft Agent Framework's job ended at the draft boundary in Part 6. From here on, every downstream tool independently verifies `grading/approval.json` via SHA-256 digests and separates zero-cost local packaging from opt-in AI analysis, LMS export, double-gated email, and archival cleanup.
 
 ![Post-Approval Outputs: Analytics, LMS Export, Email & Cleanup](media/31-hil-delivery.png)
 
@@ -18,8 +18,8 @@ Microsoft Agent Framework's job ended at the draft boundary in Part 6. From here
 
 ## 1. Offline `report` & `analytics` (zero AI cost)
 
-- **`report`**: Produces `score_report.xlsx`, `details_score_report.xlsx` (retaining both reviewed `Answers`/`Reasoning` and raw `AnswersRaw`/`ReasoningRaw` audit columns), individual marked PDFs (`<ID>_<NAME>_script-00001.pdf`), `all.pdf`, and stratified `sampleOfN.pdf` (plus `sampleOfN_only_pass.pdf` when a pass policy is configured).
-- **`analytics`**: Computes `statistics.xlsx` (Mean, Median, Sample SD, IQR, Min/Max, per-question facility & discrimination indices) and Matplotlib `question-boxplots-*.png` using Python's `statistics` module—never an LLM:
+- **`report`**: Produces `score_report.xlsx`, `details_score_report.xlsx` (retaining both reviewed `Answers`/`Reasoning` and raw `AnswersRaw`/`ReasoningRaw` audit columns so post-hoc audits can compare AI vs. teacher edits), individual marked PDFs (`<ID>_<NAME>_script-00001.pdf` preserving leading zeroes and Unicode), `all.pdf`, and stratified `sampleOfN.pdf` (top/middle/bottom scripts, plus `sampleOfN_only_pass.pdf` when a pass policy is configured).
+- **`analytics`**: Computes `statistics.xlsx` (Overall, Class, and Question sheets with Mean, Median, Sample SD, IQR, Min/Max, per-question facility & discrimination indices) and Matplotlib `question-boxplots-*.png` (1.5-IQR whiskers, outliers, up to 20 questions per chart) using Python's `statistics` module—never an LLM:
 
 ```python
 def describe(scores):
@@ -30,7 +30,7 @@ def describe(scores):
     ]
 ```
 
-If no pass policy is configured, pass-rate cells stay blank rather than defaulting to zero.
+If no pass policy is configured, pass-rate cells stay blank rather than inventing a threshold or defaulting to zero.
 
 ![Overall and question statistics rendered from the existing workbook.](media/20-statistics.png)
 
@@ -42,7 +42,7 @@ If no pass policy is configured, pass-rate cells stay blank rather than defaulti
 
 ## 2. Optional `ai-analysis` -> `approve-analysis` -> `advanced-report`
 
-If the teacher wants narrative feedback, `ai-analysis --confirm-cost` runs three structured tasks (`advanced.py`)—per-student feedback, per-question misconception diagnosis (comparing `samples[:3]` vs `samples[-3:]`), and class overview—into `ai-analysis/review.xlsx`:
+If the teacher wants narrative feedback, `ai-analysis --confirm-cost` runs three structured tasks (`advanced.py`)—per-student feedback, per-question misconception diagnosis (comparing `samples[:3]` vs. `samples[-3:]`), and class overview—into `ai-analysis/review.xlsx`:
 
 ```text
 Draft concise student feedback: strengths, weaknesses, one action per question and next steps.
@@ -65,11 +65,13 @@ response = self.client.generate_content(
 )
 ```
 
+Notice how Python calculates the cohort mean (`statistics.mean(...)`) and passes it to the class task rather than letting the model do arithmetic—and for small cohorts (`4` students), `samples[:3]` and `samples[-3:]` overlap, which the saved analysis honestly flags.
+
 ![Selected actual class-analysis text, including the incomplete-crop caveat.](media/22-analysis-excerpt.png)
 
 *Figure 4. Saved `ai-analysis/review.xlsx` excerpt preserving the incomplete-crop caveat.*
 
-After `approve-analysis --confirm-reviewed`, `advanced-report` generates `teacher-report.docx` (always text-only) and a 7-slide `class-presentation.pptx` with a native editable PowerPoint bar chart—**offline by default**.
+After `approve-analysis --confirm-reviewed` binds `ai-analysis/approval.json`, `advanced-report` generates `teacher-report.docx` (always text-only) and a 7-slide `class-presentation.pptx` with a native editable PowerPoint bar chart—**offline by default**.
 
 ![Inventory of actual Word and PowerPoint outputs, including seven slides in the offline presentation.](media/23-office-outputs.png)
 
@@ -84,7 +86,7 @@ After `approve-analysis --confirm-reviewed`, `advanced-report` generates `teache
 *Figure 7. Native editable PowerPoint chart slide rendered via LibreOffice.*
 
 ### Opt-in infographics with separate image-resource isolation
-Passing `--infographics --confirm-cost` (optionally with `--image-model-config /private/image.config.yaml` and a fresh `--report-name`) calls the **Azure Images API** with this prompt:
+Passing `--infographics --confirm-cost` (optionally with `--image-model-config /private/image.config.yaml` to isolate a dedicated Azure Images resource, and a fresh `--report-name` so prior offline reports are never overwritten) calls the **Azure Images API** with this prompt:
 
 ```text
 Create a clean, modern, flat-design educational infographic diagram for '{label}' on a crisp white background with navy blue and teal accents. Visually summarize the key concepts, strengths, and common student misconceptions below using clear icons, minimal readable labels, and structured visual blocks:
@@ -105,16 +107,29 @@ Image generation disables automatic retries: failures fall back to text cards an
 
 Once reports (and optional feedback) are approved, three final operational workflows close the loop:
 
-1. **Moodle / LMS Export (`moodle-export`, offline)**: Combines each student's AI feedback cover page with their marked script into `student_pdfs/<ID>_<Name>.pdf`, builds `recipients.csv` from a Moodle participants CSV, and (with `--worksheet`) fills a Moodle Assignment grading worksheet CSV + `feedback_files.zip` for bulk upload.
-2. **Double-Gated SMTP STARTTLS Email**:
-   - `preview-email`: Generates private `.eml` previews and `email/preview.json` offline.
-   - `approve-email --confirm-reviewed`: Verifies every present student has a valid PDF inside the approved report folder and writes SHA-256 `email/approval.json`.
-   - `send-email --confirm-send`: Reads `HANDWRITING_SMTP_PASSWORD` strictly from the environment (never YAML), connects via SMTP **STARTTLS**, and maintains `email/delivery.json` so already-sent or ambiguous in-flight messages are never silently retried.
-3. **Preview-First Archival (`clean` -> `--confirm-delete`)**: Defaults to creating a cross-platform **slim `.zip` backup** (`grading_archive_slim_TIMESTAMP.zip`) and removing only regenerable `grading/images/`, `regions/images/`, `.grading-*`, and `model-cache/` while preserving all HIL reviews, approvals, telemetry, delivery journals, `reports/`, `analytics/`, `ai-analysis/`, and `moodle/`.
+### Moodle / LMS Export (`moodle-export`, offline)
+Built in `moodle.py` with zero AI cost:
+- Merges each student's approved AI feedback cover page (if `ai-analysis/approval.json` is present) with their marked script into `moodle/student_pdfs/<ID>_<Name>.pdf`.
+- Builds `recipients.csv` directly from a Moodle participants CSV export.
+- With `--worksheet`, fills a Moodle Assignment grading worksheet CSV and packages `feedback_files.zip` for bulk upload back into Moodle.
+
+### Double-Gated SMTP STARTTLS Email
+Built in `distribution.py` with three separate commands:
+1. `preview-email`: Matches `recipients.csv` (`ID,EMAIL` for every present student) with `email_settings.yaml` templates (`{name}`, `{marks}`, `{exam}`, `{feedback}`—requiring `ai-analysis/approval.json` if `{feedback}` is used) and writes private `.eml` files + `email/preview.json` offline.
+2. `approve-email --confirm-reviewed`: Verifies every present student has a valid PDF inside the approved `reports/` folder (blocking path escapes) and writes SHA-256 `email/approval.json`.
+3. `send-email --confirm-send`: Reads `HANDWRITING_SMTP_PASSWORD` strictly from the environment (never YAML), opens an SMTP **STARTTLS** connection, and maintains `email/delivery.json` so already-accepted messages are skipped and ambiguous in-flight SMTP errors halt rather than auto-retrying.
+
+### Preview-First Archival (`clean` -> `--confirm-delete`)
+Implemented in `cleanup.py`:
+- Running `handwriting-grader clean --exam exam.yaml` without `--confirm-delete` is a dry-run preview listing target directories, file counts, and byte sizes.
+- Default root cleanup creates a cross-platform `ZIP_DEFLATED` **slim archive** (`grading_archive_slim_TIMESTAMP.zip`) and deletes only regenerable `grading/images/`, `regions/images/`, `.grading-*`, and `model-cache/`, preserving all HIL reviews, approvals, telemetry, delivery journals, `reports/`, `analytics/`, `ai-analysis/`, and `moodle/`.
+- Optional flags support `--full-archive` (includes raw JPEGs in the `.zip`), `--run CHILD_RUN` (removes an isolated child run while keeping the parent), and `--purge-reports --confirm-delete` (with full backup by default).
 
 ## 4. Measuring a school pilot (160-test offline baseline + holdout eval)
 
-The repository's 160-test `unittest` suite validates every pipeline invariant offline using synthetic PDFs, browser automation, LibreOffice, and localhost fake Azure/SMTP services—without touching student PII or spending cloud budget. Before deploying to a live course, freeze a holdout set of teacher-adjudicated scripts and measure identity accuracy, transcription fidelity, override rate, and review time:
+The repository's **160-test `unittest` suite** validates every pipeline invariant offline using synthetic PDFs, browser automation, LibreOffice conversion, and localhost fake Azure/SMTP services—without touching student PII or spending cloud budget.
+
+Before deploying to a live course, freeze a holdout set of teacher-adjudicated scripts (covering complete answers, blanks, diagrams, ambiguous IDs, scanner shifts, and overflow writing) and measure identity accuracy, transcription fidelity, override rate, and review time:
 
 ```python
 def compare_marks(proposed, reference, material_error_threshold):
@@ -129,6 +144,8 @@ def compare_marks(proposed, reference, material_error_threshold):
         ) / len(errors),
     }
 ```
+
+A pilot should enforce explicit **No-Go conditions**: stop on unresolved identity mappings, clipped answers affecting marks, unexplained report disagreements, missing consent, or unverified pricing. The goal of this entire architecture is an inspectable chain—from original scan and crop, through Skill policy, Agent Framework graph, and Azure OpenAI proposal, to cryptographically approved teacher output.
 
 Return to the [series index](README.md) for all eight articles, editable Mermaid diagrams, and publishing assets.
 

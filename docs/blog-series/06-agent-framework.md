@@ -4,7 +4,7 @@
 
 ![AI-generated conceptual banner for Microsoft Agent Framework and Skills.](media/06-banner.png)
 
-When developers hear "multi-agent system," they often picture three autonomous LLM personas debating each other in a loop until they agree on a grade. For high-stakes exam marking, **that pattern is an anti-pattern**: it multiplies latency and cost, obscures accountability, and blurs who actually approved a student's score.
+When developers hear "multi-agent system," they often picture three autonomous LLM personas debating each other in a loop until they agree on a grade. For high-stakes exam marking, **that pattern is an anti-pattern**: it multiplies latency and cost, makes failures non-reproducible, and blurs who actually approved a student's score.
 
 In `azure-handwriting-grader-skills`, we use **Microsoft Agent Framework** (`WorkflowBuilder`, `Executor`, `WorkflowContext`, `@handler`) for what it does best: **explicit, typed, auditable state transitions** around a deterministic Python grading engine—while keeping `SKILL.md` as the conversational router and keeping human approval strictly outside the automated graph.
 
@@ -22,6 +22,8 @@ validation → existing grading → human-review boundary. `workflow-grade` forc
 
 ## Separating four layers of "agentic" responsibility
 
+A common mistake in AI engineering is conflating "the assistant reading a skill" with "the workflow orchestrator" and "the model making a prediction." This repository keeps all four layers strictly separate:
+
 | Layer | Input | Owns | Explicitly Does NOT Own |
 |---|---|---|---|
 | **Skill-guided assistant (`SKILL.md`)** | Teacher intent + workspace files | Tool selection, stop rules, cost/review prompts | Inventing `--confirm-cost` or `--confirm-reviewed` |
@@ -29,11 +31,13 @@ validation → existing grading → human-review boundary. `workflow-grade` forc
 | **Microsoft Agent Framework (`workflow.py`)** | Typed `"grade"` control string | Graph sequencing: validate -> execute -> yield draft | Loading `SKILL.md`, negotiating marks, or approving |
 | **Azure OpenAI (`grading.py`)** | Rubric text + sharpened PNG crops | Structured JSON transcription, marks, and flags | Approving its own output |
 
+Why not use an autonomous multi-agent debate loop? Because our batch grading prompt (`QuestionBatchGradeResponse`) already performs within-group comparison and emits `moderator_flag` + `moderator_note` in a single schema-validated pass, and our `--mode item` path runs a dedicated `ModerationResponse` pass. Adding conversational back-and-forth between grading agents would add ungrounded token spend without solving the real root causes of grading errors—clipped crops, misread student IDs, and rubric ambiguity—all of which require **human** inspection in `review-grading`.
+
 ## Supply-chain security: why we pin minimal packages
 
 Before writing a single `Executor`, `pyproject.toml` pins **`agent-framework-core==1.26.0`** and **`agent-framework-openai==1.18.2`**—and explicitly forbids installing the umbrella `agent-framework` package (`1.26.1` / `1.26.2`) or `[all]` extras.
 
-Why? Advisory **[GHSA-764m-3ppc-5m73](https://github.com/advisories/GHSA-764m-3ppc-5m73)** documented credential-stealing malware in `agent-framework` `1.26.1` and `1.26.2`. Pinning the minimal pre-incident core/OpenAI packages via `uv.lock` avoids both the compromised versions and unrelated third-party provider SDKs.
+Why? Advisory **[GHSA-764m-3ppc-5m73](https://github.com/advisories/GHSA-764m-3ppc-5m73)** documented credential-stealing malware in `agent-framework` `1.26.1` and `1.26.2`. Using `uv sync --frozen` against a hash-bearing `uv.lock`—and verifying that no unexpected `.pth` startup hooks exist—pins the minimal pre-incident core/OpenAI packages while excluding unrelated third-party provider SDKs. A historical pre-incident pin is a baseline, not a permanent certification, so every dependency upgrade requires reviewing current advisories.
 
 ## The CLI seam (`cli.py`) and complete `workflow.py` graph
 
@@ -51,6 +55,8 @@ output = execute(
     args.api_version.strip(), summary, mode=mode, batch_concurrency=concurrency, **options,
 )
 ```
+
+Notice the clean dependency-injection seam: `options["grade_function"] = grade_exam`. Whether an operator runs `grade` (default `agent-framework`), `workflow-grade` (forced Framework), or `grade --orchestrator python` (direct fallback), the exact same grading prompts, pricing gates, and checkpoint ledger execute.
 
 Inside `workflow.py`, three typed `Executor` nodes form a linear, bounded (`max_iterations=4`) graph:
 
@@ -106,10 +112,11 @@ def run_grading_workflow(*args, **kwargs):
     return asyncio.run(run())
 ```
 
-Three key engineering decisions stand out in this 60-line module:
-1. **`"grade"` is control data, not a prompt**: `workflow.run("grade")` passes a typed control message between Executors. If `ValidateApproval` raises on a missing rubric or region hash, `ctx.send_message()` never fires.
-2. **Async-to-sync bridge without shared clients**: `ExecuteGrading` uses `asyncio.to_thread()` to run the synchronous `grade_exam` engine (which manages its own question-level thread pool, `results.json` locks, and synchronous `AzureClient` instances). Framework clients are never shared across OS threads.
-3. **Terminal yield, not autonomous approval**: `RequireHumanReview` uses `WorkflowContext[Never, str]` to yield the draft directory path (`grading/`) and terminate. Human review (`review-grading`) and `approve-grading` happen strictly outside the workflow.
+Four key engineering decisions stand out in this 60-line module:
+1. **`"grade"` is control data, not a prompt**: `workflow.run("grade")` passes a typed control message between Executors. If `ValidateApproval` raises on a missing rubric or region hash, `ctx.send_message()` never fires and `ExecuteGrading` is never reached.
+2. **Async-to-sync bridge without shared clients**: `ExecuteGrading` uses `asyncio.to_thread()` to run the synchronous `grade_exam` engine without blocking the Framework's asyncio event loop. Inside `grade_exam`, question-level `batch_concurrency` runs across worker threads using synchronous `AzureClient` instances and `results.json` locks—**Framework clients are never shared across OS threads**.
+3. **Stable Executor IDs**: `id="validate-human-approvals"`, `id="grade-approved-crops"`, and `id="await-human-score-review"` give the graph clear telemetry/debugging identities that are distinct from Azure deployment aliases.
+4. **Terminal yield, not autonomous approval**: `RequireHumanReview` uses `WorkflowContext[Never, str]` to yield the draft directory path (`grading/`) and terminate. The `len(outputs) != 1` check guarantees an unambiguous single draft output. Human review (`review-grading`) and `approve-grading` happen strictly outside the workflow.
 
 ![Saved grading artifacts summarized from the actual completed result and workbook.](media/14-grading-evidence.png)
 

@@ -8,16 +8,16 @@ a{color:#0067b8}em{color:#4b6175}
 </style></head><body><article><h1>Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup</h1>
 <p><em>Part 8 of 8 · MS MVP Technical Series · Analytics, LMS Export, Gated Email &amp; Pilot Measurement</em></p>
 <p><img alt="AI-generated conceptual banner for Reports, LMS, Email and Cleanup." src="media/08-banner.png" /></p>
-<p>Once <code>grading/approval.json</code> is recorded, a teacher shouldn't have to guess what commands exist next—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> enforces a <strong>Post-Approval Menu</strong>:</p>
+<p>Once <code>grading/approval.json</code> is recorded, a teacher shouldn't have to memorize ten CLI subcommands—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> enforces a <strong>Post-Approval Menu</strong>:</p>
 <pre><code class="language-markdown">Immediately after `grading/approval.json` is recorded (or whenever the user finishes reviewing), **always proactively present all post-approval options** so a general user knows what is available:
 </code></pre>
-<p>Microsoft Agent Framework's job ended at the draft boundary in Part 6. From here on, every output verifies <code>grading/approval.json</code> locally and separates offline packaging from opt-in AI analysis, LMS export, gated email, and archival cleanup.</p>
+<p>Microsoft Agent Framework's job ended at the draft boundary in Part 6. From here on, every downstream tool independently verifies <code>grading/approval.json</code> via SHA-256 digests and separates zero-cost local packaging from opt-in AI analysis, LMS export, double-gated email, and archival cleanup.</p>
 <p><img alt="Post-Approval Outputs: Analytics, LMS Export, Email &amp; Cleanup" src="media/31-hil-delivery.png" /></p>
 <p><em>Figure 1. Post-approval choices: offline <code>report</code> &amp; <code>analytics</code>, gated <code>ai-analysis</code> -&gt; <code>advanced-report</code>, <code>moodle-export</code>, double-gated <code>send-email</code>, and <code>clean</code> slim/full <code>.zip</code> archival.</em></p>
 <h2>1. Offline <code>report</code> &amp; <code>analytics</code> (zero AI cost)</h2>
 <ul>
-<li><strong><code>report</code></strong>: Produces <code>score_report.xlsx</code>, <code>details_score_report.xlsx</code> (retaining both reviewed <code>Answers</code>/<code>Reasoning</code> and raw <code>AnswersRaw</code>/<code>ReasoningRaw</code> audit columns), individual marked PDFs (<code>&lt;ID&gt;_&lt;NAME&gt;_script-00001.pdf</code>), <code>all.pdf</code>, and stratified <code>sampleOfN.pdf</code> (plus <code>sampleOfN_only_pass.pdf</code> when a pass policy is configured).</li>
-<li><strong><code>analytics</code></strong>: Computes <code>statistics.xlsx</code> (Mean, Median, Sample SD, IQR, Min/Max, per-question facility &amp; discrimination indices) and Matplotlib <code>question-boxplots-*.png</code> using Python's <code>statistics</code> module—never an LLM:</li>
+<li><strong><code>report</code></strong>: Produces <code>score_report.xlsx</code>, <code>details_score_report.xlsx</code> (retaining both reviewed <code>Answers</code>/<code>Reasoning</code> and raw <code>AnswersRaw</code>/<code>ReasoningRaw</code> audit columns so post-hoc audits can compare AI vs. teacher edits), individual marked PDFs (<code>&lt;ID&gt;_&lt;NAME&gt;_script-00001.pdf</code> preserving leading zeroes and Unicode), <code>all.pdf</code>, and stratified <code>sampleOfN.pdf</code> (top/middle/bottom scripts, plus <code>sampleOfN_only_pass.pdf</code> when a pass policy is configured).</li>
+<li><strong><code>analytics</code></strong>: Computes <code>statistics.xlsx</code> (Overall, Class, and Question sheets with Mean, Median, Sample SD, IQR, Min/Max, per-question facility &amp; discrimination indices) and Matplotlib <code>question-boxplots-*.png</code> (1.5-IQR whiskers, outliers, up to 20 questions per chart) using Python's <code>statistics</code> module—never an LLM:</li>
 </ul>
 <pre><code class="language-python">def describe(scores):
     return [
@@ -26,13 +26,13 @@ a{color:#0067b8}em{color:#4b6175}
         min(scores), max(scores),
     ]
 </code></pre>
-<p>If no pass policy is configured, pass-rate cells stay blank rather than defaulting to zero.</p>
+<p>If no pass policy is configured, pass-rate cells stay blank rather than inventing a threshold or defaulting to zero.</p>
 <p><img alt="Overall and question statistics rendered from the existing workbook." src="media/20-statistics.png" /></p>
 <p><em>Figure 2. Saved <code>statistics.xlsx</code> excerpt: 4 students, mean <code>13.25 / 50</code>, median <code>10 / 50</code>, sample SD <code>6.5</code>.</em></p>
 <p><img alt="Actual saved question-score box plots for Q1–Q5." src="media/21-question-boxplots.png" /></p>
 <p><em>Figure 3. Offline Matplotlib box-plot output for Q1–Q5.</em></p>
 <h2>2. Optional <code>ai-analysis</code> -&gt; <code>approve-analysis</code> -&gt; <code>advanced-report</code></h2>
-<p>If the teacher wants narrative feedback, <code>ai-analysis --confirm-cost</code> runs three structured tasks (<code>advanced.py</code>)—per-student feedback, per-question misconception diagnosis (comparing <code>samples[:3]</code> vs <code>samples[-3:]</code>), and class overview—into <code>ai-analysis/review.xlsx</code>:</p>
+<p>If the teacher wants narrative feedback, <code>ai-analysis --confirm-cost</code> runs three structured tasks (<code>advanced.py</code>)—per-student feedback, per-question misconception diagnosis (comparing <code>samples[:3]</code> vs. <code>samples[-3:]</code>), and class overview—into <code>ai-analysis/review.xlsx</code>:</p>
 <pre><code class="language-text">Draft concise student feedback: strengths, weaknesses, one action per question and next steps.
 </code></pre>
 <pre><code class="language-text">Analyze this question's performance, misconceptions, strengths and teaching actions.
@@ -46,9 +46,10 @@ a{color:#0067b8}em{color:#4b6175}
     config=GenerationConfig(**adv_config),
 )
 </code></pre>
+<p>Notice how Python calculates the cohort mean (<code>statistics.mean(...)</code>) and passes it to the class task rather than letting the model do arithmetic—and for small cohorts (<code>4</code> students), <code>samples[:3]</code> and <code>samples[-3:]</code> overlap, which the saved analysis honestly flags.</p>
 <p><img alt="Selected actual class-analysis text, including the incomplete-crop caveat." src="media/22-analysis-excerpt.png" /></p>
 <p><em>Figure 4. Saved <code>ai-analysis/review.xlsx</code> excerpt preserving the incomplete-crop caveat.</em></p>
-<p>After <code>approve-analysis --confirm-reviewed</code>, <code>advanced-report</code> generates <code>teacher-report.docx</code> (always text-only) and a 7-slide <code>class-presentation.pptx</code> with a native editable PowerPoint bar chart—<strong>offline by default</strong>.</p>
+<p>After <code>approve-analysis --confirm-reviewed</code> binds <code>ai-analysis/approval.json</code>, <code>advanced-report</code> generates <code>teacher-report.docx</code> (always text-only) and a 7-slide <code>class-presentation.pptx</code> with a native editable PowerPoint bar chart—<strong>offline by default</strong>.</p>
 <p><img alt="Inventory of actual Word and PowerPoint outputs, including seven slides in the offline presentation." src="media/23-office-outputs.png" /></p>
 <p><em>Figure 5. Offline Office output inventory (<code>teacher-report.docx</code> + 7-slide <code>class-presentation.pptx</code>).</em></p>
 <p><img alt="First page of the actual teacher Word report rendered to PDF and then PNG." src="media/26-teacher-report-page.png" /></p>
@@ -56,7 +57,7 @@ a{color:#0067b8}em{color:#4b6175}
 <p><img alt="Actual editable-chart slide from the saved PowerPoint presentation, rendered to PNG." src="media/27-class-chart-slide.png" /></p>
 <p><em>Figure 7. Native editable PowerPoint chart slide rendered via LibreOffice.</em></p>
 <h3>Opt-in infographics with separate image-resource isolation</h3>
-<p>Passing <code>--infographics --confirm-cost</code> (optionally with <code>--image-model-config /private/image.config.yaml</code> and a fresh <code>--report-name</code>) calls the <strong>Azure Images API</strong> with this prompt:</p>
+<p>Passing <code>--infographics --confirm-cost</code> (optionally with <code>--image-model-config /private/image.config.yaml</code> to isolate a dedicated Azure Images resource, and a fresh <code>--report-name</code> so prior offline reports are never overwritten) calls the <strong>Azure Images API</strong> with this prompt:</p>
 <pre><code class="language-text">Create a clean, modern, flat-design educational infographic diagram for '{label}' on a crisp white background with navy blue and teal accents. Visually summarize the key concepts, strengths, and common student misconceptions below using clear icons, minimal readable labels, and structured visual blocks:
 {summary}
 </code></pre>
@@ -67,16 +68,24 @@ a{color:#0067b8}em{color:#4b6175}
 <p><em>Figure 9. Generated class-overview infographic (<code>reports-infographics-v2</code>)—requires human inspection for fabricated labels/wordmarks before classroom reuse.</em></p>
 <h2>3. LMS export (<code>moodle-export</code>), double-gated email, and <code>clean</code></h2>
 <p>Once reports (and optional feedback) are approved, three final operational workflows close the loop:</p>
-<ol>
-<li><strong>Moodle / LMS Export (<code>moodle-export</code>, offline)</strong>: Combines each student's AI feedback cover page with their marked script into <code>student_pdfs/&lt;ID&gt;_&lt;Name&gt;.pdf</code>, builds <code>recipients.csv</code> from a Moodle participants CSV, and (with <code>--worksheet</code>) fills a Moodle Assignment grading worksheet CSV + <code>feedback_files.zip</code> for bulk upload.</li>
-<li><strong>Double-Gated SMTP STARTTLS Email</strong>:
-   - <code>preview-email</code>: Generates private <code>.eml</code> previews and <code>email/preview.json</code> offline.
-   - <code>approve-email --confirm-reviewed</code>: Verifies every present student has a valid PDF inside the approved report folder and writes SHA-256 <code>email/approval.json</code>.
-   - <code>send-email --confirm-send</code>: Reads <code>HANDWRITING_SMTP_PASSWORD</code> strictly from the environment (never YAML), connects via SMTP <strong>STARTTLS</strong>, and maintains <code>email/delivery.json</code> so already-sent or ambiguous in-flight messages are never silently retried.</li>
-<li><strong>Preview-First Archival (<code>clean</code> -&gt; <code>--confirm-delete</code>)</strong>: Defaults to creating a cross-platform <strong>slim <code>.zip</code> backup</strong> (<code>grading_archive_slim_TIMESTAMP.zip</code>) and removing only regenerable <code>grading/images/</code>, <code>regions/images/</code>, <code>.grading-*</code>, and <code>model-cache/</code> while preserving all HIL reviews, approvals, telemetry, delivery journals, <code>reports/</code>, <code>analytics/</code>, <code>ai-analysis/</code>, and <code>moodle/</code>.</li>
-</ol>
+<h3>Moodle / LMS Export (<code>moodle-export</code>, offline)</h3>
+<p>Built in <code>moodle.py</code> with zero AI cost:
+- Merges each student's approved AI feedback cover page (if <code>ai-analysis/approval.json</code> is present) with their marked script into <code>moodle/student_pdfs/&lt;ID&gt;_&lt;Name&gt;.pdf</code>.
+- Builds <code>recipients.csv</code> directly from a Moodle participants CSV export.
+- With <code>--worksheet</code>, fills a Moodle Assignment grading worksheet CSV and packages <code>feedback_files.zip</code> for bulk upload back into Moodle.</p>
+<h3>Double-Gated SMTP STARTTLS Email</h3>
+<p>Built in <code>distribution.py</code> with three separate commands:
+1. <code>preview-email</code>: Matches <code>recipients.csv</code> (<code>ID,EMAIL</code> for every present student) with <code>email_settings.yaml</code> templates (<code>{name}</code>, <code>{marks}</code>, <code>{exam}</code>, <code>{feedback}</code>—requiring <code>ai-analysis/approval.json</code> if <code>{feedback}</code> is used) and writes private <code>.eml</code> files + <code>email/preview.json</code> offline.
+2. <code>approve-email --confirm-reviewed</code>: Verifies every present student has a valid PDF inside the approved <code>reports/</code> folder (blocking path escapes) and writes SHA-256 <code>email/approval.json</code>.
+3. <code>send-email --confirm-send</code>: Reads <code>HANDWRITING_SMTP_PASSWORD</code> strictly from the environment (never YAML), opens an SMTP <strong>STARTTLS</strong> connection, and maintains <code>email/delivery.json</code> so already-accepted messages are skipped and ambiguous in-flight SMTP errors halt rather than auto-retrying.</p>
+<h3>Preview-First Archival (<code>clean</code> -&gt; <code>--confirm-delete</code>)</h3>
+<p>Implemented in <code>cleanup.py</code>:
+- Running <code>handwriting-grader clean --exam exam.yaml</code> without <code>--confirm-delete</code> is a dry-run preview listing target directories, file counts, and byte sizes.
+- Default root cleanup creates a cross-platform <code>ZIP_DEFLATED</code> <strong>slim archive</strong> (<code>grading_archive_slim_TIMESTAMP.zip</code>) and deletes only regenerable <code>grading/images/</code>, <code>regions/images/</code>, <code>.grading-*</code>, and <code>model-cache/</code>, preserving all HIL reviews, approvals, telemetry, delivery journals, <code>reports/</code>, <code>analytics/</code>, <code>ai-analysis/</code>, and <code>moodle/</code>.
+- Optional flags support <code>--full-archive</code> (includes raw JPEGs in the <code>.zip</code>), <code>--run CHILD_RUN</code> (removes an isolated child run while keeping the parent), and <code>--purge-reports --confirm-delete</code> (with full backup by default).</p>
 <h2>4. Measuring a school pilot (160-test offline baseline + holdout eval)</h2>
-<p>The repository's 160-test <code>unittest</code> suite validates every pipeline invariant offline using synthetic PDFs, browser automation, LibreOffice, and localhost fake Azure/SMTP services—without touching student PII or spending cloud budget. Before deploying to a live course, freeze a holdout set of teacher-adjudicated scripts and measure identity accuracy, transcription fidelity, override rate, and review time:</p>
+<p>The repository's <strong>160-test <code>unittest</code> suite</strong> validates every pipeline invariant offline using synthetic PDFs, browser automation, LibreOffice conversion, and localhost fake Azure/SMTP services—without touching student PII or spending cloud budget.</p>
+<p>Before deploying to a live course, freeze a holdout set of teacher-adjudicated scripts (covering complete answers, blanks, diagrams, ambiguous IDs, scanner shifts, and overflow writing) and measure identity accuracy, transcription fidelity, override rate, and review time:</p>
 <pre><code class="language-python">def compare_marks(proposed, reference, material_error_threshold):
     if not proposed or len(proposed) != len(reference):
         raise ValueError(&quot;Matched nonempty mark lists are required&quot;)
@@ -89,5 +98,6 @@ a{color:#0067b8}em{color:#4b6175}
         ) / len(errors),
     }
 </code></pre>
+<p>A pilot should enforce explicit <strong>No-Go conditions</strong>: stop on unresolved identity mappings, clipped answers affecting marks, unexplained report disagreements, missing consent, or unverified pricing. The goal of this entire architecture is an inspectable chain—from original scan and crop, through Skill policy, Agent Framework graph, and Azure OpenAI proposal, to cryptographically approved teacher output.</p>
 <p>Return to the <a href="index.html">series index</a> for all eight articles, editable Mermaid diagrams, and publishing assets.</p>
 <p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/analytics.py">offline statistics</a>, <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/advanced.py">AI analysis &amp; Office reports</a>, <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/moodle.py">Moodle export</a>, and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cleanup.py">cleanup &amp; retention</a>.</p></article></body></html>

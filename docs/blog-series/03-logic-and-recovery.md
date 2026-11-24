@@ -4,7 +4,7 @@
 
 ![AI-generated conceptual banner for State Machine and Child Regrades.](media/03-banner.png)
 
-Long-running AI pipelines fail in predictable ways: network drops mid-batch, a teacher spots a typo in Question 3's rubric *after* grading finishes, or someone edits an Excel cell after approval. If your pipeline trusts file timestamps or mutates results in place, you lose auditability.
+Long-running AI pipelines fail in predictable ways: a network connection drops mid-batch, a teacher spots an ambiguity in Question 3's rubric *after* grading finishes, or someone edits an Excel cell after approval. If your pipeline trusts file timestamps or mutates results in place, you lose auditability and risk publishing inconsistent marks.
 
 In `azure-handwriting-grader-skills`, `SKILL.md` provides workspace navigation—reading manifests to orient the assistant—while Python enforces a **six-gate cryptographic state machine**, **atomic keyed checkpoints**, and **isolated child regrading**. As [SKILL.md](../../skills/handwriting-grading/SKILL.md) states:
 
@@ -17,9 +17,18 @@ and artifacts to orient immediately (do not rely on prior conversation history):
 
 *Figure 1. End-to-end six-gate cryptographic state machine, from preflight and attendance through grading, HIL review, reporting, and isolated child regrades.*
 
-## The Anti-Tampering Invariant: SHA-256 `approval.json` bindings
+## The Six-Gate Cryptographic State Machine
 
-No stage trusts an earlier stage because a file exists. Every approval gate (`attendance`, `rubric`, `regions`, `grading`, `ai-analysis`, `email`) writes a separate `approval.json` containing SHA-256 digests of its exact upstream inputs and reviewed artifacts.
+No stage trusts an earlier stage merely because a file exists on disk. Every human-in-the-loop (HIL) gate writes a separate `approval.json` containing SHA-256 digests of its exact upstream inputs and reviewed artifacts:
+
+| Gate | Stage | Bound Artifacts (`SHA-256`) | What Invalidates It |
+|---|---|---|---|
+| **1. Attendance** | `approve-attendance` | Roster XLSX, attendance CSV, `exam.yaml`, `review.xlsx` | Editing attendance CSV or roster after approval |
+| **2. Rubric** | `approve-rubric` | `rubric/rubric.xlsx` | Modifying any question text, criteria, or `marks` |
+| **3. Regions** | `approve-regions` | `annotations.json`, rendered template `images/*.jpg`, `exam.yaml` | Moving a box, changing page count, or altering PDF |
+| **4. Grading** | `approve-grading` | `review.xlsx`, `results.json`, `manifest.json`, `model_config`, `roster`, `rubric`, `regions/approval.json` | Any post-approval edit in Excel or upstream input change |
+| **5. AI Analysis** | `approve-analysis` | `ai-analysis/review.xlsx`, `grading/approval.json` | Editing feedback cells or re-approving grades |
+| **6. Email** | `approve-email` | `email/preview.json`, target PDFs inside approved `reports/` | Regenerating PDFs or altering `recipients.csv` |
 
 For example, `grading/approval.json` binds the review workbook, raw results, and grading manifest:
 
@@ -63,7 +72,7 @@ if actual != expected:
 return questions, root, manifest, boxes
 ```
 
-Returning validated objects (`questions, root, manifest, boxes`) rather than a boolean `True` ensures downstream cropping uses the exact reconciled state that passed the gate.
+Returning validated objects (`questions, root, manifest, boxes`) rather than a boolean `True` guarantees that downstream cropping uses the exact reconciled state that passed the gate—eliminating time-of-check to time-of-use (TOCTOU) drift between validation and execution.
 
 ## Atomic keyed checkpoints (`results.json`) and exclusive locks
 
@@ -84,6 +93,8 @@ scripts = {row["script_index"]: row for row in results["scripts"]}
 marks = {(row["script_index"], question_key(row["question"])): row for row in results["marks"]}
 missing_scripts = [si for si in range(summary["students"]) if si not in scripts]
 ```
+
+Separating `results.json` (raw AI output), `review.xlsx` (teacher edits), and `score_report.xlsx` (final published output) is deliberate: flattening them into one mutable table would let a manual edit erase what the model originally proposed, destroying diagnostic traceability.
 
 To prevent half-written JSON during a crash and prevent two processes from racing on the same directory, the engine pairs two OS primitives:
 
@@ -119,6 +130,8 @@ except FileExistsError as exc:
     raise ValueError("Another grading process or a stale lock exists") from exc
 ```
 
+A terminated process can leave a stale `processing.lock`, which requires operator inspection rather than blind auto-deletion. Note also that local atomic JSON does not create a distributed transaction across Azure OpenAI and disk: an API call accepted by Azure just before a crash may be billed even if `results.json` wasn't updated yet, so `resume-grading` preserves recorded work rather than guaranteeing exactly-once provider billing.
+
 ## Recovery vs. Isolated Child Regrading (`resume`, `retry`, `regrade`)
 
 A mature grading system separates three distinct recovery operations:
@@ -129,12 +142,24 @@ A mature grading system separates three distinct recovery operations:
 | **Transient 429/504/5xx or scanner shift** | `retry-grading --confirm-cost` | Isolates `grading_failed=True` / moderation errors; supports `--align-images`, `--re-ocr-id`, `--re-ocr-metadata`, `--question Q` while preserving manual marks. |
 | **Rubric or crop change on 1 question** | `regrade --run CHILD_RUN --confirm-cost` | Creates an **isolated child run** under `runs/<child>/` without mutating parent history. |
 
+### How `retry-grading` preserves manual review work
+When transient errors or scanner shifts affect a completed run, `retry-grading --align-images` re-renders pages from the original source PDF (never re-warping already-transformed JPEGs) and archives the previous images, manifest, results, and workbook into `grading/alignment-history/recovery-*/`. It then updates `results.json` and `review.xlsx` for only the targeted failed items or `--question <Q>`, preserving every manual mark the teacher already entered.
+
 ### How isolated child regrading (`regrade` + `crop_proposals.py`) works
-When a teacher realizes Q3's rubric was unfair or Q3's crop cut off handwriting across the class:
-1. **Parent immutability**: `regrade` requires an approved parent (`grading/approval.json`) and creates `runs/<child>/` with a provenance manifest recording the parent ID and immutable input hashes.
-2. **Optional crop proposals (`crop_proposals.py`)**: A teacher can propose a `shared` crop or per-script `students` crop overrides for that single question, validate them within page bounds, and approve them separately (`regrade-crops/<proposal_id>/approval.json`).
+When a teacher realizes Q3's rubric was unfair or Q3's crop cut off handwriting across the class, mutating the parent run would corrupt its audit trail. Instead:
+1. **Parent immutability**: `regrade` requires an approved parent (`grading/approval.json`) and creates `runs/<child>/` with a provenance manifest recording the parent ID, selected canonical question, and immutable input hashes.
+2. **Optional crop proposals (`crop_proposals.py`)**: A teacher can author a JSON proposal with a `shared` crop and/or per-script `students` overrides (`{"0": {...}, "2": {...}}`), validated strictly within page bounds:
+
+```python
+if not isinstance(box, dict) or set(box) != {"x", "y", "width", "height"}:
+    raise ValueError("Each crop must contain x, y, width and height")
+if any(type(value) is not int for value in box.values()):
+    raise ValueError("Crop coordinates must be whole numbers")
+```
+
+Proposals are stored and separately approved under `regrade-crops/<proposal_id>/approval.json` before `regrade` can use them.
 3. **Full-cohort single-question rerun**: The selected question is regraded and moderated across **all present students** (with optional `--reuse-parent-cache` for unchanged prompts).
-4. **Fresh HIL review**: The child `review.xlsx` preserves unchanged question marks as drafts, displays old vs. new marks for the rerun question, and **clears all `reviewed` flags** so every identity and score receives fresh teacher approval before `--run CHILD_RUN` can generate reports.
+4. **Fresh HIL review**: The child `review.xlsx` preserves unchanged question marks as drafts, displays old vs. new marks for the rerun question, and **clears all `reviewed` flags** so every identity and score receives fresh teacher approval before `--run CHILD_RUN` can generate reports, analytics, or emails.
 
 Next: [Region Extraction, Localhost Review UI, and FFT Page Alignment](04-scans-crops-alignment.md).
 

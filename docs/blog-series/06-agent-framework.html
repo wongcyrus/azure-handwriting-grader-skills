@@ -8,7 +8,7 @@ a{color:#0067b8}em{color:#4b6175}
 </style></head><body><article><h1>Multi-Agent Orchestration: Skill Policy vs. Microsoft Agent Framework</h1>
 <p><em>Part 6 of 8 · MS MVP Technical Series · Agent Framework, Threading &amp; Supply-Chain Security</em></p>
 <p><img alt="AI-generated conceptual banner for Microsoft Agent Framework and Skills." src="media/06-banner.png" /></p>
-<p>When developers hear "multi-agent system," they often picture three autonomous LLM personas debating each other in a loop until they agree on a grade. For high-stakes exam marking, <strong>that pattern is an anti-pattern</strong>: it multiplies latency and cost, obscures accountability, and blurs who actually approved a student's score.</p>
+<p>When developers hear "multi-agent system," they often picture three autonomous LLM personas debating each other in a loop until they agree on a grade. For high-stakes exam marking, <strong>that pattern is an anti-pattern</strong>: it multiplies latency and cost, makes failures non-reproducible, and blurs who actually approved a student's score.</p>
 <p>In <code>azure-handwriting-grader-skills</code>, we use <strong>Microsoft Agent Framework</strong> (<code>WorkflowBuilder</code>, <code>Executor</code>, <code>WorkflowContext</code>, <code>@handler</code>) for what it does best: <strong>explicit, typed, auditable state transitions</strong> around a deterministic Python grading engine—while keeping <code>SKILL.md</code> as the conversational router and keeping human approval strictly outside the automated graph.</p>
 <p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> summarizes:</p>
 <pre><code class="language-markdown">`grade` defaults to `--orchestrator agent-framework`: real Executor/WorkflowBuilder
@@ -18,6 +18,7 @@ validation → existing grading → human-review boundary. `workflow-grade` forc
 <p><img alt="Microsoft Agent Framework Orchestration &amp; Threading Boundary" src="media/16-framework.png" /></p>
 <p><em>Figure 1. Actual Microsoft Agent Framework graph (<code>ValidateApproval -&gt; ExecuteGrading -&gt; RequireHumanReview</code>), <code>asyncio.to_thread</code> bridge, and outside-workflow HIL boundary.</em></p>
 <h2>Separating four layers of "agentic" responsibility</h2>
+<p>A common mistake in AI engineering is conflating "the assistant reading a skill" with "the workflow orchestrator" and "the model making a prediction." This repository keeps all four layers strictly separate:</p>
 <table>
 <thead>
 <tr>
@@ -54,9 +55,10 @@ validation → existing grading → human-review boundary. `workflow-grade` forc
 </tr>
 </tbody>
 </table>
+<p>Why not use an autonomous multi-agent debate loop? Because our batch grading prompt (<code>QuestionBatchGradeResponse</code>) already performs within-group comparison and emits <code>moderator_flag</code> + <code>moderator_note</code> in a single schema-validated pass, and our <code>--mode item</code> path runs a dedicated <code>ModerationResponse</code> pass. Adding conversational back-and-forth between grading agents would add ungrounded token spend without solving the real root causes of grading errors—clipped crops, misread student IDs, and rubric ambiguity—all of which require <strong>human</strong> inspection in <code>review-grading</code>.</p>
 <h2>Supply-chain security: why we pin minimal packages</h2>
 <p>Before writing a single <code>Executor</code>, <code>pyproject.toml</code> pins <strong><code>agent-framework-core==1.26.0</code></strong> and <strong><code>agent-framework-openai==1.18.2</code></strong>—and explicitly forbids installing the umbrella <code>agent-framework</code> package (<code>1.26.1</code> / <code>1.26.2</code>) or <code>[all]</code> extras.</p>
-<p>Why? Advisory <strong><a href="https://github.com/advisories/GHSA-764m-3ppc-5m73">GHSA-764m-3ppc-5m73</a></strong> documented credential-stealing malware in <code>agent-framework</code> <code>1.26.1</code> and <code>1.26.2</code>. Pinning the minimal pre-incident core/OpenAI packages via <code>uv.lock</code> avoids both the compromised versions and unrelated third-party provider SDKs.</p>
+<p>Why? Advisory <strong><a href="https://github.com/advisories/GHSA-764m-3ppc-5m73">GHSA-764m-3ppc-5m73</a></strong> documented credential-stealing malware in <code>agent-framework</code> <code>1.26.1</code> and <code>1.26.2</code>. Using <code>uv sync --frozen</code> against a hash-bearing <code>uv.lock</code>—and verifying that no unexpected <code>.pth</code> startup hooks exist—pins the minimal pre-incident core/OpenAI packages while excluding unrelated third-party provider SDKs. A historical pre-incident pin is a baseline, not a permanent certification, so every dependency upgrade requires reviewing current advisories.</p>
 <h2>The CLI seam (<code>cli.py</code>) and complete <code>workflow.py</code> graph</h2>
 <p>After <code>cli.py</code> verifies <code>--confirm-cost</code>, it selects the orchestrator while keeping the underlying <code>grade_exam</code> engine identical:</p>
 <pre><code class="language-python">execute = grade_exam
@@ -70,6 +72,7 @@ output = execute(
     args.api_version.strip(), summary, mode=mode, batch_concurrency=concurrency, **options,
 )
 </code></pre>
+<p>Notice the clean dependency-injection seam: <code>options["grade_function"] = grade_exam</code>. Whether an operator runs <code>grade</code> (default <code>agent-framework</code>), <code>workflow-grade</code> (forced Framework), or <code>grade --orchestrator python</code> (direct fallback), the exact same grading prompts, pricing gates, and checkpoint ledger execute.</p>
 <p>Inside <code>workflow.py</code>, three typed <code>Executor</code> nodes form a linear, bounded (<code>max_iterations=4</code>) graph:</p>
 <pre><code class="language-python">def build_grading_workflow(config, config_dir, config_path, model_config_path,
                            endpoint, api_version, summary, *, mode=&quot;batch&quot;,
@@ -119,10 +122,11 @@ output = execute(
 
     return asyncio.run(run())
 </code></pre>
-<p>Three key engineering decisions stand out in this 60-line module:
-1. <strong><code>"grade"</code> is control data, not a prompt</strong>: <code>workflow.run("grade")</code> passes a typed control message between Executors. If <code>ValidateApproval</code> raises on a missing rubric or region hash, <code>ctx.send_message()</code> never fires.
-2. <strong>Async-to-sync bridge without shared clients</strong>: <code>ExecuteGrading</code> uses <code>asyncio.to_thread()</code> to run the synchronous <code>grade_exam</code> engine (which manages its own question-level thread pool, <code>results.json</code> locks, and synchronous <code>AzureClient</code> instances). Framework clients are never shared across OS threads.
-3. <strong>Terminal yield, not autonomous approval</strong>: <code>RequireHumanReview</code> uses <code>WorkflowContext[Never, str]</code> to yield the draft directory path (<code>grading/</code>) and terminate. Human review (<code>review-grading</code>) and <code>approve-grading</code> happen strictly outside the workflow.</p>
+<p>Four key engineering decisions stand out in this 60-line module:
+1. <strong><code>"grade"</code> is control data, not a prompt</strong>: <code>workflow.run("grade")</code> passes a typed control message between Executors. If <code>ValidateApproval</code> raises on a missing rubric or region hash, <code>ctx.send_message()</code> never fires and <code>ExecuteGrading</code> is never reached.
+2. <strong>Async-to-sync bridge without shared clients</strong>: <code>ExecuteGrading</code> uses <code>asyncio.to_thread()</code> to run the synchronous <code>grade_exam</code> engine without blocking the Framework's asyncio event loop. Inside <code>grade_exam</code>, question-level <code>batch_concurrency</code> runs across worker threads using synchronous <code>AzureClient</code> instances and <code>results.json</code> locks—<strong>Framework clients are never shared across OS threads</strong>.
+3. <strong>Stable Executor IDs</strong>: <code>id="validate-human-approvals"</code>, <code>id="grade-approved-crops"</code>, and <code>id="await-human-score-review"</code> give the graph clear telemetry/debugging identities that are distinct from Azure deployment aliases.
+4. <strong>Terminal yield, not autonomous approval</strong>: <code>RequireHumanReview</code> uses <code>WorkflowContext[Never, str]</code> to yield the draft directory path (<code>grading/</code>) and terminate. The <code>len(outputs) != 1</code> check guarantees an unambiguous single draft output. Human review (<code>review-grading</code>) and <code>approve-grading</code> happen strictly outside the workflow.</p>
 <p><img alt="Saved grading artifacts summarized from the actual completed result and workbook." src="media/14-grading-evidence.png" /></p>
 <p><em>Figure 2. Existing engine output (<code>grading/manifest.json</code> &amp; <code>results.json</code>): four scripts and 20 mark records.</em></p>
 <h2>Verifying the real Framework graph offline (0 Azure clients)</h2>

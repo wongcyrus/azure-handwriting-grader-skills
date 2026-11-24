@@ -8,7 +8,7 @@ a{color:#0067b8}em{color:#4b6175}
 </style></head><body><article><h1>Fail-Closed Cost Governance: Retail Price Verification, Token Math, and Caching</h1>
 <p><em>Part 7 of 8 · MS MVP Technical Series · Azure Pricing API, Runtime Latches &amp; Telemetry</em></p>
 <p><img alt="AI-generated conceptual banner for Fail-Closed Cost and Data Governance." src="media/07-banner.png" /></p>
-<p>Asking an LLM "how much will this cost?" is a recipe for silent budget surprises. Hardcoding stale per-token constants in Python isn't much better.</p>
+<p>Asking an LLM "how much will this cost?" is a recipe for silent budget surprises. Hardcoding stale per-token constants in Python isn't much better—regional Azure rates differ, long-context thresholds change per-token pricing, and image generation or hosted search tools carry completely separate meters.</p>
 <p>In <code>azure-handwriting-grader-skills</code>, cost governance is <strong>fail-closed</strong>: zero guessed default rates, live verification against Microsoft's public Retail Prices API, explicit <code>--confirm-cost</code> consent before every paid stage, and honest <code>UNPRICED</code> (<code>null</code>) accounting whenever pricing or usage is incomplete.</p>
 <p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> specifies:</p>
 <pre><code class="language-markdown">**Cost governance**: Before every paid stage, preview target, transferred data and
@@ -18,15 +18,20 @@ obtain `--confirm-cost`.
 <p><img alt="Fail-Closed Cost Governance &amp; Token Accounting" src="media/17-pricing-gate.png" /></p>
 <p><em>Figure 1. Five-stage cost governance flow: offline template discovery, live Retail Prices API lookup, <code>--confirm-cost</code> consent, runtime <code>RunPricingVerifier</code> latch, and <code>azure_usage.jsonl</code> accounting.</em></p>
 <h2>1. Offline discovery vs. live Retail Prices API (<code>fetch-pricing</code>)</h2>
+<p>The system strictly separates model template generation from price discovery:</p>
 <ul>
-<li><strong><code>discover-models --endpoint URL --write-config config.yaml</code></strong>: Strictly <strong>offline</strong>. Writes a template with curated GA model recommendations (<code>gpt-6.1-terra</code>, <code>gpt-6-luna</code>, <code>gpt-6.2-sol</code>, <code>gpt-6.2-astra</code>) and refuses overwrite. It makes zero Azure calls.</li>
-<li><strong><code>fetch-pricing --region eastus --deployment-type global-standard</code></strong>: Queries Microsoft's <strong>unauthenticated</strong> public Retail Prices API (<code>prices.azure.com</code>). It sends no credentials, endpoints, deployment aliases, or student data. It matches exact Global Standard or Data Zone Standard meters, populates short/long-context (<code>272,000</code>-token threshold) and <code>30m</code>/<code>12h</code> cache-write rates, and retains <code>pricing_sources</code> provenance (meter IDs, SKUs, effective dates). Unsupported models (such as <code>analytics_image</code> or embeddings) require today-dated UTC manual pricing evidence.</li>
+<li><strong><code>discover-models --endpoint URL --write-config config.yaml</code></strong>: Strictly <strong>offline</strong>. Writes a template with curated GA model recommendations (<code>gpt-6.1-terra</code>, <code>gpt-6-luna</code>, <code>gpt-6.2-sol</code>, <code>gpt-6.2-astra</code>) and refuses to overwrite existing files. It never probes Azure endpoints, quotas, or prices.</li>
+<li><strong><code>fetch-pricing --region eastus --deployment-type global-standard</code></strong>: Queries Microsoft's <strong>unauthenticated</strong> public Retail Prices API (<code>prices.azure.com</code>). It sends zero credentials, endpoints, deployment aliases, or student data. The skill instructs the assistant to obtain the exact ARM region and billing type (<code>global-standard</code> vs. <code>data-zone-standard</code>) from the user rather than guessing from an endpoint URL.</li>
+<li><code>fetch-pricing</code> handles API pagination, filters for exact <code>meterName</code> / <code>skuName</code> / <code>effectiveStartDate</code> matches, populates <code>short</code> and <code>long</code> (<code>long_context_threshold: 272000</code>) token tiers plus <code>30m</code>/<code>12h</code> cache-write rates, and saves <code>pricing_sources</code> provenance (meter IDs, SKUs, and retrieval dates) into a <strong>new</strong> private config via <code>--write-config</code> without touching approval-bound files.</li>
+<li><strong>Manual pricing attestation</strong>: Unsupported model families (such as <code>analytics_image</code>, <code>embedding</code>, or <code>web_search</code> hosted tools) cannot rely on auto-lookup. They require structured manual pricing evidence in YAML: matching family, region, billing mode, official Microsoft URL reference, declared units, and a <strong>timezone-bearing timestamp reviewed today (UTC)</strong>.</li>
 </ul>
 <h2>2. The runtime <code>RunPricingVerifier</code> latch</h2>
-<p>Right before <code>AzureClient</code> encodes images or calls <code>responses.create()</code>—even when invoked through Microsoft Agent Framework's <code>ExecuteGrading</code> Executor—it enforces:</p>
+<p>Every paid command (<code>extract-rubric</code>, <code>verify-rubric</code>, <code>suggest-regions</code>, <code>grade</code>, <code>regrade</code>, <code>ai-analysis</code>, <code>cluster-answers --confirm-cost</code>) first runs an offline preview showing the target endpoint, deployments, data leaving the machine, and estimated request count. Only after the user explicitly consents does the operator pass <code>--confirm-cost</code>.</p>
+<p>Even then, <code>AzureClient</code> in <code>azure_ai.py</code> performs an independent runtime check right before encoding images or calling <code>responses.create()</code>—even when invoked through Microsoft Agent Framework's <code>ExecuteGrading</code> Executor:</p>
 <pre><code class="language-python">self._require_prices(model, tools=tuple(config.tools or ()))
 </code></pre>
-<p><code>RunPricingVerifier</code> hashes the private <code>config.yaml</code> bytes, refreshes public retail rates once per run/region/billing profile, and checks every component (<code>input</code>, <code>cached</code>, <code>output</code>, <code>cache_write</code>) across both short and long tiers:</p>
+<p><code>RunPricingVerifier</code> computes the SHA-256 fingerprint of <code>config.yaml</code> (aborting if the file changed mid-run) and binds the check to <code>(endpoint, deployment, operation_kind, tools, image_size)</code>. Why does the binding key include <code>operation_kind</code>, <code>tools</code>, and <code>image_size</code>? Because a verified text-grading rate must <strong>never</strong> silently authorize an <code>analytics_image</code> call or a <code>web_search</code> hosted tool call.</p>
+<p>On the first paid request of each run, the verifier refreshes public retail rates once per region/billing profile and compares every component (<code>input</code>, <code>cached</code>, <code>output</code>, <code>cache_write</code>) across both short and long tiers:</p>
 <pre><code class="language-python">required = (&quot;input&quot;, &quot;cached&quot;, &quot;output&quot;, &quot;cache_write&quot;)
 rates = self._rates({
     &quot;long_context_threshold&quot;: report[&quot;long_context_threshold&quot;],
@@ -42,11 +47,15 @@ if (
 ):
     raise PriceVerificationError(&quot;Current retail prices differ from reviewed rates&quot;)
 </code></pre>
-<p>If any rate is missing, stale, ambiguous, or changed, the verifier latches <code>self._blocked_reason</code> so subsequent calls in the same run remain blocked until the operator reviews a new priced configuration.</p>
+<p>If any rate is missing, stale, ambiguous, or changed since review—or if the retail lookup itself fails—the verifier latches <code>self._blocked_reason</code>:</p>
+<pre><code class="language-python">self._blocked_reason = message
+raise PriceVerificationError(message) from exc
+</code></pre>
+<p>Once latched, every subsequent call in that run is blocked immediately. The only remedy is to review a newly priced configuration and start a fresh run—never retry around the gate.</p>
 <p><img alt="Selected saved price-check fields, showing operation kinds and verification methods without endpoints or deployment aliases." src="media/18-pricing-evidence.png" /></p>
 <p><em>Figure 2. Selected fields from <code>azure_price_checks.jsonl</code> across rubric, region, grading, and AI analysis stages.</em></p>
 <h2>3. Token arithmetic without double counting (<code>telemetry.py</code>)</h2>
-<p>Azure Responses usage reports total prompt tokens (<code>P</code>), cached input tokens (<code>C</code>), cache-write tokens (<code>W</code>), and output tokens (<code>O</code>). To avoid double-counting cached or cache-write tokens as ordinary input, <code>TelemetryTracker._priced_cost()</code> computes:</p>
+<p>Azure Responses usage reports total prompt tokens (<code>P</code>), cached input tokens (<code>C</code>), cache-write tokens (<code>W</code>), and output tokens (<code>O</code>). A common billing bug is multiplying <code>P</code> by the ordinary input rate <em>and</em> adding <code>C</code> and <code>W</code> on top. Instead, <code>TelemetryTracker._priced_cost()</code> subtracts cached and cache-write tokens from ordinary input:</p>
 <pre><code class="language-python">counts = {
     &quot;input&quot;: prompt_tokens - cached_tokens - cache_write_tokens,
     &quot;cached&quot;: cached_tokens,
@@ -61,10 +70,12 @@ for key, count in counts.items():
             return None
         cost += count * float(rates[key]) / (1 if key == &quot;image&quot; else 1_000_000)
 </code></pre>
-<p>For tiered models, the entire request is priced at the selected tier (<code>prompt_tokens &gt; 272000</code> -&gt; <code>"long"</code>, else <code>"short"</code>):</p>
+<p>For tiered models, the selected tier (<code>prompt_tokens &gt; 272000</code> -&gt; <code>"long"</code>, else <code>"short"</code>) prices the <strong>entire</strong> request, not just tokens above the threshold:</p>
 <pre><code class="language-python">rates = rates.get(&quot;long&quot; if prompt_tokens &gt; threshold else &quot;short&quot;, {})
 </code></pre>
-<p>Crucially, if any required rate is missing, <code>_priced_cost()</code> returns <code>None</code> (<code>UNPRICED</code>), never <code>0.0</code>.</p>
+<p>Notice two more safeguards:
+1. <strong>No reasoning-token double-counting</strong>: Diagnostic <code>reasoning_tokens</code> are already included in <code>candidate_tokens</code> (<code>output</code>) and are never added a second time.
+2. <strong>Honest <code>UNPRICED</code> vs. <code>$0.00</code></strong>: If any non-zero count lacks a valid rate, <code>_priced_cost()</code> returns <code>None</code> (<code>cost_known=False</code>), and <code>get_summary()</code> propagates <code>null</code> to any affected phase or overall total rather than reporting a misleading partial sum as <code>$0.00</code>.</p>
 <h2>4. Reporting scope honestly (<code>cost_summary.json</code>)</h2>
 <p>In our saved VTC example, <code>grading/cost_summary.json</code> reports:</p>
 <pre><code class="language-json">{
@@ -78,10 +89,16 @@ for key, count in counts.items():
 </code></pre>
 <p><img alt="Recorded costs by phase, including analysis and infographics rather than grading alone." src="media/19-cost-phases.png" /></p>
 <p><em>Figure 3. Actual <code>cost_summary.json</code> phase breakdown. <code>US$0.33436</code> spans all six phases—batch grading itself was 5 logical calls (<code>US$0.022736</code>), while 6 infographics accounted for <code>US$0.25453</code>.</em></p>
-<p>Remember two operational rules when reporting <code>cost-report</code>:
-1. <strong>Scope</strong>: <code>grading/cost_summary.json</code> accumulates rubric, region, OCR, grading, analysis, and infographic phases—never label the grand total as "grading cost."
-2. <strong>Billing authority</strong>: Failed requests and individual SDK retries are not fully represented in <code>azure_usage.jsonl</code>. Azure's billing portal is always authoritative.</p>
+<p>When presenting <code>cost-report</code> to educators or IT leads, <code>SKILL.md</code> enforces two communication rules:
+1. <strong>Explain scope</strong>: <code>grading/cost_summary.json</code> accumulates rubric extraction, region suggestions, OCR, batch grading, AI analysis, and infographic generation—never label the grand total as "grading cost."
+2. <strong>Azure billing is authoritative</strong>: Failed requests and individual SDK retry attempts are not fully represented in <code>azure_usage.jsonl</code>. Always reconcile recorded estimates against the institution's Azure billing portal.</p>
 <h2>5. Opt-in scoped caching (<code>CachedGrader</code>) &amp; data governance</h2>
-<p>Response caching is <strong>disabled by default</strong> (<code>caching.enabled: false</code>). When opted in, <code>CachedGrader</code> hashes the transport namespace, endpoint, API version, deployment name, agent role, prompt, image digests, and <code>question_ids</code>—and even on cache hits, human review and <code>--confirm-cost</code> gates remain mandatory. Embedding caches (<code>review-grading</code> / <code>cluster-answers</code>) are similarly namespaced by endpoint + deployment + text.</p>
+<p>Response caching is <strong>disabled by default</strong> (<code>caching.enabled: false</code>) so student data is never persisted to a cache directory without explicit opt-in. When enabled, <code>CachedGrader</code> computes a deterministic cache key hashing:
+- Transport namespace, Azure endpoint, and API version
+- Deployment alias and agent role (<code>annotation</code>, <code>marking_scheme</code>, <code>ocr</code>, <code>grading</code>, <code>moderation</code>, <code>ai_analysis</code>)
+- Exact prompt text, image SHA-256 digests, and <code>question_ids</code> (for region suggestions)</p>
+<p>Two critical boundaries apply:
+- <strong><code>verify-rubric</code> is deliberately uncached</strong>: Search-grounded fact checking should reflect current web results, not stale cached snippets.
+- <strong>Cache hits do not bypass governance</strong>: Even when a response is served from local cache, <code>--confirm-cost</code> consent (where required by the command) and full human review (<code>review-grading</code> / <code>approve-*</code>) remain mandatory. Similarly, <code>store=False</code> on Responses API requests is a request-level setting, not a substitute for institutional review of Azure data-retention, access-control, and compliance policies.</p>
 <p>Next: <a href="08-pilot-and-outputs.html">Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup</a>.</p>
-<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/pricing.py">price verification</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/telemetry.py">usage accounting</a>.</p></article></body></html>
+<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/pricing.py">price verification</a>, <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/telemetry.py">usage accounting</a>, and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cache.py">scoped caching</a>.</p></article></body></html>
