@@ -336,7 +336,7 @@ snippet_ranges = {
 for target, (filename, start, end) in snippet_ranges.items():
     source = record(REPO / "src/handwriting_grader" / filename)
     lines = source.read_text().splitlines()
-    excerpt = "\n".join(lines[start - 1:end])
+    excerpt = "\n".join(lines[start - 1:end]).rstrip()
     (ROOT / "snippets" / target).write_text(
         f"# Source: src/handwriting_grader/{filename}; lines {start}-{end or len(lines)}\n"
         "# Excerpt from inspected source, not a runnable standalone program.\n\n" + excerpt + "\n")
@@ -382,7 +382,8 @@ for source in articles + [ROOT / "README.md"]:
         assert words >= 650, (source.name, words)
         print(f"{source.name}: {words} words")
 with (ROOT / "ASSETS.csv").open("w", newline="", encoding="utf-8") as file:
-    writer = csv.DictWriter(file, fieldnames=["article", "file", "alt_text", "caption"])
+    writer = csv.DictWriter(file, fieldnames=["article", "file", "alt_text", "caption"],
+                            lineterminator="\n")
     writer.writeheader()
     writer.writerows(assets)
 

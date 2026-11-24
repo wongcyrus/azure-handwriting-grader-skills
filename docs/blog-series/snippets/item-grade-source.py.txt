@@ -47,4 +47,3 @@
                 or not math.isfinite(result.similarity_score) or not 0 <= result.similarity_score <= 1):
             raise ValueError("Grading response is outside allowed ranges")
         return result.model_dump()
-

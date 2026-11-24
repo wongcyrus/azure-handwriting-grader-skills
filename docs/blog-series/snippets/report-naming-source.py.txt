@@ -47,5 +47,3 @@ def report_rows(validated):
             "pdf": f"pdfs/{script_pdf_name(student_id, roster[student_id]['name'], index)}",
         })
     return rows, baselines
-
-
