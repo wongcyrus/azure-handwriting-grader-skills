@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 import pypdfium2 as pdfium
 from pptx import Presentation
 from banners import build_banners, SOURCES as BANNER_SOURCES
-from article_walkthroughs import banner_walkthrough
+from article_content import without_banner_appendix
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -334,6 +334,8 @@ for target, (filename, start, end) in snippet_ranges.items():
 for name in ("snippets/banner-generate-source.py.txt", "snippets/offline-framework-smoke.py",
              "observed/offline-framework-smoke.txt"):
     record(ROOT / name)
+record(REPO / "skills/handwriting-grading/SKILL.md")
+record(REPO / "skills/handwriting-grading/references/workflow.md")
 
 revision = "b6af53dd1cf4cf74b9a50591f0e775a3b1533133"
 (ROOT / "sources.json").write_text(json.dumps({
@@ -346,6 +348,7 @@ revision = "b6af53dd1cf4cf74b9a50591f0e775a3b1533133"
     "banner_artwork_estimated_cost_usd": banner_provenance["estimated_total_cost_usd"],
     "banner_branding_paid_calls": 0,
     "image_tool_source_revision": "ee6c616cdeac43a9c97b0261049cb278fd5449b5",
+    "skill_source_revision": "dc115d88c62b6639659ce127c745b21e2a6d1df4",
     "framework_demonstration": "Synthetic offline run; no historical exam trace or Azure clients.",
 }, indent=2))
 
@@ -359,15 +362,21 @@ a{color:#0067b8}em{color:#4b6175}
 """
 assets = []
 articles = sorted(ROOT.glob("[0-9][0-9]-*.md"))
+rendered_sources = {path.resolve() for path in articles + [ROOT / "README.md", ROOT / "branding/README.md"]}
 for source in articles + [ROOT / "README.md", ROOT / "branding/README.md"]:
     text = source.read_text()
     if source in articles:
-        updated = banner_walkthrough(text, int(source.name[:2]), banner_provenance)
+        updated = without_banner_appendix(text)
         if updated != text:
             source.write_text(updated, encoding="utf-8")
         text = updated
     converted = markdown.markdown(text, extensions=["fenced_code", "tables", "sane_lists"])
-    converted = re.sub(r'href="([^":#]+)\.md"', r'href="\1.html"', converted)
+
+    def article_link(match):
+        target = (source.parent / (match[1] + ".md")).resolve()
+        return f'href="{match[1]}.html"' if target in rendered_sources else match[0]
+
+    converted = re.sub(r'href="([^":#]+)\.md"', article_link, converted)
     converted = converted.replace('href="README.html"', 'href="index.html"')
     title_match = re.search(r"^# (.+)$", text, re.MULTILINE)
     title = title_match[1]

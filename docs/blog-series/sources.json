@@ -258,6 +258,14 @@
     {
       "path": "docs/blog-series/observed/offline-framework-smoke.txt",
       "sha256": "1a62ccacda090ab8fbac384b66ad7a348ad333756950d5b850797afb94acb8bb"
+    },
+    {
+      "path": "skills/handwriting-grading/SKILL.md",
+      "sha256": "79d06601a5e7502422359cb051cc4b0494e1f9800352a356af4788c7bd4849e2"
+    },
+    {
+      "path": "skills/handwriting-grading/references/workflow.md",
+      "sha256": "63204997ab48fd6a154aac661c04f097dff76715849662d92e82323995ba6d66"
     }
   ],
   "publication_permission": "Owner confirmed existing example details may be retained.",
@@ -267,5 +275,6 @@
   "banner_artwork_estimated_cost_usd": 0.06394,
   "banner_branding_paid_calls": 0,
   "image_tool_source_revision": "ee6c616cdeac43a9c97b0261049cb278fd5449b5",
+  "skill_source_revision": "dc115d88c62b6639659ce127c745b21e2a6d1df4",
   "framework_demonstration": "Synthetic offline run; no historical exam trace or Azure clients."
 }

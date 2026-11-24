@@ -1,12 +1,13 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>From paper exams to teacher-reviewed AI grading on Azure</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Agent skills for teacher-reviewed handwriting grading on Azure</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>From paper exams to teacher-reviewed AI grading on Azure</h1>
-<p>Eight complete, output-led article drafts for Microsoft publishing review.
+</style></head><body><article><h1>Agent skills for teacher-reviewed handwriting grading on Azure</h1>
+<p>Eight skill-led technical articles for Microsoft publishing review, explaining
+the assistant's decisions, Python implementation, Azure prompts and real outputs.
 Prepared 24 November 2026 using the existing cleared example and saved reports.</p>
 <h2>Read and publish</h2>
 <p>Open <code>index.html</code> for the article list. Each article has a Markdown master and a
@@ -40,30 +41,42 @@ they are not fabricated Excel or product screenshots.
 <code>EVIDENCE-MAP.csv</code> maps each demonstrated step to its actual output and explicitly
 identifies source-only procedures or outcomes that were not captured.</p>
 <h2>Technical reading and prompt conventions</h2>
-<p>Each article now includes a self-contained technical walkthrough: relevant
-production prompt templates or an explicit explanation that the operation is
-local and has no LLM prompt, implementation code, data flow, validation and
-interpretation of the observed outputs. Teacher/operator prompts are labelled
-separately from application-generated model prompts. Template placeholders show
-runtime insertion; they are not asserted historical HTTP payloads.</p>
-<p>Every article also contains its <strong>complete actual banner-generation prompt</strong>,
-the image API method, the generated scene before composition, exact local
-typography/branding mechanics and its recorded estimate. No sidebar download is
-needed to read the prompt. <code>branding/prompts/</code> retains the original briefs.</p>
+<p>The central subject is the <strong>agent skill</strong>, not a sequence of commands for the
+teacher to memorize. Each article includes a relevant verbatim <code>SKILL.md</code> excerpt,
+explains how the assistant chooses tools from intent and workspace state, and
+distinguishes that behavior from Python validation and Framework execution.
+Python excerpts are explained in terms of their inputs, branches, returned
+objects and failure conditions; production prompts explain the purpose and limits
+of their clauses rather than appearing as unexplained copy/paste blocks.</p>
+<p>There are three instruction layers: teacher intent, reusable skill guidance, and
+application-generated Azure task prompts. Framework's typed <code>"grade"</code> message is
+control data, not a fourth model prompt. The inspected Framework module does not
+load <code>SKILL.md</code>; the host assistant invokes the Python CLI, which selects the
+default Framework runtime. Skill instructions alone do not enforce approval.</p>
+<p>Illustrative teacher requests and expected skill-guided decisions are <strong>not
+captured agent conversations</strong>. Actual screenshots/exports and console outputs
+remain separately labelled. Template placeholders show runtime insertion; they
+are not asserted historical HTTP payloads. The scan-check stop rule belongs to
+skill-guided preparation; the inspected grading route does not automatically
+rerun that check.</p>
+<p>Banner-generation prompts, code and costs belong only to the editorial
+<a href="branding/README.html">branding documentation</a>, not the eight grading articles.
+The artwork and provenance are retained; removing the unrelated appendices
+requires no new image request.</p>
 <p>Part 6 includes a new real Framework execution with synthetic validation/grading
 stubs and an explicitly forbidden Azure client, alongside its complete script
 and captured output. It demonstrates typed sequencing without a paid grading
 run or alteration of the example. It is not a historical exam event trace.</p>
 <h2>Articles</h2>
 <ol>
-<li><a href="01-first-marking-run.html">Your first teacher-reviewed AI marking run</a></li>
-<li><a href="02-review-and-return.html">Review, correct and return results</a></li>
-<li><a href="03-logic-and-recovery.html">Logic before AI</a></li>
-<li><a href="04-scans-crops-alignment.html">Getting the image right</a></li>
-<li><a href="05-azure-openai.html">Inside Azure OpenAI multimodal grading</a></li>
-<li><a href="06-agent-framework.html">What Microsoft Agent Framework actually orchestrates</a></li>
-<li><a href="07-pricing-and-data.html">Check prices before AI</a></li>
-<li><a href="08-pilot-and-outputs.html">From demonstration to school pilot</a></li>
+<li><a href="01-first-marking-run.html">An agent skill for the first reviewed run</a></li>
+<li><a href="02-review-and-return.html">Assist review without approving grades</a></li>
+<li><a href="03-logic-and-recovery.html">Skill-guided state and Python recovery</a></li>
+<li><a href="04-scans-crops-alignment.html">Reason about scans, crops and alignment</a></li>
+<li><a href="05-azure-openai.html">From skill-selected tool to Azure prompts</a></li>
+<li><a href="06-agent-framework.html">Skill orchestration versus Framework execution</a></li>
+<li><a href="07-pricing-and-data.html">Skill cost governance and Python pricing gates</a></li>
+<li><a href="08-pilot-and-outputs.html">Post-approval choices and a measured pilot</a></li>
 </ol>
 <h2>Evidence and editorial caveats</h2>
 <ul>
@@ -96,7 +109,11 @@ run or alteration of the example. It is not a historical exam event trace.</p>
 <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/tree/b6af53dd1cf4cf74b9a50591f0e775a3b1533133">azure-handwriting-grader-skills</a>.
 <code>sources.json</code> records local source hashes and selected evidence provenance.
 <code>snippets/</code> includes exact relevant source excerpts. Add appropriate editorial
-links to those pinned source files in the publishing editor.</p>
+links to those pinned source files in the publishing editor.
+The skill excerpts were checked against the published
+<a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/dc115d88c62b6639659ce127c745b21e2a6d1df4/skills/handwriting-grading/SKILL.md"><code>handwriting-grading</code> skill at dc115d8</a>.
+Copilot registration syntax was checked against build 1.0.114's bundled
+documentation. Other skill hosts can have different discovery/registration rules.</p>
 <p>The independent
 <a href="https://github.com/wongcyrus/azure-image-generation-skills">image-generation repository</a>
 is a companion tool, not a grader dependency.</p>
@@ -118,11 +135,9 @@ uv run --project tools python tools/check_articles.py
 <p>It reads the containing Azure checkout, exports whitelisted
 evidence, creates banners/diagrams locally and renders HTML. It never imports
 the grader or calls Azure. Do not rerun paid workflows merely for a screenshot.
-It refreshes only the explicitly marked banner-walkthrough sections of the
-Markdown masters from retained prompts, images and provenance, then renders HTML.
-The technical prose remains editorially authored; markers are not a new runtime
-dependency or a skill instruction.
-The second command checks complete inline prompt templates and Framework
-functions against canonical source, banner-section freshness, and Python/JSON
-block syntax without importing the grader or making model calls.
+It removes retired managed banner appendices if present and renders the
+editorially authored Markdown masters. It does not inject banner tutorials.
+The second command checks inline prompt templates, full functions and the CLI
+handoff against canonical source, verifies skill excerpts and appendix removal,
+and parses Python/JSON blocks without importing the grader or making model calls.
 Review the articles and images before public upload; publication is not performed.</p></article></body></html>

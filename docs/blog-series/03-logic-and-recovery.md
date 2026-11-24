@@ -1,22 +1,49 @@
-# Logic before AI: approvals, checkpoints and recovery
+# How an agent skill resumes work: state, approvals and Python recovery
 
 *Part 3 of 8 · For developers · Source walkthrough with saved artifact evidence*
 
 ![AI-generated conceptual banner for approvals and recovery: glass checkpoints separate sections of a path.](media/03-banner.png)
 
-The most important architecture decision in this grader is not a model name. It is that model output cannot promote itself into an approved result.
+The assistant should recover its understanding from the workspace, not from a
+vague recollection that "we finished grading." `SKILL.md` supplies the navigation
+policy; Python determines whether a supported state transition is valid.
+Microsoft Agent Framework sequences grading, but neither it nor the skill can
+promote model output into an approved result.
+
+The actual [skill](../../skills/handwriting-grading/SKILL.md) says:
+
+```markdown
+When resuming an existing workspace or `output_dir`, inspect existing files
+and artifacts to orient immediately (do not rely on prior conversation history):
+```
+
+Its artifact table helps the assistant select a likely next operation. That table
+is navigation guidance, not the validator: the assistant must inspect the actual
+manifest/ledger and let the Python stage verify its format and hashes.
+
+| Workspace evidence | Skill-guided decision | What Python must establish |
+|---|---|---|
+| Rubric workbook without current approval | Offer rubric review, not grading | Reviewed artifact hashes match |
+| Supported incomplete grading ledger | Offer a resume preview | Original inputs match; missing keyed work is resumable |
+| Completed draft with failed items | Explain retry, manual review or waiting | Selected failure records and bound inputs are valid |
+| Completed scores with changed rubric/crop | Explain an isolated child regrade | Approved parent and separately reviewed change |
+| Current approved review | Offer post-approval outputs | Approval still matches the actual files |
 
 In [Part 2](02-review-and-return.md), OCR read John's class as `e: John` and his name as part of a printed heading. The saved report nevertheless associates his ID with John in class C. That separation between raw output and reviewed output must exist in the application logic, not only in a prompt.
 
 This article explains the boundaries using actual artifact structures and source excerpts. It does not pretend that every recovery path has been exercised against this saved exam.
 
-## Step 1: Make dependencies explicit
+## The skill chooses the operation; Python checks its prerequisites
 
 Inputs include the exam configuration, scans, roster, rubric and region definitions. The pipeline does not simply ask whether their files exist. It checks whether the appropriate approvals still match the relevant artifacts.
 
 ![Architecture diagram showing local preparation and approvals before Azure inference, and separate review before reporting.](media/11-architecture.png)
 
 *Figure 1. Code-authored explanatory diagram, not a runtime trace. Editable source is included in `diagrams/architecture.mmd`.*
+
+This diagram describes application stages below the assistant. The Framework's
+first Executor calls the same `approved_inputs()` function shown here; it does
+not read `SKILL.md` or interpret a teacher's conversational approval.
 
 The actual `approved_inputs()` starts with these calls:
 
@@ -30,7 +57,7 @@ It then loads the region draft, checks current region approval, validates comple
 
 **Expected output of this boundary:** either validated inputs for the next stage or an exception. This is a source contract, not a newly captured exception transcript. Part 1 supplies a real stopping case from the separate scan checker.
 
-## Step 2: Inspect what the saved approvals bind
+## Why "approved earlier" is not enough
 
 The saved grading approval contains these keys:
 
@@ -62,7 +89,7 @@ This excerpt demonstrates how a change is detected. It does not establish that e
 
 Hashes support local consistency checks. They do not make a directory tamper-proof against someone able to rewrite both files and approval records.
 
-## Step 3: Keep raw, reviewed and reported values distinct
+## Let the assistant compare raw, reviewed and reported values
 
 The saved run gives us three useful views:
 
@@ -84,7 +111,7 @@ Do not replace raw model results or record approval for me.
 
 **Output to expect:** a comparison keyed by script/question, not a silent rewrite. The figures in Part 2 provide the actual comparison for this exam.
 
-## Step 4: Use checkpoints without promising exactly-once billing
+## Explain what a resume can preserve
 
 The saved `results.json` records:
 
@@ -98,28 +125,24 @@ The saved `results.json` records:
 
 The completed run contains four script metadata records and 20 question-mark records. These counts describe the saved checkpoint; they do not mean 20 billable API requests.
 
-The application uses atomic checkpoint publication and a run lock to avoid conflicting writers. On a suitable interrupted run, an operator previews:
-
-```bash
-handwriting-grader resume-grading --exam /private/exam.yaml
-```
+The application uses atomic checkpoint publication and a run lock to avoid conflicting writers. On a suitable interrupted run, the skill-guided assistant offers
+`resume-grading`, explains the missing work and previews the intended requests.
+That is a state-dependent choice, not a command to run against every folder.
 
 New paid work still needs fresh consent. A request accepted by Azure just before a crash may not be checkpointed locally. Resumption can repeat that request and incur a second charge. “Resumable” therefore means preserving recorded work—not exactly-once provider execution.
 
 Do not run resume against a completed run simply to obtain a screenshot. Do not delete a live lock.
 
-## Step 5: Choose retry or child regrade deliberately
+## Retry and child regrade answer different questions
 
 A completed run with failed work uses `retry-grading`; a revised rubric or crop can require an isolated child regrade.
 
-```bash
-handwriting-grader regrade --exam /private/exam.yaml \
-  --run q3-review-1 --question Q3 \
-  --model-config /private/priced-config.yaml \
-  --endpoint https://YOUR-RESOURCE.openai.azure.com --api-version v1
-```
-
-This is a preview example, not a run we performed. A crop/rubric change requires its separately reviewed proposal. The selected question is rerun for **all present students**, not just one student's chosen answer. The child has its own output directory and requires review of all identities and scores.
+The assistant should explain the difference before asking the teacher to choose.
+Retry addresses supported failures with the run's existing inputs. A crop/rubric
+change requires its separately reviewed proposal and an isolated child. The
+selected question is rerun for **all present students**, not only the answer that
+motivated the change. The child requires fresh identity/score review. No such
+child was executed for this article.
 
 **Output not captured:** there is no child-run comparison image in this package. The saved flagged answer motivates the workflow, but it is not evidence that a corrected child run exists.
 
@@ -168,6 +191,13 @@ The returned map relates a normalized question key to a page offset and pixel
 box. This is why a changed rubric or missing answer box must be resolved before
 inference, not interpreted as a model's blank answer.
 
+`validate_annotations(..., complete=True)` checks the whole layout before the
+loop builds `boxes`. `question_key()` puts rubric IDs and annotation labels in
+the same key space. The set subtraction removes metadata fields, which are not
+graded questions; set equality then rejects an extra or missing question.
+The function returns **validated objects**, not just `True`, so downstream code
+uses the same reconciled rubric and crop map that passed the gate.
+
 ### A checkpoint is a keyed ledger, not a count of API calls
 
 `continue_grading()` reconstructs dictionaries from saved records:
@@ -185,6 +215,13 @@ and coverage of every moderated question in this example. The engine also checks
 model configuration, roster, rubric and region-approval hashes before setting
 `completed = true`. Completion means a full ledger exists; human review is a
 later state transition.
+
+The dictionary comprehensions make lookup explicit: scripts use one integer
+key, and marks use a `(script, question)` tuple. A worker can skip a pair already
+published without relying on list order or a chat message saying it finished.
+Duplicate/unexpected keys are errors, not silently merged work. The assistant
+should explain missing pairs to the user; it must not synthesize replacement
+records to make the ledger look complete.
 
 ### How atomic JSON publication works
 
@@ -248,105 +285,5 @@ regrade was performed to illustrate these source contracts.
 
 Next: [inspect the images and alignment logic](04-scans-crops-alignment.md).
 
-<!-- BEGIN BANNER WALKTHROUGH -->
-## Reproduce this article's AI banner: full prompt, code and output
-
-The banner is a separate illustration task, not an image of a running grader or
-evidence that an assessment succeeded. Its article title, description, visual
-metaphor, palette and composition are all in the **complete actual submitted
-prompt** below. No reference images or official logos were sent in this request.
-
-### Stage A: the actual Azure image prompt
-
-```text
-Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
-
-Article title: Logic before AI: approvals, checkpoints and recovery.
-Description: Application logic validates approved inputs, separates drafts from approved results, records checkpoints and permits conservative recovery. AI output cannot promote itself into an approved result.
-
-Creative concept: THE ARCHITECTURE OF TRUST. On the RIGHT, a monumental miniature architectural sculpture: a graceful illuminated path passes through three tall transparent glass gates, separated by deep gaps bridged by precise narrow walkways. Small solid amber checkpoint stones sit at the gate thresholds. One final gate is visibly closed, creating a beautiful visual boundary rather than an implication of unrestricted autonomy. Obsidian ground, frosted violet glass, cool white luminous edges and a restrained amber accent. Dramatic architectural lighting, deep indigo atmosphere and a premium museum-installation aesthetic.
-
-This is a striking sculptural metaphor, not a labeled flowchart. No paper desk, laptops, robot mascot, hexagon swarm or generic cybersecurity padlock. The geometry must feel intentional, precise and beautiful.
-
-Composition: leave the LEFT 42 percent dark and visually quiet for large typography added later. Gates and bridges occupy the right with a strong diagonal rhythm. Keep the gate tops and path inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
-
-No titles, letters, numbers, logos, badges, watermarks, UI panels or fabricated runtime evidence. This is conceptual editorial art rather than a reconstruction of an actual execution. Prioritize memorable architecture, restrained luxury, contrast and light.
-```
-
-This prompt's retained source is `branding/prompts/03.txt`. Asking for no
-rendered words leaves typography to local code; the quiet side reserves space
-for the headline. The image-size/crop instructions guide composition but do not
-guarantee the model obeys every visual constraint, so the result was inspected.
-
-### Stage B: preview and the real API boundary
-
-Use the independent image-generation repository's own environment and a newly
-reviewed private Azure configuration. The following command is an **offline
-preview example**, not a paid request executed while rebuilding this article:
-
-```bash
-"/path/to/azure-image-generation-skills/.venv/bin/azure-image" \
-  --model-config /private/image.config.yaml \
-  --prompt-file "/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/03.txt" \
-  --output-dir /private/new-banner-part-03
-```
-
-Paid execution adds `--confirm-cost` only after explicit approval for one request.
-The attempt directory must be new. Pricing is checked before SDK construction
-and again at this actual source method from the independent tool:
-
-```python
-def generate(self, prompt):
-    self.verifier.verify()
-    return self.sdk.with_options(max_retries=0).images.generate(
-        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
-        quality=IMAGE_QUALITY, n=1,
-    )
-```
-
-`IMAGE_SIZE` is `1536x1024` and `IMAGE_QUALITY` is `auto`. `n=1` requests one
-image; SDK and per-call retries are disabled. The SDK returns inline base64
-image data. The tool decodes it, verifies PNG format and exact dimensions, saves
-the original and keeps private usage/price journals. The published method
-excerpt is from
-[image-tool commit ee6c616](https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py);
-it is not a standalone script and is not installed as part of the grader.
-
-**Observed output for this article:** one successful text-to-image request using
-`gpt-image-2.5-sunburst`, with estimated cost **US$0.006505**.
-This is historical usage evidence, not a guaranteed future quote or an invoice.
-
-![Actual Azure-generated scene for article 3, before headline and brand composition.](branding/artworks/03.jpg)
-
-*Banner stage B output. A metadata-free JPEG publication derivative of the actual
-1536 x 1024 generated PNG, before local typography and logos; not a fabricated
-application screenshot.*
-
-### Stage C: preserve the scene, then add exact words and retained brand assets
-
-The publication builder creates a blurred background extension and fits the
-complete generated scene without stretching it. Its relevant Pillow excerpt is:
-
-```python
-full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
-hero.paste(full_scene, (x, 0), mask)
-```
-
-`hero` is the upper banner canvas, `x` anchors the scene opposite the headline,
-and `mask` feathers the quiet edge into the background. The builder varies
-left/right placement and light/dark text by article. `ImageDraw.text()` writes
-the exact headline; the four retained brand assets are resized proportionally
-and composited into a separate strip. AI is not asked to redraw those marks.
-
-**Final output:** the [1200 x 630 PNG shown at the top](media/03-banner.png),
-plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
-artwork; it is not newly generated high-resolution detail. Original PNG and
-submitted-prompt hashes are retained in `branding/artwork-provenance.json`.
-[Local composition source](tools/banners.py) and
-[brand-source/permission caveats](branding/README.md) are included.
-
-Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
-not regenerate artwork, refresh prices or authorize any new paid operation.
-<!-- END BANNER WALKTHROUGH -->
 
 **Implementation references:** [approval validation](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/grade_review.py) and [targeted regrading](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/skills/handwriting-grading/references/regrading.md).

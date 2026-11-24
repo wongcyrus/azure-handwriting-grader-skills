@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import re
 
-from article_walkthroughs import banner_walkthrough
+from article_content import END, START, without_banner_appendix
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,32 +65,68 @@ for method in ("_student_task", "_question_task"):
     expect_prompt(8, assignment(function("advanced.py", method), "task").value)
 expect_prompt(8, assignment(function("advanced.py", "create_analysis"), "overview_task").value)
 
-for name in ("build_grading_workflow", "run_grading_workflow"):
-    expected = ast.dump(function("workflow.py", name), include_attributes=False)
-    blocks = re.findall(r"```python\n(.*?)\n```", articles[6], flags=re.DOTALL)
+for part, filename, name in (
+    (6, "workflow.py", "build_grading_workflow"),
+    (6, "workflow.py", "run_grading_workflow"),
+    (4, "grading.py", "crop_image"),
+    (8, "analytics.py", "describe"),
+):
+    expected = ast.dump(function(filename, name), include_attributes=False)
+    blocks = re.findall(r"```python\n(.*?)\n```", articles[part], flags=re.DOTALL)
     definitions = [node for block in blocks for node in ast.walk(ast.parse(block))
                    if isinstance(node, ast.FunctionDef) and node.name == name]
     assert any(ast.dump(node, include_attributes=False) == expected for node in definitions), name
 
-provenance = json.loads((ROOT / "branding/artwork-provenance.json").read_text())
+route = next(node for node in ast.walk(tree("cli.py"))
+             if isinstance(node, ast.Try) and node.body
+             and isinstance(node.body[0], ast.Assign)
+             and any(isinstance(target, ast.Name) and target.id == "execute"
+                     for target in node.body[0].targets))
+expected_route = ast.dump(ast.Module(body=route.body[:4], type_ignores=[]), include_attributes=False)
+assert any(ast.dump(ast.parse(block), include_attributes=False) == expected_route
+           for block in re.findall(r"```python\n(.*?)\n```", articles[6], flags=re.DOTALL))
+
+skill = (SOURCE.parents[1] / "skills/handwriting-grading/SKILL.md").read_text()
+
+
+def normalize(text):
+    return " ".join(text.split())
+
+
+legacy = f"Article introduction\n\n{START}\nRetired appendix\n{END}\nArticle conclusion\n"
+cleaned = without_banner_appendix(legacy)
+assert cleaned.startswith("Article introduction\n")
+assert cleaned.endswith("Article conclusion\n") and "Retired appendix" not in cleaned
+assert without_banner_appendix(cleaned) == cleaned
+for invalid in (START, END, legacy + START):
+    try:
+        without_banner_appendix(invalid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Malformed managed appendix must not be silently removed")
+
 python_blocks = json_blocks = 0
 for part, text in articles.items():
-    assert banner_walkthrough(text, part, provenance) == text, f"Part {part}: banner section is stale"
+    assert without_banner_appendix(text) == text, f"Part {part}: retired banner appendix remains"
+    assert "Reproduce this article's AI banner" not in text
+    assert "Agent Framework" in text and "SKILL.md" in text, f"Part {part}: missing agent-layer explanation"
+    contracts = re.findall(r"```markdown\n(.*?)\n```", text, flags=re.DOTALL)
+    assert contracts, f"Part {part}: missing published skill excerpt"
+    for contract in contracts:
+        assert normalize(contract) in normalize(skill), f"Part {part}: skill excerpt differs from source"
     for block in re.findall(r"```python\n(.*?)\n```", text, flags=re.DOTALL):
         ast.parse(block)
         python_blocks += 1
     for block in re.findall(r"```json\n(.*?)\n```", text, flags=re.DOTALL):
         json.loads(block)
         json_blocks += 1
-    row = next(item for item in provenance["artworks"] if item["part"] == part)
-    expect_prompt(part, (ROOT / "branding" / row["prompt_file"]).read_text())
-    assert f"](branding/{row['publication_file']})" in text
 observed = (ROOT / "observed/offline-framework-smoke.txt").read_text().strip()
 assert observed in articles[6]
 smoke = ast.dump(ast.parse((ROOT / "snippets/offline-framework-smoke.py").read_text()),
                  include_attributes=False)
 assert any(ast.dump(ast.parse(block), include_attributes=False) == smoke
            for block in re.findall(r"```python\n(.*?)\n```", articles[6], flags=re.DOTALL))
-print(f"Verified nine production prompt/task templates, two complete Framework functions, "
-      f"the complete offline smoke script, eight actual banner prompts, "
+print(f"Verified nine production prompt/task templates, four complete functions, the CLI handoff, "
+      f"the complete offline smoke script, eight published skill contracts, "
       f"{python_blocks} Python blocks and {json_blocks} JSON blocks.")

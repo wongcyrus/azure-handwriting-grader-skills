@@ -1,20 +1,40 @@
-# Check prices before AI: consent, estimates and data boundaries
+# Cost governance in an agent skill: Python gates before Azure requests
 
 *Part 7 of 8 · For developers and school IT*
 
 ![AI-generated conceptual banner for pricing and consent: a balance weighs paper and gold weights before a glass gate.](media/07-banner.png)
 
-“What did this cost?” and “May we send these images?” are different questions. A responsible workflow must address both before a paid request, and preserve enough evidence to explain its estimate afterwards.
+An assistant that can invoke a paid tool needs more than a friendly "are you
+sure?" prompt. The handwriting-grading skill tells it to prepare a meaningful
+consent decision; Python independently checks the selected operation's pricing
+and explicit consent flag. Microsoft Agent Framework does not supply a spending
+authorization merely by starting the grading graph.
+
+The actual instruction in
+[SKILL.md](../../skills/handwriting-grading/SKILL.md) is:
+
+```markdown
+**Cost governance**: Before every paid stage, preview target, transferred data and
+estimated requests; independently verify current regional deployment rates and
+obtain `--confirm-cost`.
+```
+
+"What did this cost?" and "May we send these images?" are different questions.
+The skill-guided assistant explains both and waits for a real user decision.
+The executable flag prevents an ordinary unconfirmed invocation, but the program
+cannot prove a host assistant obtained genuine conversational consent. Skill
+instructions and program checks are complementary, not interchangeable.
 
 The grader checks required rates before the first paid request of each new run. Public lookup covers a curated set of supported text/vision families. Other operations need current manually reviewed evidence. This article uses saved price journals and cost summaries; no new model request or price refresh was made to write it.
 
-## Step 1: Separate preview, price verification and consent
+## The skill prepares a decision, not a chain of paid commands
 
 A preview should show intended work without inference. It is not consent to execute. The relevant execution additionally needs `--confirm-cost`, and a configured deployment still needs verified rates.
 
-**Suggested teacher/IT prompt**
+**Illustrative teacher/IT request**
 
 ```text
+Use the handwriting-grading skill to plan the next paid stage.
 Show the target resource and deployments locally.
 Explain which artifacts will leave the machine and preview the work.
 Do not make paid calls, accept changed rates or send reports.
@@ -28,31 +48,27 @@ Do not put the private resource details into public screenshots. The article's e
 
 The order of authorization and checking is an application workflow; the invariant is that neither missing consent nor a failed price check may be bypassed to make the paid request.
 
-## Step 2: Understand what public lookup retrieves
+The assistant should explain the selected stage, endpoint/deployment, payload,
+request estimate, retry caveats and whether required reviews are current.
+For grading the data includes answer crops and selected metadata; for analysis
+it includes reviewed answers/feedback. A public price lookup has neither payload.
+A scan blocker or invalid approval remains a reason not to proceed, even when
+rates are available.
 
-The documented lookup command is:
+## Why pricing lookup is a Python operation, not an LLM answer
 
-```bash
-handwriting-grader fetch-pricing \
-  --region eastus --deployment-type global-standard
-```
-
-To price aliases into a new private configuration:
-
-```bash
-handwriting-grader fetch-pricing \
-  --region eastus --deployment-type global-standard \
-  --model-config /private/config.yaml \
-  --write-config /private/priced-config.yaml
-```
-
-These are reproducible procedure examples, not newly executed transcripts. The saved journals provide actual evidence of earlier successful checks.
+The skill tells the assistant to obtain the actual ARM region and billing type
+rather than infer them from an endpoint. The `fetch-pricing` tool queries the
+public Retail Prices API and can write a **new** private configuration only when
+requested. Python matches meters and retains provenance. The assistant presents
+that result for review; it must not overwrite approval-bound configuration or
+invent a new attestation timestamp. No fresh lookup was executed for this article.
 
 The public Retail Prices API request does not need student data or Azure credentials. The application selects exact matching meters, checks units and effective dates, and retains provenance rather than guessing a family rate.
 
 Use the real ARM region and billing type. Public USD retail rates are estimates, not your institution's negotiated bill.
 
-## Step 3: Inspect saved evidence without publishing the private resource
+## Trace the Python check immediately before the request
 
 The existing grading price journal contains two text-operation checks with retail evidence. Rubric and region journals each contain a text check. The analysis journal contains both text and image checks, with retail and manual evidence represented.
 
@@ -70,7 +86,14 @@ That precedes image encoding and the Responses SDK request. A shared run verifie
 
 **What is not captured here:** a fresh changed-price/network-failure execution. Those blocking branches are source behavior, not fabricated console output.
 
-## Step 4: Read the cost report's scope before quoting a number
+`model` identifies the actual configured deployment used by this call.
+`tools=tuple(config.tools or ())` includes hosted-tool requirements and uses an
+empty tuple when none are requested. `_require_prices()` therefore checks the
+operation being sent, not merely whether some unrelated rate exists in YAML.
+The Framework's execution node invokes an engine whose transport performs this
+check; the Framework itself is not the rate authority.
+
+## The assistant must explain scope when reporting actual usage
 
 The saved `grading/cost_summary.json` reports:
 
@@ -95,15 +118,15 @@ The stored batch-grading phase is five logical calls and US$0.022736. The stored
 
 Failed responses and individual SDK retries are not fully represented in the grader's log. Do not turn logical calls into an authoritative count of billed attempts. Reconcile with Azure billing.
 
-## Step 5: Treat image generation as a separate pricing case
+## Different grader operations require different pricing evidence
 
-The independent [Azure image-generation skill](https://github.com/wongcyrus/azure-image-generation-skills) has its own package and environment. It is not a grader dependency.
+A reviewed text/vision rate is not authorization for optional embeddings,
+hosted search or report infographics. Those operations have different payloads
+and billing requirements; unsupported automatic-lookup families need current
+manual evidence. The skill must explain the specific choice and obtain separate
+consent rather than reuse the teacher's earlier approval to mark the exam.
 
-Its current image-pricing gate checks **manual evidence**, not a live image-price lookup. Evidence must match the model/resource, region, supported billing mode, USD units, current UTC verification date, requested size and quality. The program validates the attestation; it cannot establish that a person actually reviewed the correct prices.
-
-The separately created workflow illustration used one image request and recorded an estimated US$0.04312. That separate run is not included in the grader's stored US$0.33436 snapshot. The earlier banner prototype used one request (estimated US$0.00713). The current eight banners instead use **eight distinct, separately generated artworks**, with no automatic retries and a combined estimate of **US$0.06394**. Exact typography and brand marks are added locally. [Submitted prompts and provenance](branding/README.md) distinguish these conceptual illustrations from observed grader outputs. None of these publication-art costs belong to the grader's stored snapshot; estimates are not invoices.
-
-## Step 6: Keep consent and data governance visible
+## Keep data governance visible in the skill's handoff
 
 Answer crops and selected metadata can leave the local machine during inference. Optional analysis and hosted tools have their own payloads and cost implications. Local previews, reports and offline statistics should not be described as paid AI operations.
 
@@ -145,6 +168,13 @@ if (
 ):
     raise PriceVerificationError("Current retail prices differ from reviewed rates")
 ```
+
+`required` names the token-rate components that must be known. `_rates()` builds
+comparable short/long-context mappings from fresh retail evidence and the
+reviewed configuration. The condition checks both the tier threshold and every
+required component in each tier. `any(...)` blocks on even one changed rate;
+it does not silently accept a "close enough" total estimate. This is why the
+assistant cannot fix the failure by merely asking an LLM for a cheaper number.
 
 The public lookup validates pagination, meter identity, units and effective
 dates. Missing or ambiguous meters remain unpriced. Unsupported families use
@@ -212,113 +242,12 @@ known-state field or summary, not just a numeric cell. Billing estimates still
 omit some failed attempts and SDK retries; the provider invoice is authoritative.
 
 The **actual stored outputs** are the broader US$0.33436 summary and its phase
-breakdown above. The separate eight-banner estimate of US$0.06394 was calculated
-by the independent image tool from eight successful usage records. It is neither
-the exam's grading cost nor a public quote for eight future requests.
+breakdown above. The assistant should report that scope, identify missing usage
+or pricing, and distinguish recorded estimates from the institution's Azure bill.
 
 The output you want is a traceable estimate with known scope—and a clearly blocked request when essential evidence is missing—not an attractively formatted zero.
 
 Next: [turn saved reports into a measured school pilot](08-pilot-and-outputs.md).
 
-<!-- BEGIN BANNER WALKTHROUGH -->
-## Reproduce this article's AI banner: full prompt, code and output
-
-The banner is a separate illustration task, not an image of a running grader or
-evidence that an assessment succeeded. Its article title, description, visual
-metaphor, palette and composition are all in the **complete actual submitted
-prompt** below. No reference images or official logos were sent in this request.
-
-### Stage A: the actual Azure image prompt
-
-```text
-Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
-
-Article title: Check prices before AI: consent, estimates and data boundaries.
-Description: Preview is not consent. Reviewed rates and permission to send data must both exist before a paid request. Estimates, actual usage and unknown costs need distinct treatment; missing evidence must block rather than imply a free operation.
-
-Creative concept: THE COST GATE. On the RIGHT, a jewel-like precision balance with two transparent pans stands immediately before a luminous closed glass doorway. One pan holds folded ivory paper; the other contains tiny solid gold weights, not coins. A fine stream of light approaches the closed doorway but stops at its threshold. Rich matte black, brushed champagne gold, warm amber and a restrained electric-blue edge reflection. Luxurious product-editorial photography, tactile materials, spotlight, deep shadows and carefully controlled reflections.
-
-The balance and doorway should form one bold, instantly recognizable silhouette: deliberate judgment before spending or transmission. No cryptocurrency, currency symbols, price numbers, invoice, calculator, stock-market chart, generic padlock or cluttered desk.
-
-Composition: leave the LEFT 42 percent quiet matte black for large typography added later. Place the balance and cost gate on the right. Keep the essential sculpture inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, so a wide 1200x515 crop retains both pans and doorway. Full-bleed, no borders.
-
-No titles, letters, numbers, logos, badges, watermarks, interfaces or fabricated billing evidence. This is conceptual editorial art, not an invoice or price quote. Prioritize elegance, dramatic gold-black contrast, intrigue and exceptional thumbnail appeal.
-```
-
-This prompt's retained source is `branding/prompts/07.txt`. Asking for no
-rendered words leaves typography to local code; the quiet side reserves space
-for the headline. The image-size/crop instructions guide composition but do not
-guarantee the model obeys every visual constraint, so the result was inspected.
-
-### Stage B: preview and the real API boundary
-
-Use the independent image-generation repository's own environment and a newly
-reviewed private Azure configuration. The following command is an **offline
-preview example**, not a paid request executed while rebuilding this article:
-
-```bash
-"/path/to/azure-image-generation-skills/.venv/bin/azure-image" \
-  --model-config /private/image.config.yaml \
-  --prompt-file "/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/07.txt" \
-  --output-dir /private/new-banner-part-07
-```
-
-Paid execution adds `--confirm-cost` only after explicit approval for one request.
-The attempt directory must be new. Pricing is checked before SDK construction
-and again at this actual source method from the independent tool:
-
-```python
-def generate(self, prompt):
-    self.verifier.verify()
-    return self.sdk.with_options(max_retries=0).images.generate(
-        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
-        quality=IMAGE_QUALITY, n=1,
-    )
-```
-
-`IMAGE_SIZE` is `1536x1024` and `IMAGE_QUALITY` is `auto`. `n=1` requests one
-image; SDK and per-call retries are disabled. The SDK returns inline base64
-image data. The tool decodes it, verifies PNG format and exact dimensions, saves
-the original and keeps private usage/price journals. The published method
-excerpt is from
-[image-tool commit ee6c616](https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py);
-it is not a standalone script and is not installed as part of the grader.
-
-**Observed output for this article:** one successful text-to-image request using
-`gpt-image-2.5-sunburst`, with estimated cost **US$0.006535**.
-This is historical usage evidence, not a guaranteed future quote or an invoice.
-
-![Actual Azure-generated scene for article 7, before headline and brand composition.](branding/artworks/07.jpg)
-
-*Banner stage B output. A metadata-free JPEG publication derivative of the actual
-1536 x 1024 generated PNG, before local typography and logos; not a fabricated
-application screenshot.*
-
-### Stage C: preserve the scene, then add exact words and retained brand assets
-
-The publication builder creates a blurred background extension and fits the
-complete generated scene without stretching it. Its relevant Pillow excerpt is:
-
-```python
-full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
-hero.paste(full_scene, (x, 0), mask)
-```
-
-`hero` is the upper banner canvas, `x` anchors the scene opposite the headline,
-and `mask` feathers the quiet edge into the background. The builder varies
-left/right placement and light/dark text by article. `ImageDraw.text()` writes
-the exact headline; the four retained brand assets are resized proportionally
-and composited into a separate strip. AI is not asked to redraw those marks.
-
-**Final output:** the [1200 x 630 PNG shown at the top](media/07-banner.png),
-plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
-artwork; it is not newly generated high-resolution detail. Original PNG and
-submitted-prompt hashes are retained in `branding/artwork-provenance.json`.
-[Local composition source](tools/banners.py) and
-[brand-source/permission caveats](branding/README.md) are included.
-
-Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
-not regenerate artwork, refresh prices or authorize any new paid operation.
-<!-- END BANNER WALKTHROUGH -->
 
 **Implementation references:** [price verification](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/pricing.py) and [usage accounting](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/telemetry.py).

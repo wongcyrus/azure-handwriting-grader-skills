@@ -1,17 +1,87 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>What Microsoft Agent Framework actually orchestrates in a grading application</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Agent skills and Microsoft Agent Framework: two different orchestration layers</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>What Microsoft Agent Framework actually orchestrates in a grading application</h1>
+</style></head><body><article><h1>Agent skills and Microsoft Agent Framework: two different orchestration layers</h1>
 <p><em>Part 6 of 8 · For agent and application developers</em></p>
 <p><img alt="AI-generated conceptual banner for Microsoft Agent Framework: three luminous hubs connect to a separate stop marker." src="media/06-banner.png" /></p>
-<p>An “agentic” architecture diagram can easily imply more autonomy than the code provides. This application uses real Microsoft Agent Framework Executors and a workflow, but it does not ask a group of autonomous agents to negotiate grades or grant approval.</p>
+<p>An agent skill and an Agent Framework workflow solve different problems.
+<code>SKILL.md</code> guides the host assistant's interpretation of a teacher request,
+workspace inspection, tool selection and human handoffs. Microsoft Agent
+Framework executes a specific Python graph <strong>after</strong> the grading operation is
+selected and its command-level prerequisites are satisfied.</p>
+<p>The actual <a href="../../skills/handwriting-grading/SKILL.md">skill</a> describes the seam:</p>
+<pre><code class="language-markdown">`grade` defaults to `--orchestrator agent-framework`: real Executor/WorkflowBuilder
+validation → existing grading → human-review boundary. `workflow-grade` forces it;
+`--orchestrator python` is the direct fallback. No autonomous approval or email.
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Input</th>
+<th>Responsibility</th>
+<th>Not its responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Skill-guided assistant</td>
+<td>Teacher intent and workspace artifacts</td>
+<td>Choose tools, explain results, request decisions</td>
+<td>Invent approval or replace application validation</td>
+</tr>
+<tr>
+<td>Python CLI</td>
+<td>Explicit paths, target and flags</td>
+<td>Validate/preview the selected operation and check consent flag</td>
+<td>Prove consent was genuinely given in chat</td>
+</tr>
+<tr>
+<td>Agent Framework</td>
+<td>Typed <code>"grade"</code> control message and captured configuration</td>
+<td>Sequence validation, engine execution and draft output</td>
+<td>Load <code>SKILL.md</code>, negotiate marks or approve delivery</td>
+</tr>
+<tr>
+<td>Azure grading deployment</td>
+<td>Rubric text and PNG crops</td>
+<td>Propose structured transcription/marks/flags</td>
+<td>Approve its own output</td>
+</tr>
+</tbody>
+</table>
+<p>The inspected <code>workflow.py</code> does not parse a skill file or create a conversational
+planning agent. The integration is the assistant invoking the Python tool whose
+default route uses the Framework. A host-independent Python caller can execute
+the same workflow without loading a skill; it still faces the application gates.</p>
 <p>The workflow is deliberately small: validate inputs, execute the existing grading engine, and return a draft location for human review. Pricing and review policy remain application responsibilities.</p>
 <p>This article shows the actual code and the saved artifacts the grading engine produces. No framework event log was captured for the existing example, so those artifacts are not presented as proof of which orchestrator ran historically.</p>
-<h2>Step 1: State the workflow's contract</h2>
+<h2>Follow the Python seam from skill-selected tool to Framework</h2>
+<p>This is the actual CLI routing excerpt, after preview and the <code>--confirm-cost</code>
+check. The variables come from parsed arguments and validated exam configuration:</p>
+<pre><code class="language-python">execute = grade_exam
+options = {}
+if args.orchestrator == &quot;agent-framework&quot;:
+    from .workflow import run_grading_workflow
+    execute = run_grading_workflow
+    options[&quot;grade_function&quot;] = grade_exam
+output = execute(
+    config, path.parent, path, args.model_config, args.endpoint.strip(),
+    args.api_version.strip(), summary, mode=mode, batch_concurrency=concurrency, **options,
+)
+</code></pre>
+<p>The first assignment selects direct Python execution provisionally. The <code>if</code>
+changes the callable to the Framework wrapper; it does not invoke grading yet.
+<code>options["grade_function"]</code> supplies the same engine to the wrapper, preserving
+behavior between routes. The final call passes structured configuration and
+paths, not the teacher's raw sentence. <code>output</code> is the draft folder returned
+by either route. Cost consent is checked before this excerpt; the host assistant
+must not invent that consent just because it can supply a flag.</p>
+<h2>The workflow's input and output contract</h2>
 <p>The workflow imports:</p>
 <pre><code class="language-python">from agent_framework import Executor, WorkflowBuilder, WorkflowContext, handler
 </code></pre>
@@ -19,7 +89,7 @@ a{color:#0067b8}em{color:#4b6175}
 <p><img alt="Code-derived workflow diagram: validate approvals, execute grading, yield draft path, then separate teacher review." src="media/16-framework.png" /></p>
 <p><em>Figure 1. Diagram of actual workflow structure, not a runtime event visualization.</em></p>
 <p>The last box is particularly important. “Human review boundary” means the automated workflow stops without granting approval. It does <strong>not</strong> mean the Executor waits for a teacher response and persists that approval.</p>
-<h2>Step 2: Validate before executing</h2>
+<h2>The validation Executor forwards only after Python validation</h2>
 <p>The first Executor's handler calls application validation:</p>
 <pre><code class="language-python">class ValidateApproval(Executor):
     @handler
@@ -28,9 +98,14 @@ a{color:#0067b8}em{color:#4b6175}
         await ctx.send_message(request)
 </code></pre>
 <p><strong>Output:</strong> the request is forwarded only if validation returns successfully. A failing validation stops this path before the grading Executor is invoked.</p>
-<p>The framework provides orchestration primitives. The application supplies the meaning of “approved inputs,” including rubric/region checks. Adding an Executor does not automatically implement those policies.</p>
+<p><code>@handler</code> identifies the method as a Framework handler. Its typed <code>request</code>
+and <code>WorkflowContext[str]</code> describe the message path. <code>approved_inputs()</code> runs
+first; an exception prevents <code>ctx.send_message()</code> from forwarding the request.
+The Framework supplies orchestration primitives, while the application supplies
+the rubric/region approval semantics. Adding an Executor does not create those
+policies or rerun the preparation scan check.</p>
 <p>Part 1's actual scan warning is related but belongs to scan checking; do not label it as a captured <code>ValidateApproval</code> event.</p>
-<h2>Step 3: Run the synchronous engine without blocking the event loop</h2>
+<h2>The execution Executor bridges async orchestration and sync Python</h2>
 <p>The second Executor uses:</p>
 <pre><code class="language-python">output = await asyncio.to_thread(
     grade_function,
@@ -53,7 +128,7 @@ await ctx.send_message(str(output))
 <p><img alt="Saved grading artifacts summarized from the actual completed result and workbook." src="media/14-grading-evidence.png" /></p>
 <p><em>Figure 2. Existing engine output: four scripts and twenty question-mark records. This is not a framework execution trace.</em></p>
 <p>A practical benefit is reuse: direct Python orchestration and the framework path call the same engine, preserving the review/checkpoint model.</p>
-<h2>Step 4: Yield drafts without inventing human approval</h2>
+<h2>The terminal Executor yields a path, not a human decision</h2>
 <p>The final Executor does this:</p>
 <pre><code class="language-python">class RequireHumanReview(Executor):
     @handler
@@ -62,12 +137,13 @@ await ctx.send_message(str(output))
 </code></pre>
 <p>Despite the class name, there is no human response wait in that handler. It yields the draft output path. Review and approval occur through separate application operations.</p>
 <p><strong>Suggested operator prompt</strong></p>
-<pre><code class="language-text">Run the approved grading workflow only after I confirm cost.
+<pre><code class="language-text">Use the handwriting-grading skill to prepare the approved grading workflow.
+Run it only after I confirm cost.
 When it finishes, show the draft output location and flagged answers.
 Do not approve scores, generate a delivery approval or send email.
 </code></pre>
 <p>This is a suggested assistant request, not the model prompt used to grade handwriting. The assistant must still respect the explicit consent and local approval gates.</p>
-<h2>Step 5: Connect the real Executors</h2>
+<h2>Explicit edges replace an imagined autonomous debate</h2>
 <p>The builder creates these edges:</p>
 <pre><code class="language-python">return (
     WorkflowBuilder(
@@ -92,7 +168,7 @@ as shown in Part 5. There is no hidden "three agents debate marks" prompt in thi
 workflow. The suggested operator prompt above tells the assistant which approved
 operation to request; it does not grant approval or alter Executor authority.</p>
 <h3>The complete source factory</h3>
-<p>The imports are <code>asyncio</code>, <code>Path</code>, <code>Never</code>, the Framework types shown in Step 1,
+<p>The imports are <code>asyncio</code>, <code>Path</code>, <code>Never</code>, the Framework types shown above,
 and <code>approved_inputs</code>/<code>grade_exam</code> from the grading module. Here is the complete
 factory, reformatted from the inspected source:</p>
 <pre><code class="language-python">def build_grading_workflow(config, config_dir, config_path, model_config_path,
@@ -137,6 +213,13 @@ strings along explicit edges. <code>asyncio.to_thread()</code> runs the synchron
 without blocking the handler's event loop; question-level concurrency still
 belongs to that engine. <code>max_iterations=4</code> is a workflow bound, not a count of
 billable grading requests.</p>
+<p>Each <code>Executor(id=...)</code> has a stable identity in the graph; those IDs are not
+Azure deployment names or named LLM personas. <code>add_edge(validate, execute)</code>
+permits the validated control message to reach execution, and the second edge
+passes the draft path to the terminal handler. <code>build()</code> constructs that graph.
+The selected <code>grade_function</code> owns the actual model calls and checkpoint work.
+This explains why changing the orchestration route does not itself change the
+grading prompt shown in Part 5.</p>
 <p>The terminal handler uses <code>WorkflowContext[Never, str]</code>: it yields a string output
 and does not send another workflow message. The wrapper makes the terminal
 contract concrete:</p>
@@ -209,89 +292,21 @@ captured output in <code>observed/offline-framework-smoke.txt</code>. The real F
 executed the typed sequence and terminal output contract. The stub created an
 empty synthetic draft directory; it did <strong>not</strong> grade four students. This is
 instrumented offline evidence, not an original-exam Framework event log.</p>
-<h2>Step 6: Review the thing the workflow cannot approve</h2>
-<p>The saved workbook includes flagged answers with manual-review fields. The current read-only review diagnostic reports no discrepancies while explicitly reminding the operator that human review and approval remain required.</p>
+<p>The <code>patch()</code> contexts replace just the validator and Azure constructor for this
+synthetic test. The injected <code>grading_stub</code> records its position and returns the
+temporary directory. Assertions check order and path identity; the mock's
+<code>assert_not_called()</code> fails if an Azure client is constructed. The four printed
+lines are actual instrumented output. This tests the runtime graph, not the
+assistant's skill selection, real approval validation or handwriting quality.</p>
+<h2>Hand the draft back to the skill-guided assistant and teacher</h2>
+<p>After receiving the draft path, the assistant returns to the skill's review
+guidance: inspect failures/flags, explain choices and offer the teacher's review
+interface. There is no automatic transition to report delivery. The saved
+workbook includes flagged manual-review fields, and the read-only diagnostic
+explicitly retains the human-review requirement.</p>
 <p><img alt="Saved flagged workbook entries, illustrating work that remains after automated orchestration." src="media/08-review-flags.png" /></p>
 <p><em>Figure 3. Actual saved review records, not evidence that the final Executor granted approval.</em></p>
 <p>Deployment hygiene matters too. Use the reviewed lockfile and consult current advisories before changing framework dependencies. A historical pre-incident pin is not a permanent safety certification.</p>
 <p>The architectural lesson is straightforward: use the framework to make sequencing visible, but keep correctness, consent, pricing and release rules explicit in application code. A modest workflow that accurately describes its authority is preferable to a spectacular diagram that overstates it.</p>
 <p>Next: <a href="07-pricing-and-data.html">pricing and data boundaries before AI calls</a>.</p>
-<!-- BEGIN BANNER WALKTHROUGH -->
-<h2>Reproduce this article's AI banner: full prompt, code and output</h2>
-<p>The banner is a separate illustration task, not an image of a running grader or
-evidence that an assessment succeeded. Its article title, description, visual
-metaphor, palette and composition are all in the <strong>complete actual submitted
-prompt</strong> below. No reference images or official logos were sent in this request.</p>
-<h3>Stage A: the actual Azure image prompt</h3>
-<pre><code class="language-text">Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
-
-Article title: What Microsoft Agent Framework actually orchestrates in a grading application.
-Description: A deliberately small workflow has three Executors: validate inputs, execute the grading engine, and return a draft artifact location. Human approval remains outside that workflow; agents do not negotiate or approve grades.
-
-Creative concept: THE THREE-PART ORCHESTRA. On the LEFT, exactly three dominant sculptural luminous hubs are linked by flowing braided fiber-optic ribbons, like a beautifully choreographed kinetic installation. The hubs are distinct in material: frosted glass, polished violet metal and luminous emerald ceramic. Abstract paper fragments flow between them. The final ribbon terminates at a clearly separate amber stop marker, leaving an intentional gap before it rather than flowing onward indefinitely. Deep forest-green and near-black atmosphere, brilliant emerald light, ultraviolet accents and very subtle copper reflections.
-
-Sophisticated cinematic spatial design, energetic but uncluttered. Not a network map, swarm of tiny nodes, robot group, autonomous-agent negotiation or logo recreation. No diagrams or interface cards. The three large hubs must be visually countable and feel engineered, not random.
-
-Composition: the three hubs occupy the LEFT 56 percent; leave the RIGHT 42 percent dark and quiet for large typography added later. Keep the three hubs, ribbons and stop marker inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
-
-No titles, letters, numbers, logos, badges, watermarks, code, interfaces or fabricated framework traces. This is an editorial metaphor, not runtime evidence. Prioritize rhythm, dramatic light, sculptural distinction and memorable color.
-</code></pre>
-<p>This prompt's retained source is <code>branding/prompts/06.txt</code>. Asking for no
-rendered words leaves typography to local code; the quiet side reserves space
-for the headline. The image-size/crop instructions guide composition but do not
-guarantee the model obeys every visual constraint, so the result was inspected.</p>
-<h3>Stage B: preview and the real API boundary</h3>
-<p>Use the independent image-generation repository's own environment and a newly
-reviewed private Azure configuration. The following command is an <strong>offline
-preview example</strong>, not a paid request executed while rebuilding this article:</p>
-<pre><code class="language-bash">&quot;/path/to/azure-image-generation-skills/.venv/bin/azure-image&quot; \
-  --model-config /private/image.config.yaml \
-  --prompt-file &quot;/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/06.txt&quot; \
-  --output-dir /private/new-banner-part-06
-</code></pre>
-<p>Paid execution adds <code>--confirm-cost</code> only after explicit approval for one request.
-The attempt directory must be new. Pricing is checked before SDK construction
-and again at this actual source method from the independent tool:</p>
-<pre><code class="language-python">def generate(self, prompt):
-    self.verifier.verify()
-    return self.sdk.with_options(max_retries=0).images.generate(
-        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
-        quality=IMAGE_QUALITY, n=1,
-    )
-</code></pre>
-<p><code>IMAGE_SIZE</code> is <code>1536x1024</code> and <code>IMAGE_QUALITY</code> is <code>auto</code>. <code>n=1</code> requests one
-image; SDK and per-call retries are disabled. The SDK returns inline base64
-image data. The tool decodes it, verifies PNG format and exact dimensions, saves
-the original and keeps private usage/price journals. The published method
-excerpt is from
-<a href="https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py">image-tool commit ee6c616</a>;
-it is not a standalone script and is not installed as part of the grader.</p>
-<p><strong>Observed output for this article:</strong> one successful text-to-image request using
-<code>gpt-image-2.5-sunburst</code>, with estimated cost <strong>US$0.012155</strong>.
-This is historical usage evidence, not a guaranteed future quote or an invoice.</p>
-<p><img alt="Actual Azure-generated scene for article 6, before headline and brand composition." src="branding/artworks/06.jpg" /></p>
-<p><em>Banner stage B output. A metadata-free JPEG publication derivative of the actual
-1536 x 1024 generated PNG, before local typography and logos; not a fabricated
-application screenshot.</em></p>
-<h3>Stage C: preserve the scene, then add exact words and retained brand assets</h3>
-<p>The publication builder creates a blurred background extension and fits the
-complete generated scene without stretching it. Its relevant Pillow excerpt is:</p>
-<pre><code class="language-python">full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
-hero.paste(full_scene, (x, 0), mask)
-</code></pre>
-<p><code>hero</code> is the upper banner canvas, <code>x</code> anchors the scene opposite the headline,
-and <code>mask</code> feathers the quiet edge into the background. The builder varies
-left/right placement and light/dark text by article. <code>ImageDraw.text()</code> writes
-the exact headline; the four retained brand assets are resized proportionally
-and composited into a separate strip. AI is not asked to redraw those marks.</p>
-<p><strong>Final output:</strong> the <a href="media/06-banner.png">1200 x 630 PNG shown at the top</a>,
-plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
-artwork; it is not newly generated high-resolution detail. Original PNG and
-submitted-prompt hashes are retained in <code>branding/artwork-provenance.json</code>.
-<a href="tools/banners.py">Local composition source</a> and
-<a href="branding/README.html">brand-source/permission caveats</a> are included.</p>
-<p>Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
-not regenerate artwork, refresh prices or authorize any new paid operation.</p>
-<!-- END BANNER WALKTHROUGH -->
-
 <p><strong>Implementation reference:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/workflow.py">complete workflow source at the inspected revision</a>.</p></article></body></html>

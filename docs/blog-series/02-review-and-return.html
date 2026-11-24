@@ -1,18 +1,35 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Review, correct and return results—with the teacher in control</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>How an agent skill assists review without approving grades</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>Review, correct and return results—with the teacher in control</h1>
+</style></head><body><article><h1>How an agent skill assists review without approving grades</h1>
 <p><em>Part 2 of 8 · For teachers · Saved outputs, not a new grading run</em></p>
 <p><img alt="AI-generated conceptual banner for review and return: a teacher's magnifying glass resolves tangled red thread into a clean green line." src="media/02-banner.png" /></p>
-<p>A complete spreadsheet is not the same as a trustworthy assessment. This article follows the existing example from OCR identities and draft marks to saved reports. The most useful evidence is not the highest score: it is a misread identity and an answer flagged as cut off.</p>
+<p>A grading skill should help a teacher find and understand review problems, not
+turn "the model finished" into "the scores are approved." This article explains
+how the assistant uses <code>SKILL.md</code> to select review tools, how the Python code
+separates OCR from reviewed identity, and why reports are a later operation.
+On the default grading route, Microsoft Agent Framework stops at the
+draft-output boundary; it is not an autonomous reviewer authorizing this stage.</p>
 <p>The example's current scan check is blocked, as shown in <a href="01-first-marking-run.html">Part 1</a>. We inspect existing artifacts without claiming that the current source can be graded again unchanged. No scores, approvals or files in the original run were modified to write this article.</p>
-<h2>Step 1: Compare OCR identity with reviewed identity</h2>
-<p><strong>Suggested teacher prompt</strong></p>
-<pre><code class="language-text">Show each script's OCR identity beside the reviewed student identity.
+<h2>The skill contract: assist the decision, never impersonate it</h2>
+<p>This is an actual instruction in
+<a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a>:</p>
+<pre><code class="language-markdown">Never infer approval from a saved file, a passing test or a model response.
+</code></pre>
+<p>The skill's artifact table distinguishes <code>grading/manifest.json</code> from
+<code>grading/approval.json</code>. The former means a completed draft run exists; the
+latter requires a separate human decision and must still match the reviewed
+artifacts. The assistant reads <code>references/grading.md</code>, compares identities and
+flags, explains uncertainty and presents review options. It does not type an
+approval flag because all cells happen to be populated.</p>
+<h2>One review request: compare the evidence before proposing an action</h2>
+<p><strong>Illustrative teacher request, not an observed agent conversation</strong></p>
+<pre><code class="language-text">Use the handwriting-grading skill to inspect this completed draft.
+Show each script's OCR identity beside the reviewed student identity.
 Highlight disagreements. Do not approve results or send anything.
 </code></pre>
 <p>The raw <code>results.json</code> contains this metadata for zero-based script index 2
@@ -28,7 +45,7 @@ Highlight disagreements. Do not approve results or send anything.
 <p><em>Figure 1. A comparison assembled from actual JSON and workbook cells, not a before/after browser screenshot.</em></p>
 <p>The correct ID helped here, but it does not make the name and class fields reliable. Check the original page and roster. Preserve leading zeroes in IDs and verify that each PDF belongs to the intended student.</p>
 <p>The saved artifacts show the raw/reported difference. They do not prove the exact sequence of mouse clicks that produced the reviewed result.</p>
-<h2>Step 2: Inspect the answer, not only the proposed mark</h2>
+<h2>Why the skill must show the full answer, not only a plausible mark</h2>
 <p>The saved result for John's Q3 includes:</p>
 <pre><code class="language-json">{
   &quot;question&quot;: &quot;Q3&quot;,
@@ -44,29 +61,27 @@ Highlight disagreements. Do not approve results or send anything.
 <p>The teacher's next question should be “What is outside that box?” rather than “Is two a plausible number?” Open the full page, inspect the continuation, and decide whether a manual correction or separately approved regrade is appropriate.</p>
 <p>A warning does not solve the underlying problem. Nor does <code>grading_failed: false</code> establish that the answer is complete.</p>
 <p>The reconstructed crop now visibly includes a second line resembling “hand-on,” while the stored transcription says the continuation was cut off. These saved artifacts are not a packet capture of the original request. Preserve that discrepancy: it is a reason to compare historical inputs and recovery history, not to assert that the current crop exactly reproduces what the model saw.</p>
-<h2>Step 3: Read the review workbook</h2>
-<p>Open the local review interface for your intended run:</p>
-<pre><code class="language-bash">handwriting-grader review-grading --exam /private/exam.yaml
-</code></pre>
-<p>Do not publish its token-bearing URL. This article uses workbook-derived images instead of opening a live review session.</p>
+<h2>Python's review workbook is the editable boundary</h2>
+<p>The assistant can offer the local <code>review-grading</code> interface or explain the
+existing workbook. The teacher edits and explicitly reviews the identity and
+mark fields; the assistant should not silently resolve them from OCR confidence.
+The local interface URL contains a bearer token and stays private. These figures
+come from workbook data, not a newly opened browser review session.</p>
 <p>The saved <code>Marks</code> sheet records Q3 for script index 2 with raw mark 2, manual mark 2 and <code>reviewed = yes</code>. Q1, Q2 and Q5 for that script also contain flags and explicit manual marks.</p>
 <p><img alt="Flagged review rows showing raw marks, explicit manual marks and reviewed status." src="media/08-review-flags.png" /></p>
 <p><em>Figure 3. Actual workbook values. A manual mark equal to the proposal is still an explicit recorded choice; it is not a score change.</em></p>
 <p>This matters when describing “human correction.” The evidence supports a reviewed identity difference and explicit manual marks. It does not support a claim that the teacher changed every flagged score or recovered all clipped text.</p>
-<h2>Step 4: Run read-only discrepancy checks</h2>
-<p>We ran:</p>
-<pre><code class="language-bash">handwriting-grader check-grading-review --exam example/example.yaml
-</code></pre>
+<h2>A diagnostic result is not the skill's permission to approve</h2>
+<p>The read-only <code>check-grading-review</code> tool was run against <code>example/example.yaml</code>.</p>
 <p><strong>Observed output</strong></p>
 <pre><code class="language-text">No review discrepancies found. Human review and explicit approval are still required.
 </code></pre>
 <p>This is a consistency check, not a pedagogical endorsement. It does not cancel the separate scan-check warning, establish current downstream approval validity, or prove that every grade is correct.</p>
-<p>For a fresh run, approval follows actual human review:</p>
-<pre><code class="language-bash">handwriting-grader approve-grading --exam /private/exam.yaml \
-  --confirm-reviewed
-</code></pre>
-<p>We did not run that approval command for this article.</p>
-<h2>Step 5: Inspect the actual marked PDF and scorebook</h2>
+<p>For a fresh run, <code>approve-grading</code> follows actual review and explicit
+<code>--confirm-reviewed</code> authorization. The skill must ask for that decision;
+it is not a model prompt that can be satisfied by saying "all looks good."
+No new approval was recorded for this article.</p>
+<h2>The report uses reviewed identity and reviewed marks</h2>
 <p>The existing report is a version-1 artifact. It contains four students with these saved totals:</p>
 <table>
 <thead>
@@ -103,16 +118,16 @@ Highlight disagreements. Do not approve results or send anything.
 <p><em>Figure 4. PDF-to-PNG rendering of the existing marked script.</em></p>
 <p><img alt="Saved scorebook rows, including each student's PDF path." src="media/10-scorebook.png" /></p>
 <p><em>Figure 5. Data rendered directly from the saved <code>score_report.xlsx</code>.</em></p>
-<p>A fresh, approved run produces reports with:</p>
-<pre><code class="language-bash">handwriting-grader report --exam /private/exam.yaml
-</code></pre>
+<p>The assistant offers the local <code>report</code> tool only for currently approved scores.
+It packages existing marks; it does not ask Azure or a Framework agent to
+invent a new score while drawing the PDF.</p>
 <p>Existing report directories are not an invitation to overwrite history. The saved report's filenames are still <code>pdfs/script-00001.pdf</code> and similar. Newer code produces names such as <code>123456789_Peter_script-00001.pdf</code>, using approved identity and roster name. <strong>The historical output has not been renamed.</strong> A new naming rule is not evidence that an old PDF already has that name.</p>
-<h2>Step 6: Separate reporting from distribution</h2>
+<h2>Returning a report file is not distributing it</h2>
 <p>Generating a PDF does not send it. Moodle export uses the <code>moodle-export</code> command; email requires a recipient/settings preview, separate review and explicit send consent.</p>
-<pre><code class="language-bash">handwriting-grader preview-email --exam /private/exam.yaml \
-  --settings /private/email.yaml --recipients /private/recipients.csv
-</code></pre>
-<p>This is a command example only. <strong>No delivery preview, Moodle export or email-send output was captured for this series.</strong> Do not label the marked PDF as evidence of delivery.</p>
+<p>The skill reads <code>references/email.md</code> only when distribution is requested,
+then asks about recipients and presents the exact preview for separate approval.
+<strong>No delivery preview, Moodle export or email-send output was captured for this
+series.</strong> Do not label the marked PDF as evidence of delivery.</p>
 <p>The observable end state here is four saved totals, marked pages, identity-review evidence and explicit manual-review fields. For teachers, that evidence trail is more informative than a claim that marking was “fully automated.”</p>
 <h2>Technical walkthrough: OCR, reviewed identity and final marks</h2>
 <h3>The metadata prompt and its image-to-script association</h3>
@@ -155,6 +170,13 @@ not an authenticated student identity. <code>MetadataBatchResponse</code> contai
 of typed records with <code>script_index</code>, <code>id_ocr</code>, <code>class_ocr</code> and <code>name_ocr</code>.
 Python checks that the returned indices cover the requested scripts exactly once.
 A valid list can still contain a misread name, as John's actual result shows.</p>
+<p>Read the construction in order. <code>contents = [prompt]</code> starts with the fixed task.
+The outer loop creates one script marker; the inner loop labels each requested
+field before appending its PNG bytes. <code>if crop</code> skips absent byte payloads, not
+students deemed absent from the exam. The roster instruction gives the model
+context for ambiguous handwriting, while "return the raw text ... do not guess"
+limits forced matches. Neither clause authenticates identity. The assistant must
+explain that distinction when comparing the actual bad OCR with the roster.</p>
 <h3>Why the report says John even though the raw name is wrong</h3>
 <p>The review workbook does not need the teacher to persuade the model to read the
 name again. Its <code>Scripts</code> sheet records a reviewed ID. Validation requires every
@@ -196,6 +218,12 @@ once. Formula cells in review fields are rejected. Thus an unflagged, unchanged
 answer can retain the moderated mark after explicit review; a flagged or corrected
 answer requires a manually entered mark. John's Q3 has an actual manual value of
 2 and <code>reviewed = yes</code>, even though the value equals the proposal.</p>
+<p><code>has_manual</code> deliberately treats numeric zero as an entered mark rather than an
+empty cell. The first condition requires manual judgment for a failure or flag;
+the second prevents a corrected transcription from retaining an unexplained
+model score. The final assignment chooses the explicit override when present.
+Subsequent range/coverage checks are executable requirements, whereas the skill
+instruction tells the assistant how to guide the teacher through satisfying them.</p>
 <p>In the alternative item-grading route, a separate moderation request starts with
 this complete instruction prefix, followed by JSON containing the question,
 scheme, maximum and all entries:</p>
@@ -211,82 +239,4 @@ as a PDF at 200 DPI. It verifies the PDF page count afterwards. There is no mode
 prompt for this drawing step. The historical PDF and four totals shown above are
 its visible report artifacts, with the version-1 filename caveat still intact.</p>
 <p>Next: <a href="03-logic-and-recovery.html">the application logic behind these boundaries</a>.</p>
-<!-- BEGIN BANNER WALKTHROUGH -->
-<h2>Reproduce this article's AI banner: full prompt, code and output</h2>
-<p>The banner is a separate illustration task, not an image of a running grader or
-evidence that an assessment succeeded. Its article title, description, visual
-metaphor, palette and composition are all in the <strong>complete actual submitted
-prompt</strong> below. No reference images or official logos were sent in this request.</p>
-<h3>Stage A: the actual Azure image prompt</h3>
-<pre><code class="language-text">Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
-
-Article title: Review, correct and return results--with the teacher in control.
-Description: Teachers compare OCR identities with reviewed identities, inspect flagged answers and proposed marks, and keep grading approval separate from permission to return results. A complete spreadsheet is not proof of trustworthy assessment.
-
-Creative concept: THE HUMAN LENS. A beautifully lit extreme close-up on the LEFT: an anonymous teacher's hand holding a large elegant magnifying glass above layered ivory paper. Through the circular lens, a tangled red thread resolves into a clean emerald thread. Another hand lightly holds a vermilion pencil. The lens is the large hero shape, combining tangible human judgment with an expressive metaphor for correction. Sophisticated contemporary editorial photography with subtle painterly texture, warm porcelain, coral and crimson, a touch of emerald, generous soft daylight. No face, recognizable person or personal data.
-
-Use a completely different scene from a blue paper-to-digital gateway. Avoid a conventional school desk overview. Make the circular lens graphic, sculptural and compelling at thumbnail size.
-
-Composition: the hands, paper and lens occupy the LEFT 55 percent; leave the RIGHT 42 percent quiet warm cream, with no objects or distracting texture, for dark large typography added later. Keep all essential visual elements inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, so a wide 1200x515 crop does not cut the lens. Full-bleed artwork, no borders.
-
-No titles, letters, legible handwriting, numbers, logos, badges, watermarks, interfaces, score values or fabricated reports. Paper marks are abstract strokes, not a student's actual answers. This is conceptual editorial art, not an observed application output. Prioritize beauty, warmth, visual tension and human control.
-</code></pre>
-<p>This prompt's retained source is <code>branding/prompts/02.txt</code>. Asking for no
-rendered words leaves typography to local code; the quiet side reserves space
-for the headline. The image-size/crop instructions guide composition but do not
-guarantee the model obeys every visual constraint, so the result was inspected.</p>
-<h3>Stage B: preview and the real API boundary</h3>
-<p>Use the independent image-generation repository's own environment and a newly
-reviewed private Azure configuration. The following command is an <strong>offline
-preview example</strong>, not a paid request executed while rebuilding this article:</p>
-<pre><code class="language-bash">&quot;/path/to/azure-image-generation-skills/.venv/bin/azure-image&quot; \
-  --model-config /private/image.config.yaml \
-  --prompt-file &quot;/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/02.txt&quot; \
-  --output-dir /private/new-banner-part-02
-</code></pre>
-<p>Paid execution adds <code>--confirm-cost</code> only after explicit approval for one request.
-The attempt directory must be new. Pricing is checked before SDK construction
-and again at this actual source method from the independent tool:</p>
-<pre><code class="language-python">def generate(self, prompt):
-    self.verifier.verify()
-    return self.sdk.with_options(max_retries=0).images.generate(
-        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
-        quality=IMAGE_QUALITY, n=1,
-    )
-</code></pre>
-<p><code>IMAGE_SIZE</code> is <code>1536x1024</code> and <code>IMAGE_QUALITY</code> is <code>auto</code>. <code>n=1</code> requests one
-image; SDK and per-call retries are disabled. The SDK returns inline base64
-image data. The tool decodes it, verifies PNG format and exact dimensions, saves
-the original and keeps private usage/price journals. The published method
-excerpt is from
-<a href="https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py">image-tool commit ee6c616</a>;
-it is not a standalone script and is not installed as part of the grader.</p>
-<p><strong>Observed output for this article:</strong> one successful text-to-image request using
-<code>gpt-image-2.5-sunburst</code>, with estimated cost <strong>US$0.006680</strong>.
-This is historical usage evidence, not a guaranteed future quote or an invoice.</p>
-<p><img alt="Actual Azure-generated scene for article 2, before headline and brand composition." src="branding/artworks/02.jpg" /></p>
-<p><em>Banner stage B output. A metadata-free JPEG publication derivative of the actual
-1536 x 1024 generated PNG, before local typography and logos; not a fabricated
-application screenshot.</em></p>
-<h3>Stage C: preserve the scene, then add exact words and retained brand assets</h3>
-<p>The publication builder creates a blurred background extension and fits the
-complete generated scene without stretching it. Its relevant Pillow excerpt is:</p>
-<pre><code class="language-python">full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
-hero.paste(full_scene, (x, 0), mask)
-</code></pre>
-<p><code>hero</code> is the upper banner canvas, <code>x</code> anchors the scene opposite the headline,
-and <code>mask</code> feathers the quiet edge into the background. The builder varies
-left/right placement and light/dark text by article. <code>ImageDraw.text()</code> writes
-the exact headline; the four retained brand assets are resized proportionally
-and composited into a separate strip. AI is not asked to redraw those marks.</p>
-<p><strong>Final output:</strong> the <a href="media/02-banner.png">1200 x 630 PNG shown at the top</a>,
-plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
-artwork; it is not newly generated high-resolution detail. Original PNG and
-submitted-prompt hashes are retained in <code>branding/artwork-provenance.json</code>.
-<a href="tools/banners.py">Local composition source</a> and
-<a href="branding/README.html">brand-source/permission caveats</a> are included.</p>
-<p>Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
-not regenerate artwork, refresh prices or authorize any new paid operation.</p>
-<!-- END BANNER WALKTHROUGH -->
-
 <p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/grade_review.py">grading review</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/reporting.py">report naming</a>.</p></article></body></html>

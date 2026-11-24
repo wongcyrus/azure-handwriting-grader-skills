@@ -1,20 +1,35 @@
-# From demonstration to school pilot: show the outputs, then measure quality
+# An agent skill's post-approval choices: analysis, reports and a measured pilot
 
 *Part 8 of 8 · For school IT, technical leads and teaching teams*
 
 ![AI-generated conceptual banner for a measured school pilot: a gallery displays abstract paper, grid and chart sculptures.](media/08-banner.png)
 
-By this point the example has produced marked pages, scorebooks, statistics, reviewed analysis and Office reports. That is a useful demonstration. It is not yet a quality benchmark or evidence that the system is ready for unsupervised school deployment.
+After score review, a teacher may not know what the package can do next.
+The agent skill should explain the available outcomes and their different
+approval/cost boundaries, not automatically execute every remaining command.
+`SKILL.md` explicitly requires that menu:
+
+```markdown
+Immediately after `grading/approval.json` is recorded (or whenever the user finishes reviewing), **always proactively present all post-approval options** so a general user knows what is available:
+```
+
+The [published skill](../../skills/handwriting-grading/SKILL.md) lists local
+reports/statistics, optional paid analysis, advanced reports, LMS export and
+separately gated email. These are choices, not a mandatory sequence. On the
+default grading route, Agent Framework yields a draft; the assistant guides
+the subsequent reviews and invokes separate Python tools.
+
+The existing example contains marked pages, scorebooks, statistics, reviewed
+analysis and Office reports. That is a useful demonstration, not a quality
+benchmark or evidence of readiness for unsupervised deployment.
 
 This final article shows the existing analytical/report outputs, including a failed image-deployment attempt, before defining a practical pilot. The dataset remains the same four students and five questions. The current source also has unresolved scan-check warnings; a new pilot must address those rather than inherit a claim of readiness.
 
-## Step 1: Start with deterministic statistics
+## Offer the local statistics branch before assuming more AI is needed
 
-After current grading approval, the local command is:
-
-```bash
-handwriting-grader analytics --exam /private/exam.yaml
-```
+For currently approved grades, the assistant can offer `analytics`: a local
+Python operation with no model prompt or inference charge. It must ask for a
+pass policy rather than invent a threshold from institutional habit.
 
 We inspect existing statistics rather than overwrite them. The saved `statistics.xlsx` reports:
 
@@ -44,21 +59,29 @@ def describe(scores):
 
 This is a reformatted source excerpt. It needs no model prompt. A single-student class has no sample standard deviation in this implementation; do not replace that absence with zero.
 
+The function receives the already reviewed scores. `len()` counts observations;
+`mean()` and `median()` describe center. `stdev()` uses the sample statistic and
+requires more than one observation; the conditional returns missing otherwise.
+The last two values show the range. None of these calculations verifies the
+underlying grades, and no instruction such as "analyze the class" should replace
+them with a model's arithmetic.
+
 ![Actual saved question-score box plots for Q1–Q5.](media/21-question-boxplots.png)
 
 *Figure 2. Existing Matplotlib output, not an AI-generated chart.*
 
 Q3 has a mean of 0.5/10; Q2 has a mean of 6/10. That difference describes these reviewed scores. It does not establish why students struggled or validate the marks themselves.
 
-## Step 2: Keep AI feedback separate from the statistics
+## Explain and obtain consent for the optional narrative branch
 
-**Suggested teacher prompt**
+**Illustrative teacher request to the skill-guided assistant**
 
 ```text
-Use the reviewed results to propose reteaching priorities.
+Use the handwriting-grading skill to explain my post-approval options.
+Use the reviewed results to propose a plan for reteaching analysis.
 Show the supporting question statistics and answer examples.
 Identify incomplete crops or contradictory evidence.
-Do not change grades or approve feedback.
+Preview any paid analysis first. Do not change grades or approve feedback.
 ```
 
 Paid `ai-analysis` produces drafts requiring separate review. The actual analyst code adds:
@@ -76,13 +99,11 @@ The saved class analysis begins by reporting four students averaging 13.25/50 an
 
 Read the caveats, not only the recommendations. The saved question analyses also warn that repeated low/high samples do not establish class-wide trends. That is a useful limit to preserve in the teacher report.
 
-## Step 3: Inspect the Office outputs
+## Python packages approved narrative into real Office documents
 
-After current analysis review and approval:
-
-```bash
-handwriting-grader advanced-report --exam /private/exam.yaml
-```
+After separate analysis review and approval, the assistant can invoke the local
+`advanced-report` tool. The default is text/chart packaging, not another paid
+model call. Optional infographics require a distinct preview and consent.
 
 The saved offline `reports/` folder contains a text-only `teacher-report.docx` and a seven-slide `class-presentation.pptx`. The Word report includes class/question discussion and student feedback. The presentation includes an editable chart.
 
@@ -104,7 +125,7 @@ The Word preview visibly retains Markdown markers such as `**Class overview:**` 
 
 Reports are packaging, not another approval. Review that chart labels, totals, narrative and student associations agree before sharing.
 
-## Step 4: Show the unsuccessful output too
+## The skill must disclose report failures, not manufacture completion
 
 There are three historical report folders. Their manifests tell different stories:
 
@@ -126,7 +147,10 @@ The failed folder's manifest records 404 deployment-not-found errors. A later na
 
 This image also shows why review is necessary: generated institutional wordmarks and the IVE expansion should not be treated as official branding or authoritative names. The article displays the artifact as diagnostic evidence, not as approved institutional artwork. Correct or replace those elements before reusing the infographic as a standalone teaching resource.
 
-Each publishing banner now uses a different Azure-generated editorial illustration based on its article's title and description. The eight explicitly authorized requests cost an estimated US$0.06394 in total, with no automatic retries. Titles and four-mark brand strips are composed locally. These illustrations are conceptual artwork, not observed outputs or proof of pilot readiness. MVP identifies the author; the product marks identify technologies, not Microsoft endorsement. See the [submitted prompts, brand provenance and publication caveats](branding/README.md) before uploading the user-supplied MVP and Framework graphics.
+The skill's instructions require failure disclosure and a fresh user decision
+before retrying images. The assistant should point to the actual named output
+folder and failed count, not say "the presentation is complete" because a DOCX
+exists. Keep the failed and successful attempts separate.
 
 ## Technical walkthrough: complete analysis prompts and native Office generation
 
@@ -164,6 +188,14 @@ analysis. The legacy configuration's temperature value is not forwarded by the
 shared transport. The returned text must be nonempty and fit the workbook cell
 limit, but it still requires review; narrative analysis is not validated by a
 grading-response schema.
+
+`task` supplies one of the fixed scopes above; `data` supplies the corresponding
+reviewed evidence. The f-string inserts the task, the following literal adds the
+untrusted-data/uncertainty instruction, and `json.dumps()` serializes the payload
+without escaping every non-ASCII character. `GenerationConfig(**adv_config)`
+applies configured request limits. These instructions guide interpretation; they
+do not make narrative facts correct or approve the returned text. The assistant
+then presents the generated workbook for human analysis review.
 
 ### Each task receives different evidence
 
@@ -266,10 +298,13 @@ above are separate saved attempts, not an automatic free recovery. If a slide
 uses an infographic, its narrative is retained in slide notes; otherwise it uses
 text. Generated labels and institutional wordmarks still need human correction.
 
-This infographic template is distinct from the premium editorial prompt used
-for this article's banner, reproduced in full below.
+## Evaluate both skill-guided behavior and grading quality in the pilot
 
-## Step 5: Define a pilot that can disprove your assumptions
+A useful pilot tests two layers. Can the assistant identify the right workspace
+stage, explain a blocked operation, preserve history and request human decisions
+without inventing success? Separately, how accurate are the model's identity,
+transcription and mark proposals? The offline Framework exercise in Part 6 tests
+execution order, not either of those quality claims.
 
 Freeze a versioned set of representative scripts and a teacher-marked reference. Include complete answers, blanks, diagrams, ambiguous IDs, page shifts and writing beyond boxes. Keep a holdout set for the final comparison.
 
@@ -310,105 +345,5 @@ The strongest outcome of this series is an inspectable chain: original page, cro
 
 Return to the [series guide](README.md) for all articles, assets and publishing instructions.
 
-<!-- BEGIN BANNER WALKTHROUGH -->
-## Reproduce this article's AI banner: full prompt, code and output
-
-The banner is a separate illustration task, not an image of a running grader or
-evidence that an assessment succeeded. Its article title, description, visual
-metaphor, palette and composition are all in the **complete actual submitted
-prompt** below. No reference images or official logos were sent in this request.
-
-### Stage A: the actual Azure image prompt
-
-```text
-Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
-
-Article title: From demonstration to school pilot: show the outputs, then measure quality.
-Description: Marked pages, scorebooks, statistics and Office reports are visible outputs, not proof of deployment readiness. A school pilot must resolve input warnings, evaluate quality and retain teacher control before scaling.
-
-Creative concept: THE PILOT GALLERY. On the LEFT, a sunlit miniature gallery of three large sculptural physical artifacts on elegant low plinths: a folded ivory page, a translucent grid-like glass sheet and a tall graceful colored-column sculpture. They suggest different output formats without showing fabricated results. A narrow teal path connects the plinths and leads toward a modest amber-lit open horizon, suggesting a measured pilot rather than a triumphant mass launch. Warm ivory architectural space, bold azure and teal accents, soft terracotta shadows, daylight and tactile matte materials.
-
-A fresh optimistic contemporary architectural editorial scene, not another dark technology network. No rocket, robots, cloud logo, conventional classroom stock photo, anonymous chart dashboard or fireworks. The gallery should be graphic, sophisticated, inviting and beautiful at thumbnail size. Do not imply the pilot has already succeeded.
-
-Composition: artifacts and perspective path occupy the LEFT 55 percent; leave the RIGHT 42 percent quiet warm ivory for dark large typography added later. Keep all essential sculptures and horizon inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
-
-No titles, letters, numbers, logos, badges, watermarks, interfaces, score values or fabricated report screenshots. All artifacts are abstract editorial symbols, not actual Office outputs. Prioritize optimism, beautiful spatial composition, rich daylight and a memorable silhouette.
-```
-
-This prompt's retained source is `branding/prompts/08.txt`. Asking for no
-rendered words leaves typography to local code; the quiet side reserves space
-for the headline. The image-size/crop instructions guide composition but do not
-guarantee the model obeys every visual constraint, so the result was inspected.
-
-### Stage B: preview and the real API boundary
-
-Use the independent image-generation repository's own environment and a newly
-reviewed private Azure configuration. The following command is an **offline
-preview example**, not a paid request executed while rebuilding this article:
-
-```bash
-"/path/to/azure-image-generation-skills/.venv/bin/azure-image" \
-  --model-config /private/image.config.yaml \
-  --prompt-file "/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/08.txt" \
-  --output-dir /private/new-banner-part-08
-```
-
-Paid execution adds `--confirm-cost` only after explicit approval for one request.
-The attempt directory must be new. Pricing is checked before SDK construction
-and again at this actual source method from the independent tool:
-
-```python
-def generate(self, prompt):
-    self.verifier.verify()
-    return self.sdk.with_options(max_retries=0).images.generate(
-        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
-        quality=IMAGE_QUALITY, n=1,
-    )
-```
-
-`IMAGE_SIZE` is `1536x1024` and `IMAGE_QUALITY` is `auto`. `n=1` requests one
-image; SDK and per-call retries are disabled. The SDK returns inline base64
-image data. The tool decodes it, verifies PNG format and exact dimensions, saves
-the original and keeps private usage/price journals. The published method
-excerpt is from
-[image-tool commit ee6c616](https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py);
-it is not a standalone script and is not installed as part of the grader.
-
-**Observed output for this article:** one successful text-to-image request using
-`gpt-image-2.5-sunburst`, with estimated cost **US$0.006660**.
-This is historical usage evidence, not a guaranteed future quote or an invoice.
-
-![Actual Azure-generated scene for article 8, before headline and brand composition.](branding/artworks/08.jpg)
-
-*Banner stage B output. A metadata-free JPEG publication derivative of the actual
-1536 x 1024 generated PNG, before local typography and logos; not a fabricated
-application screenshot.*
-
-### Stage C: preserve the scene, then add exact words and retained brand assets
-
-The publication builder creates a blurred background extension and fits the
-complete generated scene without stretching it. Its relevant Pillow excerpt is:
-
-```python
-full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
-hero.paste(full_scene, (x, 0), mask)
-```
-
-`hero` is the upper banner canvas, `x` anchors the scene opposite the headline,
-and `mask` feathers the quiet edge into the background. The builder varies
-left/right placement and light/dark text by article. `ImageDraw.text()` writes
-the exact headline; the four retained brand assets are resized proportionally
-and composited into a separate strip. AI is not asked to redraw those marks.
-
-**Final output:** the [1200 x 630 PNG shown at the top](media/08-banner.png),
-plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
-artwork; it is not newly generated high-resolution detail. Original PNG and
-submitted-prompt hashes are retained in `branding/artwork-provenance.json`.
-[Local composition source](tools/banners.py) and
-[brand-source/permission caveats](branding/README.md) are included.
-
-Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
-not regenerate artwork, refresh prices or authorize any new paid operation.
-<!-- END BANNER WALKTHROUGH -->
 
 **Implementation references:** [offline statistics](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/analytics.py) and [AI analysis/Office report generation](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/advanced.py).

@@ -1,14 +1,32 @@
-# Getting the image right: scans, crops and alignment
+# Teaching an agent skill to reason about scans, crops and alignment
 
 *Part 4 of 8 · For developers and technical educators*
 
 ![AI-generated conceptual banner for scans and alignment: an optical lens examines a floating page and crop frames.](media/04-banner.png)
 
-A handwriting model cannot grade content it never receives. In this example, the model's own saved comments repeatedly say that writing is cut off. The useful debugging path starts with pixels and coordinates, not a stronger grading prompt.
+A handwriting model cannot grade content it never receives. The skill-guided
+assistant must therefore reason about the input image before choosing another
+paid grading call. `SKILL.md` directs it to inspect scan order, review regions
+and preserve the original input. Python performs rendering, coordinate conversion
+and cropping; Microsoft Agent Framework later receives a grading operation whose
+crop map must already be approved.
+
+The [skill's region guidance](../../skills/handwriting-grading/SKILL.md) explicitly
+retains a local path:
+
+```markdown
+Local manual region drawing remains available
+without any paid suggestion. Every page still needs human review and approval.
+```
+
+This is a consequential agent decision: the assistant can offer manual review
+without claiming that a vision model is required for every box. If suggestions
+are requested, it explains the page data and price boundary first. A proposed
+box and an approved box are different artifacts.
 
 This article compares saved page images, saved crop coordinates and the actual grading warnings. It also examines a conservative alignment guard in the source. We do not claim to have repaired or regraded the example during publication preparation.
 
-## Step 1: Establish page structure before cropping
+## The first decision is whether the pages have the expected layout
 
 The current preflight reports four two-page scripts across eight pages. The subsequent scan check flags possible page-sequence problems on PDF pages 1, 3 and 5.
 
@@ -18,9 +36,10 @@ The current preflight reports four two-page scripts across eight pages. The subs
 
 Do not “fix” an apparent alignment problem before confirming that the compared pages have the same layout. A rigid transform cannot turn a Q4–Q5 page into a Q1–Q3 page.
 
-**Suggested diagnostic prompt**
+**Illustrative request to the skill-guided assistant**
 
 ```text
+Use the handwriting-grading skill to investigate the crop warnings.
 Compare the flagged original pages with the expected two-page layout.
 Show full pages and the relevant crop boundaries.
 Do not modify scans, approvals or saved grading outputs.
@@ -30,7 +49,7 @@ That diagnostic comparison is local. The separate optional AI region-proposal
 operation has a production prompt, reproduced in full in the technical
 walkthrough below; it should not be confused with the offline scan checker.
 
-## Step 2: Put saved coordinates on the saved image
+## Inspect coordinates in the image's own pixel space
 
 The saved region image is 1654 × 2338 pixels. The first page has NAME, ID, CLASS and three question boxes. Q3 is recorded as:
 
@@ -52,7 +71,7 @@ The original PDF-to-PNG exports were rendered at 150 DPI for publication. The gr
 
 This is a common source of convincing but incorrect debugging diagrams: the rectangle looks sensible, yet it was drawn on the wrong image scale.
 
-## Step 3: Inspect the saved grading image for the flagged student
+## Compare the actual crop with the full page
 
 ![John's saved grading page with Q3 boundary highlighted.](media/13-john-page.png)
 
@@ -74,7 +93,7 @@ There is an important discrepancy: the reconstructed crop shown here contains a 
 
 The full-page view is essential. If a viewer shows only the same clipped crop at a larger size, it has not supplied the missing evidence.
 
-## Step 4: Understand why alignment must be conservative
+## Python must justify alignment geometrically
 
 The alignment implementation estimates translation and a small rotation from four quadrant matches. Handwriting and diagrams can produce correlation peaks unrelated to scanner motion. A proposed correction should explain a shared geometric displacement rather than chase unrelated answer content.
 
@@ -95,23 +114,14 @@ This is a reformatted source excerpt from `alignment.py`. At least three positiv
 
 A conservative refusal can protect a correctly positioned identifier from a bad global correction. It cannot guarantee that every accepted correction is right or that handwriting outside the template is recovered.
 
-## Step 5: Separate local recovery from paid reassessment
+## Let the skill explain recovery choices before changing anything
 
-The CLI supports a local realignment option:
-
-```bash
-handwriting-grader retry-grading --exam /private/exam.yaml \
-  --align-images
-```
-
-Its help describes re-rendering original PDF pages and preserving previous artifacts. Re-OCR or question regrading has different data/cost implications:
-
-```bash
-handwriting-grader retry-grading --exam /private/exam.yaml \
-  --re-ocr-metadata
-```
-
-These are documented command examples, not executions against the article's saved run. Preview and understand the selected action; obtain fresh consent before any paid request. For changed crops requiring a new assessment, use the reviewed crop-proposal/child-run workflow described in the repository.
+The assistant should distinguish local `--align-images` recovery from
+`--re-ocr-metadata` or a changed-crop child regrade. The first re-renders original
+pages while preserving previous artifacts; re-OCR and reassessment have separate
+data/cost implications. It reads `references/regions.md`, explains those choices,
+previews the selected path and waits for the appropriate consent. No recovery
+option was executed against this example while preparing the article.
 
 The full original source should remain available. Repeatedly transforming an already transformed JPEG can compound damage and make comparisons unreliable.
 
@@ -159,6 +169,15 @@ it does not approve or silently replace the reviewed annotation draft.
 **Not captured here:** a fresh proposal request or its raw response. The saved
 pixel boxes and overlays above are actual review artifacts, not proof of their
 initial creation route.
+
+The prompt has four jobs. The metadata clauses distinguish the write-in value
+from the printed heading. The NAME clause allows longer handwriting rather than
+assuming every name fits a narrow label-sized box. The rubric placeholders bind
+question labels to the already prepared scheme, so the model must not invent
+subquestions. The normalized-coordinate clause establishes a transferable
+response format. Python then checks the proposed geometry; the teacher decides
+whether it actually encloses the answer. None of those jobs can be replaced by
+the assistant saying "find good boxes."
 
 ### Normalized coordinates are converted at the edges
 
@@ -217,6 +236,14 @@ base64 image content part in the Azure request. The publication reconstruction
 illustrates geometry but is not a byte-for-byte capture of a historical
 sharpened request payload.
 
+Read the function line by line. `Image.open()` provides the page whose approved
+pixel coordinates are being used. `image.crop()` selects the rectangle;
+`enhance(3)` sharpens only those selected pixels. `BytesIO()` is an in-memory
+file-like buffer, and `save(..., format="PNG")` encodes bytes without creating a
+new crop file. Returning those bytes separates local image preparation from the
+Azure transport described in Part 5. It also explains why a more elaborate
+grading prompt cannot recover handwriting outside the rectangle.
+
 ### Why FFT correlation is used, and why it can be rejected
 
 The registration algorithm first downsamples twofold, converts grayscale to ink
@@ -247,105 +274,5 @@ claimed.
 
 Next: [follow a crop through Azure OpenAI and Python validation](05-azure-openai.md).
 
-<!-- BEGIN BANNER WALKTHROUGH -->
-## Reproduce this article's AI banner: full prompt, code and output
-
-The banner is a separate illustration task, not an image of a running grader or
-evidence that an assessment succeeded. Its article title, description, visual
-metaphor, palette and composition are all in the **complete actual submitted
-prompt** below. No reference images or official logos were sent in this request.
-
-### Stage A: the actual Azure image prompt
-
-```text
-Create a visually arresting premium editorial cover illustration for a Microsoft technical blog, not a slide, diagram or screenshot.
-
-Article title: Getting the image right: scans, crops and alignment.
-Description: A grading model cannot evaluate content missing from its image. Developers inspect full pages, crop coordinates, clipped-answer warnings and conservative alignment before considering stronger prompts.
-
-Creative concept: THE OPTICAL CUT. On the LEFT, a huge crystal-clear optical lens intersects a single floating ivory page at a dynamic angle. Behind it, three thin translucent rectangular crop frames are slightly misaligned; the lens brings their edges into precise alignment while leaving the whole page visibly present. Tiny abstract ink strokes remain contained within the page rather than falling off a crop. Exquisite macro optics, teal light refracting through glass, emerald-to-black background, a small sunset-orange reflection. The lens and clean frame edges are the unmistakable focal silhouette.
-
-Visually adventurous scientific-editorial photography with cinematic depth and beautiful optical caustics. No classroom, hands, computer screen, labeled arrows or generic camera product shot. Do not resemble the human review magnifying-glass scene: this is a suspended technical optical sculpture with geometric crop frames, no people.
-
-Composition: put the optical sculpture in the LEFT 55 percent; leave the RIGHT 42 percent deep teal-black and quiet for large typography added later. Essential lens and page edges must fit inside the central horizontal band of a 1536x1024 canvas, approximately y=190 to y=830, for a wide 1200x515 crop. Full-bleed, no borders.
-
-No titles, letters, legible handwriting, numbers, logos, badges, watermarks, interfaces or fabricated scan-check results. Paper marks are abstract. This is conceptual editorial art, not an actual exam capture. Prioritize arresting optics, spatial depth and thumbnail clarity.
-```
-
-This prompt's retained source is `branding/prompts/04.txt`. Asking for no
-rendered words leaves typography to local code; the quiet side reserves space
-for the headline. The image-size/crop instructions guide composition but do not
-guarantee the model obeys every visual constraint, so the result was inspected.
-
-### Stage B: preview and the real API boundary
-
-Use the independent image-generation repository's own environment and a newly
-reviewed private Azure configuration. The following command is an **offline
-preview example**, not a paid request executed while rebuilding this article:
-
-```bash
-"/path/to/azure-image-generation-skills/.venv/bin/azure-image" \
-  --model-config /private/image.config.yaml \
-  --prompt-file "/path/to/azure-handwriting-grader-skills/docs/blog-series/branding/prompts/04.txt" \
-  --output-dir /private/new-banner-part-04
-```
-
-Paid execution adds `--confirm-cost` only after explicit approval for one request.
-The attempt directory must be new. Pricing is checked before SDK construction
-and again at this actual source method from the independent tool:
-
-```python
-def generate(self, prompt):
-    self.verifier.verify()
-    return self.sdk.with_options(max_retries=0).images.generate(
-        model=self.settings.model, prompt=prompt, size=IMAGE_SIZE,
-        quality=IMAGE_QUALITY, n=1,
-    )
-```
-
-`IMAGE_SIZE` is `1536x1024` and `IMAGE_QUALITY` is `auto`. `n=1` requests one
-image; SDK and per-call retries are disabled. The SDK returns inline base64
-image data. The tool decodes it, verifies PNG format and exact dimensions, saves
-the original and keeps private usage/price journals. The published method
-excerpt is from
-[image-tool commit ee6c616](https://github.com/wongcyrus/azure-image-generation-skills/blob/ee6c616cdeac43a9c97b0261049cb278fd5449b5/src/azure_image_generation/client.py);
-it is not a standalone script and is not installed as part of the grader.
-
-**Observed output for this article:** one successful text-to-image request using
-`gpt-image-2.5-sunburst`, with estimated cost **US$0.006635**.
-This is historical usage evidence, not a guaranteed future quote or an invoice.
-
-![Actual Azure-generated scene for article 4, before headline and brand composition.](branding/artworks/04.jpg)
-
-*Banner stage B output. A metadata-free JPEG publication derivative of the actual
-1536 x 1024 generated PNG, before local typography and logos; not a fabricated
-application screenshot.*
-
-### Stage C: preserve the scene, then add exact words and retained brand assets
-
-The publication builder creates a blurred background extension and fits the
-complete generated scene without stretching it. Its relevant Pillow excerpt is:
-
-```python
-full_scene = ImageOps.contain(artwork, hero.size, Image.Resampling.LANCZOS)
-hero.paste(full_scene, (x, 0), mask)
-```
-
-`hero` is the upper banner canvas, `x` anchors the scene opposite the headline,
-and `mask` feathers the quiet edge into the background. The builder varies
-left/right placement and light/dark text by article. `ImageDraw.text()` writes
-the exact headline; the four retained brand assets are resized proportionally
-and composited into a separate strip. AI is not asked to redraw those marks.
-
-**Final output:** the [1200 x 630 PNG shown at the top](media/04-banner.png),
-plus a 2400 x 1260 JPEG layout master. The larger master upscales layout and
-artwork; it is not newly generated high-resolution detail. Original PNG and
-submitted-prompt hashes are retained in `branding/artwork-provenance.json`.
-[Local composition source](tools/banners.py) and
-[brand-source/permission caveats](branding/README.md) are included.
-
-Rebuilding Markdown/HTML, JPEG derivatives and banners is local work. It does
-not regenerate artwork, refresh prices or authorize any new paid operation.
-<!-- END BANNER WALKTHROUGH -->
 
 **Implementation reference:** [alignment implementation at the inspected revision](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/alignment.py).
