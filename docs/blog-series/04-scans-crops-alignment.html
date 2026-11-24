@@ -1,96 +1,27 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Teaching an agent skill to reason about scans, crops and alignment</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Region Extraction, Localhost Review UI, and FFT Page Alignment</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>Teaching an agent skill to reason about scans, crops and alignment</h1>
-<p><em>Part 4 of 8 · For developers and technical educators</em></p>
-<p><img alt="AI-generated conceptual banner for scans and alignment: an optical lens examines a floating page and crop frames." src="media/04-banner.png" /></p>
-<p>A handwriting model cannot grade content it never receives. The skill-guided
-assistant must therefore reason about the input image before choosing another
-paid grading call. <code>SKILL.md</code> directs it to inspect scan order, review regions
-and preserve the original input. Python performs rendering, coordinate conversion
-and cropping; Microsoft Agent Framework later receives a grading operation whose
-crop map must already be approved.</p>
-<p>The <a href="../../skills/handwriting-grading/SKILL.md">skill's region guidance</a> explicitly
-retains a local path:</p>
+</style></head><body><article><h1>Region Extraction, Localhost Review UI, and FFT Page Alignment</h1>
+<p><em>Part 4 of 8 · MS MVP Technical Series · Computer Vision &amp; Region Pipeline</em></p>
+<p><img alt="AI-generated conceptual banner for Region Extraction and FFT Alignment." src="media/04-banner.png" /></p>
+<p>A multimodal LLM cannot grade handwriting that never entered the crop. Before blaming a model for a low mark or misread ID, an engineer has to get four things right: <strong>deterministic rendering</strong>, <strong>rubric-bound region extraction</strong>, <strong>human-verified pixel coordinates</strong>, and <strong>rigid scanner alignment</strong>.</p>
+<p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> makes clear, AI region suggestions are strictly optional—a local manual path is always available:</p>
 <pre><code class="language-markdown">Local manual region drawing remains available
 without any paid suggestion. Every page still needs human review and approval.
 </code></pre>
-<p>This is a consequential agent decision: the assistant can offer manual review
-without claiming that a vision model is required for every box. If suggestions
-are requested, it explains the page data and price boundary first. A proposed
-box and an approved box are different artifacts.</p>
-<p>This article compares saved page images, saved crop coordinates and the actual grading warnings. It also examines a conservative alignment guard in the source. We do not claim to have repaired or regraded the example during publication preparation.</p>
-<h2>The first decision is whether the pages have the expected layout</h2>
-<p>The current preflight reports four two-page scripts across eight pages. The subsequent scan check flags possible page-sequence problems on PDF pages 1, 3 and 5.</p>
+<p><img alt="Region Extraction, Localhost Review &amp; 4-Quadrant FFT Alignment" src="media/29-region-pipeline.png" /></p>
+<p><em>Figure 1. End-to-end region extraction pipeline: pure-Python <code>pypdfium2</code> rendering, optional <code>0..1000</code> AI proposals, token-hardened browser review, 4-quadrant FFT alignment, and Pillow blank filtering.</em></p>
+<h2>1. Pure-Python 200 DPI determinism (<code>prepare-regions</code>)</h2>
+<p>Historically, PDF-to-image pipelines relied on <code>pdftoppm</code> (Poppler), creating OS-specific installation friction across Windows, macOS, and Linux and subtle pixel-rounding differences. <code>prepare-regions</code> uses pure-Python <code>pypdfium2</code> at <code>200 DPI</code> (<code>scale = 200 / 72.0</code>), rendering Script 1's pages into <code>regions/images/{page}.jpg</code> and recording exact <code>(width, height)</code> dimensions (<code>1654 × 2338</code> in our example) and SHA-256 digests in <code>regions/manifest.json</code>.</p>
+<p>Before running <code>prepare-regions</code>, the operator runs <code>check-scans</code> (covered in Part 1) so an upside-down Script 1 never corrupts the template layout for the whole cohort. Later, Microsoft Agent Framework's <code>ValidateApproval</code> Executor verifies these approved region boxes before any grading call runs.</p>
 <p><img alt="Scan-check output identifying three possible page-order problems." src="media/03-scan-check.png" /></p>
-<p><em>Figure 1. Real read-only check captured on 24 November 2026. A detector warning requires inspection; it is not proof that page order is definitely wrong.</em></p>
-<p>Do not “fix” an apparent alignment problem before confirming that the compared pages have the same layout. A rigid transform cannot turn a Q4–Q5 page into a Q1–Q3 page.</p>
-<p><strong>Illustrative request to the skill-guided assistant</strong></p>
-<pre><code class="language-text">Use the handwriting-grading skill to investigate the crop warnings.
-Compare the flagged original pages with the expected two-page layout.
-Show full pages and the relevant crop boundaries.
-Do not modify scans, approvals or saved grading outputs.
-</code></pre>
-<p>That diagnostic comparison is local. The separate optional AI region-proposal
-operation has a production prompt, reproduced in full in the technical
-walkthrough below; it should not be confused with the offline scan checker.</p>
-<h2>Inspect coordinates in the image's own pixel space</h2>
-<p>The saved region image is 1654 × 2338 pixels. The first page has NAME, ID, CLASS and three question boxes. Q3 is recorded as:</p>
-<pre><code class="language-json">{
-  &quot;x&quot;: 222,
-  &quot;y&quot;: 1153,
-  &quot;width&quot;: 1191,
-  &quot;height&quot;: 254,
-  &quot;label&quot;: &quot;Q3&quot;
-}
-</code></pre>
-<p><img alt="Actual saved region image with approved-coordinate boxes drawn on it for explanation." src="media/05-region-overlay.png" /></p>
-<p><em>Figure 2. Offline annotation overlay using the saved pixel coordinate system. It is not a browser-editor screenshot.</em></p>
-<p>The original PDF-to-PNG exports were rendered at 150 DPI for publication. The grading/region images have their own dimensions. Never apply the 1654-pixel coordinate system directly to a differently sized publication image without scaling.</p>
-<p>This is a common source of convincing but incorrect debugging diagrams: the rectangle looks sensible, yet it was drawn on the wrong image scale.</p>
-<h2>Compare the actual crop with the full page</h2>
-<p><img alt="John's saved grading page with Q3 boundary highlighted." src="media/13-john-page.png" /></p>
-<p><em>Figure 3. Saved grading page for script index 2, with a locally drawn Q3 boundary.</em></p>
-<p><img alt="Enlarged crop of John's Q3 using saved coordinates." src="media/07-john-q3-crop.png" /></p>
-<p><em>Figure 4. Reconstructed saved-coordinate crop. This is not a recorded historical HTTP payload.</em></p>
-<p>The stored answer says:</p>
-<pre><code class="language-text">brain powe[r] to doing [continuation cut off]
-</code></pre>
-<p>The stored moderator note asks the reviewer to verify the continuation. Q1 and Q2 for the same script also mention cut-off text. That pattern suggests investigating page/crop positioning before debating individual mark allocations.</p>
-<p>There is an important discrepancy: the reconstructed crop shown here contains a visible “hand-on” continuation that the stored transcription did not capture. We cannot infer the exact historical request image from the current saved image alone. Show both pieces of evidence, and investigate their lineage before claiming that a crop fix succeeded or failed.</p>
-<p>The full-page view is essential. If a viewer shows only the same clipped crop at a larger size, it has not supplied the missing evidence.</p>
-<h2>Python must justify alignment geometrically</h2>
-<p>The alignment implementation estimates translation and a small rotation from four quadrant matches. Handwriting and diagrams can produce correlation peaks unrelated to scanner motion. A proposed correction should explain a shared geometric displacement rather than chase unrelated answer content.</p>
-<p>The actual guard is:</p>
-<pre><code class="language-python">residuals = np.hypot(
-    dx - (tx - theta * py),
-    dy - (ty + theta * px),
-)
-if np.count_nonzero((weights &gt; 0.0) &amp; (residuals &lt;= 15.0)) &lt; 3:
-    return 0.0, 0.0, 0.0
-</code></pre>
-<p>This is a reformatted source excerpt from <code>alignment.py</code>. At least three positively weighted quadrant matches must fit the estimated rigid motion within the 15-pixel threshold. Other checks bound translation and rotation.</p>
-<p><strong>Output of a rejected estimate:</strong> the function returns zero transform. That is a code contract, not a before/after repair result for this exam. We have not manufactured an alignment success image.</p>
-<p>A conservative refusal can protect a correctly positioned identifier from a bad global correction. It cannot guarantee that every accepted correction is right or that handwriting outside the template is recovered.</p>
-<h2>Let the skill explain recovery choices before changing anything</h2>
-<p>The assistant should distinguish local <code>--align-images</code> recovery from
-<code>--re-ocr-metadata</code> or a changed-crop child regrade. The first re-renders original
-pages while preserving previous artifacts; re-OCR and reassessment have separate
-data/cost implications. It reads <code>references/regions.md</code>, explains those choices,
-previews the selected path and waits for the appropriate consent. No recovery
-option was executed against this example while preparing the article.</p>
-<p>The full original source should remain available. Repeatedly transforming an already transformed JPEG can compound damage and make comparisons unreliable.</p>
-<h2>What to check before trusting the next result</h2>
-<p>Compare the same student, same question and same coordinate scale. Verify that identity fields and neighboring answers have not been displaced. Read the full answer outside the crop when a continuation is suspected. Only then assess whether new inference is needed.</p>
-<p>The key output from this investigation is a defensible diagnosis: the saved run contains visible crop concerns and explicit warnings. It is not evidence that a model upgrade alone would improve the grade.</p>
-<h2>Technical walkthrough: region prompt, coordinate spaces and pixel transforms</h2>
-<h3>The complete optional answer-region prompt</h3>
-<p><code>suggestions.build_prompt()</code> inserts the rubric IDs and short question references
-into this <strong>complete production template</strong> from <code>suggestions.PROMPT</code>:</p>
+<p><em>Figure 2. Real read-only <code>check-scans</code> output. A rigid alignment transform cannot fix a swapped page.</em></p>
+<h2>2. Rubric-bound region extraction (<code>suggest-regions</code>)</h2>
+<p>If the teacher opts into AI region proposals (<code>suggest-regions --confirm-cost</code>), Python refuses to run until <code>rubric/approval.json</code> exists. Why? Because <code>suggestions.build_prompt()</code> dynamically injects the <strong>exact approved <code>question_number</code> list</strong> and short question summaries into <code>suggestions.PROMPT</code> (and hashes <code>question_ids</code> into the opt-in cache key):</p>
 <pre><code class="language-text">Identify answer and metadata regions on this scanned exam page.
 
 For metadata fields (NAME, ID, CLASS):
@@ -107,40 +38,35 @@ For question answer areas:
 
 Coordinates must use a normalized 0-to-1000 scale: x and y are the top-left corner, and width and height are the box dimensions. Ensure all boxes lie entirely inside the page. Return an empty list if no regions can be identified.
 </code></pre>
-<p><code>question_details</code> includes its own trailing newline when present. Asking for the
-write-in value rather than the printed label directly addresses the observed
-name/class problem. Exact rubric labels allow Python to reconcile proposed
-regions with expected questions; they do not guarantee the box contains every
-line of handwriting.</p>
-<p>The optional operation sends each template page as a JPEG <code>ImagePart</code>, asks for
-<code>SuggestedBoxes</code>, and rejects negative coordinates, nonpositive dimensions or
-boxes extending beyond 1000. It writes a separate <code>ai_suggestions.json</code>;
-it does not approve or silently replace the reviewed annotation draft.
-<strong>Not captured here:</strong> a fresh proposal request or its raw response. The saved
-pixel boxes and overlays above are actual review artifacts, not proof of their
-initial creation route.</p>
-<p>The prompt has four jobs. The metadata clauses distinguish the write-in value
-from the printed heading. The NAME clause allows longer handwriting rather than
-assuming every name fits a narrow label-sized box. The rubric placeholders bind
-question labels to the already prepared scheme, so the model must not invent
-subquestions. The normalized-coordinate clause establishes a transferable
-response format. Python then checks the proposed geometry; the teacher decides
-whether it actually encloses the answer. None of those jobs can be replaced by
-the assistant saying "find good boxes."</p>
-<h3>Normalized coordinates are converted at the edges</h3>
-<p>This is the actual conversion code:</p>
+<p>Notice the engineering details:
+- <strong>Normalized <code>0..1000</code> coordinates</strong>: Decouples the vision model from raw JPEG resolution.
+- <strong>Edge-consistent pixel conversion</strong>: Python converts normalized boxes to integer pixels at the edges (<code>right - left</code> rather than rounding <code>width</code> independently), preventing 1-pixel drift:</p>
 <pre><code class="language-python">left = round(box.x * page[&quot;width&quot;] / 1000)
 top = round(box.y * page[&quot;height&quot;] / 1000)
 right = round((box.x + box.width) * page[&quot;width&quot;] / 1000)
 bottom = round((box.y + box.height) * page[&quot;height&quot;] / 1000)
 </code></pre>
-<p>The saved pixel width is <code>right - left</code>, not a separately rounded normalized
-width. This keeps both edges consistent. Metadata labels are retained only on
-the first template page; all proposed annotations undergo local validation.</p>
-<p>The <strong>actual publication dimensions</strong> are 1241 × 1754 for the original-page
-export, 1654 × 2338 for the region overlay, and 1191 × 254 for the Q3 crop.
-Drawing a region onto the publication export requires separate horizontal and
-vertical scale factors:</p>
+<ul>
+<li><strong>Metadata isolation</strong>: <code>NAME</code>, <code>ID</code>, and <code>CLASS</code> are retained only on template page <code>0</code>, and negative/out-of-bounds boxes are rejected before writing <code>ai_suggestions.json</code> (never overwriting <code>annotations.json</code>).</li>
+</ul>
+<p><img alt="Actual saved region image with approved-coordinate boxes drawn on it for explanation." src="media/05-region-overlay.png" /></p>
+<p><em>Figure 3. Saved <code>1654 × 2338</code> template page with approved boxes (<code>NAME</code>, <code>ID</code>, <code>CLASS</code>, <code>Q1</code>–<code>Q3</code>).</em></p>
+<h2>3. Token-hardened localhost review UI (<code>review-regions</code>)</h2>
+<p><code>handwriting-grader review-regions --exam exam.yaml</code> starts a zero-dependency local HTTP server (<code>editor.py</code>) bound to <code>127.0.0.1</code> with:
+- A random bearer token passed in the <strong>URL fragment</strong> (<code>#TOKEN</code>) so it never leaks to HTTP <code>Referer</code> logs.
+- Strict <strong><code>Origin</code> header validation</strong> to block cross-site requests from other browser tabs.
+- Auto-loaded AI suggestions, zoom/pan, drag-to-draw, resize handles, keyboard nudging (<code>Arrow</code> / <code>Shift+Arrow</code>), and a <strong>live missing-box banner</strong> checking that <code>ID</code> is on page 0 and every rubric question is present before "Approve all regions" writes <code>regions/approval.json</code>.</p>
+<h2>4. Coordinate scale discipline &amp; crop reconstruction</h2>
+<p>In our VTC example, John's Q3 box in <code>1654 × 2338</code> template space is:</p>
+<pre><code class="language-json">{
+  &quot;x&quot;: 222,
+  &quot;y&quot;: 1153,
+  &quot;width&quot;: 1191,
+  &quot;height&quot;: 254,
+  &quot;label&quot;: &quot;Q3&quot;
+}
+</code></pre>
+<p>When overlaying boxes onto a 150-DPI publication export (<code>1241 × 1754</code>), you must scale X and Y independently—mixing coordinate spaces is a classic debugging trap:</p>
 <pre><code class="language-python">sx = display_width / original_width
 sy = display_height / original_height
 display_box = (
@@ -150,11 +76,34 @@ display_box = (
     round((y + height) * sy),
 )
 </code></pre>
-<p>This is an explanatory display calculation, not the production crop function.
-For Q3, the original pixel edges are <code>(222, 1153, 1413, 1407)</code>. Mixing those
-coordinates with the 150-DPI publication export would diagnose the wrong region.</p>
-<h3>The exact bytes supplied for an answer crop</h3>
-<p>The production <code>grading.crop_image()</code> is short enough to show completely:</p>
+<p><img alt="John's saved grading page with Q3 boundary highlighted." src="media/13-john-page.png" /></p>
+<p><em>Figure 4. John's saved grading page (script index 2) with the Q3 boundary highlighted.</em></p>
+<p><img alt="Enlarged crop of John's Q3 using saved coordinates." src="media/07-john-q3-crop.png" /></p>
+<p><em>Figure 5. Reconstructed Q3 crop (<code>1191 × 254</code> px) showing a second line ("hand-on") that the historical transcription missed.</em></p>
+<h2>5. 4-Quadrant FFT page alignment (<code>alignment.py</code>) &amp; blank pre-filtering</h2>
+<p>Physical scanners introduce vertical/horizontal shifts and slight skew. During <code>grade</code> (and <code>retry-grading --align-images</code>, which re-renders from the original PDF into <code>grading/alignment-history/recovery-*/</code> rather than re-warping JPEGs), <code>alignment.py</code> registers every scanned page to <code>regions/images/{page}.jpg</code>:</p>
+<ol>
+<li>Downsamples 2x, converts grayscale to ink intensity (<code>255 - pixel</code>), and thresholds weak noise (<code>&lt; 35</code>).</li>
+<li>Applies a <strong>Hanning window</strong> to each of the four page quadrants and computes normalized <strong>FFT cross-power phase correlation</strong>:</li>
+</ol>
+<pre><code class="language-python">fa = np.fft.rfft2(ref_patch * win)
+fb = np.fft.rfft2(cur_patch * win)
+cross_power = fa * np.conj(fb)
+cross_power /= np.maximum(np.abs(cross_power), 1e-8)
+cc = np.fft.irfft2(cross_power, s=ref_patch.shape)
+</code></pre>
+<ol start="3">
+<li>Fits a rigid transform (<code>tx, ty, theta</code>, bounded to <code>±150 px</code> and <code>±5°</code>) across the four quadrant peaks and <strong>rejects outliers</strong>—requiring at least three positively weighted quadrants to agree within <code>15.0</code> full-resolution pixels:</li>
+</ol>
+<pre><code class="language-python">residuals = np.hypot(
+    dx - (tx - theta * py),
+    dy - (ty + theta * px),
+)
+if np.count_nonzero((weights &gt; 0.0) &amp; (residuals &lt;= 15.0)) &lt; 3:
+    return 0.0, 0.0, 0.0
+</code></pre>
+<p>Why return <code>(0, 0, 0)</code> on rejection? Because a bad global warp driven by dense handwriting in one quadrant can push <code>ID</code> or <code>NAME</code> boxes off-target.</p>
+<p>Finally, before calling Azure OpenAI, <code>local_filter.py</code> runs an inset Pillow dark-pixel check (<code>ink_threshold=160</code>, <code>max_ink_ratio=0.0015</code>) to assign <code>0</code> locally to clearly blank answers, and <code>grading.crop_image()</code> sharpens non-blank crops in memory:</p>
 <pre><code class="language-python">def crop_image(path, box):
     with Image.open(path) as image:
         x, y = box[&quot;x&quot;], box[&quot;y&quot;]
@@ -164,40 +113,6 @@ coordinates with the 150-DPI publication export would diagnose the wrong region.
         crop.save(buffer, format=&quot;PNG&quot;)
         return buffer.getvalue()
 </code></pre>
-<p>Pillow's crop edges are left/top inclusive and right/bottom exclusive. The
-sharpness enhancement changes pixels inside the selected area; it cannot recover
-text outside that area. The returned PNG bytes become an <code>ImagePart</code>, then a
-base64 image content part in the Azure request. The publication reconstruction
-illustrates geometry but is not a byte-for-byte capture of a historical
-sharpened request payload.</p>
-<p>Read the function line by line. <code>Image.open()</code> provides the page whose approved
-pixel coordinates are being used. <code>image.crop()</code> selects the rectangle;
-<code>enhance(3)</code> sharpens only those selected pixels. <code>BytesIO()</code> is an in-memory
-file-like buffer, and <code>save(..., format="PNG")</code> encodes bytes without creating a
-new crop file. Returning those bytes separates local image preparation from the
-Azure transport described in Part 5. It also explains why a more elaborate
-grading prompt cannot recover handwriting outside the rectangle.</p>
-<h3>Why FFT correlation is used, and why it can be rejected</h3>
-<p>The registration algorithm first downsamples twofold, converts grayscale to ink
-intensity with <code>255 - pixel</code>, and removes weak intensities below 35. For each
-quadrant it applies a Hanning window, then computes:</p>
-<pre><code class="language-python">fa = np.fft.rfft2(ref_patch * win)
-fb = np.fft.rfft2(cur_patch * win)
-cross_power = fa * np.conj(fb)
-cross_power /= np.maximum(np.abs(cross_power), 1e-8)
-cc = np.fft.irfft2(cross_power, s=ref_patch.shape)
-</code></pre>
-<p>Normalizing the cross-power emphasizes a common displacement rather than absolute
-brightness. The correlation peak supplies a wrapped displacement, multiplied by
-two to return to full-resolution pixels. Four quadrant displacements estimate
-translation and a small rotation around the page center. The predicted motion is
-<code>dx = tx - theta * py</code>, <code>dy = ty + theta * px</code>; the residual guard above requires
-at least three positively weighted matches to agree within 15 full-resolution
-pixels. Translation is bounded by 150 pixels and rotation by five degrees.</p>
-<p>An accepted transform is applied to the image with an inverse affine map and
-bicubic interpolation. It does not move a Q3 box onto a Q4 page or infer missing
-handwriting. A rejected estimate returns zero motion. <strong>Actual observed outcome
-for this article:</strong> crop/sequence concerns remain; no repaired grading run is
-claimed.</p>
-<p>Next: <a href="05-azure-openai.html">follow a crop through Azure OpenAI and Python validation</a>.</p>
-<p><strong>Implementation reference:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/alignment.py">alignment implementation at the inspected revision</a>.</p></article></body></html>
+<p>No prompt engineering can recover handwriting outside <code>(x, y, x + width, y + height)</code>—which is why region review and alignment come before inference.</p>
+<p>Next: <a href="05-azure-openai.html">Multi-Role Azure OpenAI Routing, Multimodal Batching, and Adversarial Prompt Safety</a>.</p>
+<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/suggestions.py">region suggestions</a>, <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/alignment.py">FFT alignment</a>, and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/local_filter.py">blank cell filter</a>.</p></article></body></html>

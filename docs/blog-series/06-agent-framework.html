@@ -1,68 +1,64 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Agent skills and Microsoft Agent Framework: two different orchestration layers</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Multi-Agent Orchestration: Skill Policy vs. Microsoft Agent Framework</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>Agent skills and Microsoft Agent Framework: two different orchestration layers</h1>
-<p><em>Part 6 of 8 · For agent and application developers</em></p>
-<p><img alt="AI-generated conceptual banner for Microsoft Agent Framework: three luminous hubs connect to a separate stop marker." src="media/06-banner.png" /></p>
-<p>An agent skill and an Agent Framework workflow solve different problems.
-<code>SKILL.md</code> guides the host assistant's interpretation of a teacher request,
-workspace inspection, tool selection and human handoffs. Microsoft Agent
-Framework executes a specific Python graph <strong>after</strong> the grading operation is
-selected and its command-level prerequisites are satisfied.</p>
-<p>The actual <a href="../../skills/handwriting-grading/SKILL.md">skill</a> describes the seam:</p>
+</style></head><body><article><h1>Multi-Agent Orchestration: Skill Policy vs. Microsoft Agent Framework</h1>
+<p><em>Part 6 of 8 · MS MVP Technical Series · Agent Framework, Threading &amp; Supply-Chain Security</em></p>
+<p><img alt="AI-generated conceptual banner for Microsoft Agent Framework and Skills." src="media/06-banner.png" /></p>
+<p>When developers hear "multi-agent system," they often picture three autonomous LLM personas debating each other in a loop until they agree on a grade. For high-stakes exam marking, <strong>that pattern is an anti-pattern</strong>: it multiplies latency and cost, obscures accountability, and blurs who actually approved a student's score.</p>
+<p>In <code>azure-handwriting-grader-skills</code>, we use <strong>Microsoft Agent Framework</strong> (<code>WorkflowBuilder</code>, <code>Executor</code>, <code>WorkflowContext</code>, <code>@handler</code>) for what it does best: <strong>explicit, typed, auditable state transitions</strong> around a deterministic Python grading engine—while keeping <code>SKILL.md</code> as the conversational router and keeping human approval strictly outside the automated graph.</p>
+<p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> summarizes:</p>
 <pre><code class="language-markdown">`grade` defaults to `--orchestrator agent-framework`: real Executor/WorkflowBuilder
 validation → existing grading → human-review boundary. `workflow-grade` forces it;
 `--orchestrator python` is the direct fallback. No autonomous approval or email.
 </code></pre>
+<p><img alt="Microsoft Agent Framework Orchestration &amp; Threading Boundary" src="media/16-framework.png" /></p>
+<p><em>Figure 1. Actual Microsoft Agent Framework graph (<code>ValidateApproval -&gt; ExecuteGrading -&gt; RequireHumanReview</code>), <code>asyncio.to_thread</code> bridge, and outside-workflow HIL boundary.</em></p>
+<h2>Separating four layers of "agentic" responsibility</h2>
 <table>
 <thead>
 <tr>
 <th>Layer</th>
 <th>Input</th>
-<th>Responsibility</th>
-<th>Not its responsibility</th>
+<th>Owns</th>
+<th>Explicitly Does NOT Own</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Skill-guided assistant</td>
-<td>Teacher intent and workspace artifacts</td>
-<td>Choose tools, explain results, request decisions</td>
-<td>Invent approval or replace application validation</td>
+<td><strong>Skill-guided assistant (<code>SKILL.md</code>)</strong></td>
+<td>Teacher intent + workspace files</td>
+<td>Tool selection, stop rules, cost/review prompts</td>
+<td>Inventing <code>--confirm-cost</code> or <code>--confirm-reviewed</code></td>
 </tr>
 <tr>
-<td>Python CLI</td>
-<td>Explicit paths, target and flags</td>
-<td>Validate/preview the selected operation and check consent flag</td>
-<td>Prove consent was genuinely given in chat</td>
+<td><strong>Python CLI (<code>cli.py</code>)</strong></td>
+<td>Explicit paths, target &amp; flags</td>
+<td>Preview, <code>--confirm-cost</code> gate, orchestrator routing</td>
+<td>Proving conversational consent happened</td>
 </tr>
 <tr>
-<td>Agent Framework</td>
-<td>Typed <code>"grade"</code> control message and captured configuration</td>
-<td>Sequence validation, engine execution and draft output</td>
-<td>Load <code>SKILL.md</code>, negotiate marks or approve delivery</td>
+<td><strong>Microsoft Agent Framework (<code>workflow.py</code>)</strong></td>
+<td>Typed <code>"grade"</code> control string</td>
+<td>Graph sequencing: validate -&gt; execute -&gt; yield draft</td>
+<td>Loading <code>SKILL.md</code>, negotiating marks, or approving</td>
 </tr>
 <tr>
-<td>Azure grading deployment</td>
-<td>Rubric text and PNG crops</td>
-<td>Propose structured transcription/marks/flags</td>
-<td>Approve its own output</td>
+<td><strong>Azure OpenAI (<code>grading.py</code>)</strong></td>
+<td>Rubric text + sharpened PNG crops</td>
+<td>Structured JSON transcription, marks, and flags</td>
+<td>Approving its own output</td>
 </tr>
 </tbody>
 </table>
-<p>The inspected <code>workflow.py</code> does not parse a skill file or create a conversational
-planning agent. The integration is the assistant invoking the Python tool whose
-default route uses the Framework. A host-independent Python caller can execute
-the same workflow without loading a skill; it still faces the application gates.</p>
-<p>The workflow is deliberately small: validate inputs, execute the existing grading engine, and return a draft location for human review. Pricing and review policy remain application responsibilities.</p>
-<p>This article shows the actual code and the saved artifacts the grading engine produces. No framework event log was captured for the existing example, so those artifacts are not presented as proof of which orchestrator ran historically.</p>
-<h2>Follow the Python seam from skill-selected tool to Framework</h2>
-<p>This is the actual CLI routing excerpt, after preview and the <code>--confirm-cost</code>
-check. The variables come from parsed arguments and validated exam configuration:</p>
+<h2>Supply-chain security: why we pin minimal packages</h2>
+<p>Before writing a single <code>Executor</code>, <code>pyproject.toml</code> pins <strong><code>agent-framework-core==1.26.0</code></strong> and <strong><code>agent-framework-openai==1.18.2</code></strong>—and explicitly forbids installing the umbrella <code>agent-framework</code> package (<code>1.26.1</code> / <code>1.26.2</code>) or <code>[all]</code> extras.</p>
+<p>Why? Advisory <strong><a href="https://github.com/advisories/GHSA-764m-3ppc-5m73">GHSA-764m-3ppc-5m73</a></strong> documented credential-stealing malware in <code>agent-framework</code> <code>1.26.1</code> and <code>1.26.2</code>. Pinning the minimal pre-incident core/OpenAI packages via <code>uv.lock</code> avoids both the compromised versions and unrelated third-party provider SDKs.</p>
+<h2>The CLI seam (<code>cli.py</code>) and complete <code>workflow.py</code> graph</h2>
+<p>After <code>cli.py</code> verifies <code>--confirm-cost</code>, it selects the orchestrator while keeping the underlying <code>grade_exam</code> engine identical:</p>
 <pre><code class="language-python">execute = grade_exam
 options = {}
 if args.orchestrator == &quot;agent-framework&quot;:
@@ -74,103 +70,7 @@ output = execute(
     args.api_version.strip(), summary, mode=mode, batch_concurrency=concurrency, **options,
 )
 </code></pre>
-<p>The first assignment selects direct Python execution provisionally. The <code>if</code>
-changes the callable to the Framework wrapper; it does not invoke grading yet.
-<code>options["grade_function"]</code> supplies the same engine to the wrapper, preserving
-behavior between routes. The final call passes structured configuration and
-paths, not the teacher's raw sentence. <code>output</code> is the draft folder returned
-by either route. Cost consent is checked before this excerpt; the host assistant
-must not invent that consent just because it can supply a flag.</p>
-<h2>The workflow's input and output contract</h2>
-<p>The workflow imports:</p>
-<pre><code class="language-python">from agent_framework import Executor, WorkflowBuilder, WorkflowContext, handler
-</code></pre>
-<p>Its input is a grading request with the configured exam context captured by the builder. Its output is one path to generated grading artifacts.</p>
-<p><img alt="Code-derived workflow diagram: validate approvals, execute grading, yield draft path, then separate teacher review." src="media/16-framework.png" /></p>
-<p><em>Figure 1. Diagram of actual workflow structure, not a runtime event visualization.</em></p>
-<p>The last box is particularly important. “Human review boundary” means the automated workflow stops without granting approval. It does <strong>not</strong> mean the Executor waits for a teacher response and persists that approval.</p>
-<h2>The validation Executor forwards only after Python validation</h2>
-<p>The first Executor's handler calls application validation:</p>
-<pre><code class="language-python">class ValidateApproval(Executor):
-    @handler
-    async def process(self, request: str, ctx: WorkflowContext[str]) -&gt; None:
-        approved_inputs(config, config_dir, config_path)
-        await ctx.send_message(request)
-</code></pre>
-<p><strong>Output:</strong> the request is forwarded only if validation returns successfully. A failing validation stops this path before the grading Executor is invoked.</p>
-<p><code>@handler</code> identifies the method as a Framework handler. Its typed <code>request</code>
-and <code>WorkflowContext[str]</code> describe the message path. <code>approved_inputs()</code> runs
-first; an exception prevents <code>ctx.send_message()</code> from forwarding the request.
-The Framework supplies orchestration primitives, while the application supplies
-the rubric/region approval semantics. Adding an Executor does not create those
-policies or rerun the preparation scan check.</p>
-<p>Part 1's actual scan warning is related but belongs to scan checking; do not label it as a captured <code>ValidateApproval</code> event.</p>
-<h2>The execution Executor bridges async orchestration and sync Python</h2>
-<p>The second Executor uses:</p>
-<pre><code class="language-python">output = await asyncio.to_thread(
-    grade_function,
-    config, config_dir, config_path, model_config_path,
-    endpoint, api_version, summary,
-    mode=mode,
-    batch_concurrency=batch_concurrency,
-)
-await ctx.send_message(str(output))
-</code></pre>
-<p>This is a reformatted source excerpt. <code>asyncio.to_thread</code> bridges the existing synchronous grading function into the asynchronous handler. It does not transform each rubric rule into a separate agent or remove the engine's own concurrency and transport constraints.</p>
-<p>The engine writes outputs such as:</p>
-<pre><code class="language-text">grading/
-  manifest.json
-  results.json
-  review.xlsx
-  images/
-  telemetry/
-</code></pre>
-<p><img alt="Saved grading artifacts summarized from the actual completed result and workbook." src="media/14-grading-evidence.png" /></p>
-<p><em>Figure 2. Existing engine output: four scripts and twenty question-mark records. This is not a framework execution trace.</em></p>
-<p>A practical benefit is reuse: direct Python orchestration and the framework path call the same engine, preserving the review/checkpoint model.</p>
-<h2>The terminal Executor yields a path, not a human decision</h2>
-<p>The final Executor does this:</p>
-<pre><code class="language-python">class RequireHumanReview(Executor):
-    @handler
-    async def process(self, output: str, ctx: WorkflowContext[Never, str]) -&gt; None:
-        await ctx.yield_output(output)
-</code></pre>
-<p>Despite the class name, there is no human response wait in that handler. It yields the draft output path. Review and approval occur through separate application operations.</p>
-<p><strong>Suggested operator prompt</strong></p>
-<pre><code class="language-text">Use the handwriting-grading skill to prepare the approved grading workflow.
-Run it only after I confirm cost.
-When it finishes, show the draft output location and flagged answers.
-Do not approve scores, generate a delivery approval or send email.
-</code></pre>
-<p>This is a suggested assistant request, not the model prompt used to grade handwriting. The assistant must still respect the explicit consent and local approval gates.</p>
-<h2>Explicit edges replace an imagined autonomous debate</h2>
-<p>The builder creates these edges:</p>
-<pre><code class="language-python">return (
-    WorkflowBuilder(
-        start_executor=validate,
-        name=&quot;human-reviewed-azure-grading&quot;,
-        max_iterations=4,
-    )
-    .add_edge(validate, execute)
-    .add_edge(execute, review)
-    .build()
-)
-</code></pre>
-<p>The wrapper runs the workflow, requires exactly one output, and converts that output back to <code>Path</code>.</p>
-<p>The default CLI selects the framework path. <code>--orchestrator python</code> selects the direct implementation; <code>workflow-grade</code> forces the workflow route. These are application choices, not two different grading quality guarantees.</p>
-<p><strong>Evidence limitation:</strong> the saved manifest records grading mode, not a complete framework event history. This package includes the exact inspected <code>workflow.py</code>, but does not claim a new paid workflow run.</p>
-<h2>Technical walkthrough: the complete workflow and a real offline execution</h2>
-<h3>A control message is not an LLM prompt</h3>
-<p>The wrapper passes the literal string <code>"grade"</code> to <code>workflow.run()</code>. That string
-is a typed control message between Executors, not a system prompt asking a model
-to invent a plan. The handwriting prompt is constructed inside the grading engine
-as shown in Part 5. There is no hidden "three agents debate marks" prompt in this
-workflow. The suggested operator prompt above tells the assistant which approved
-operation to request; it does not grant approval or alter Executor authority.</p>
-<h3>The complete source factory</h3>
-<p>The imports are <code>asyncio</code>, <code>Path</code>, <code>Never</code>, the Framework types shown above,
-and <code>approved_inputs</code>/<code>grade_exam</code> from the grading module. Here is the complete
-factory, reformatted from the inspected source:</p>
+<p>Inside <code>workflow.py</code>, three typed <code>Executor</code> nodes form a linear, bounded (<code>max_iterations=4</code>) graph:</p>
 <pre><code class="language-python">def build_grading_workflow(config, config_dir, config_path, model_config_path,
                            endpoint, api_version, summary, *, mode=&quot;batch&quot;,
                            batch_concurrency=3, grade_function=grade_exam):
@@ -208,21 +108,6 @@ factory, reformatted from the inspected source:</p>
         .build()
     )
 </code></pre>
-<p>The nested classes capture configuration from the factory. Typed handlers forward
-strings along explicit edges. <code>asyncio.to_thread()</code> runs the synchronous engine
-without blocking the handler's event loop; question-level concurrency still
-belongs to that engine. <code>max_iterations=4</code> is a workflow bound, not a count of
-billable grading requests.</p>
-<p>Each <code>Executor(id=...)</code> has a stable identity in the graph; those IDs are not
-Azure deployment names or named LLM personas. <code>add_edge(validate, execute)</code>
-permits the validated control message to reach execution, and the second edge
-passes the draft path to the terminal handler. <code>build()</code> constructs that graph.
-The selected <code>grade_function</code> owns the actual model calls and checkpoint work.
-This explains why changing the orchestration route does not itself change the
-grading prompt shown in Part 5.</p>
-<p>The terminal handler uses <code>WorkflowContext[Never, str]</code>: it yields a string output
-and does not send another workflow message. The wrapper makes the terminal
-contract concrete:</p>
 <pre><code class="language-python">def run_grading_workflow(*args, **kwargs):
     async def run():
         workflow = build_grading_workflow(*args, **kwargs)
@@ -234,15 +119,14 @@ contract concrete:</p>
 
     return asyncio.run(run())
 </code></pre>
-<p>An exception from validation prevents forwarding the control message. A successful
-engine returns a path, not an approval. The exactly-one-output check catches an
-unexpected terminal result; it does not establish educational correctness.</p>
-<h3>Run the real Framework without sending any student data</h3>
-<p>To make the sequence observable, we ran the following <strong>offline synthetic smoke
-test</strong> using the installed locked Framework. It replaces validation with a test
-stub and supplies a local grading stub; it is not a way to bypass approvals for
-a real exam. The Azure client constructor is explicitly forbidden in the test.
-No original exam, model configuration or grading output is opened or changed.</p>
+<p>Three key engineering decisions stand out in this 60-line module:
+1. <strong><code>"grade"</code> is control data, not a prompt</strong>: <code>workflow.run("grade")</code> passes a typed control message between Executors. If <code>ValidateApproval</code> raises on a missing rubric or region hash, <code>ctx.send_message()</code> never fires.
+2. <strong>Async-to-sync bridge without shared clients</strong>: <code>ExecuteGrading</code> uses <code>asyncio.to_thread()</code> to run the synchronous <code>grade_exam</code> engine (which manages its own question-level thread pool, <code>results.json</code> locks, and synchronous <code>AzureClient</code> instances). Framework clients are never shared across OS threads.
+3. <strong>Terminal yield, not autonomous approval</strong>: <code>RequireHumanReview</code> uses <code>WorkflowContext[Never, str]</code> to yield the draft directory path (<code>grading/</code>) and terminate. Human review (<code>review-grading</code>) and <code>approve-grading</code> happen strictly outside the workflow.</p>
+<p><img alt="Saved grading artifacts summarized from the actual completed result and workbook." src="media/14-grading-evidence.png" /></p>
+<p><em>Figure 2. Existing engine output (<code>grading/manifest.json</code> &amp; <code>results.json</code>): four scripts and 20 mark records.</em></p>
+<h2>Verifying the real Framework graph offline (0 Azure clients)</h2>
+<p>We can execute the real <code>agent-framework-core</code> <code>WorkflowBuilder</code> locally without touching student data or constructing an <code>AzureClient</code> by patching <code>approved_inputs</code> and injecting a local stub (<code>snippets/offline-framework-smoke.py</code>):</p>
 <pre><code class="language-python">from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -278,35 +162,14 @@ with TemporaryDirectory() as directory:
         print(&quot;Workflow output:&quot;, output.name)
         print(&quot;Azure clients constructed:&quot;, azure.call_count)
 </code></pre>
-<p>Run the included copy from the grader checkout's locked environment:</p>
-<pre><code class="language-bash">uv run --frozen python docs/blog-series/snippets/offline-framework-smoke.py
-</code></pre>
-<p><strong>Actual captured output</strong> from this new offline exercise:</p>
+<p>Running <code>uv run --frozen python docs/blog-series/snippets/offline-framework-smoke.py</code> produces:</p>
 <pre><code class="language-text">Execution order: validate -&gt; grade_stub
 Validation calls: 1
 Workflow output: draft
 Azure clients constructed: 0
 </code></pre>
-<p>The complete script is included in <code>snippets/offline-framework-smoke.py</code>, and the
-captured output in <code>observed/offline-framework-smoke.txt</code>. The real Framework
-executed the typed sequence and terminal output contract. The stub created an
-empty synthetic draft directory; it did <strong>not</strong> grade four students. This is
-instrumented offline evidence, not an original-exam Framework event log.</p>
-<p>The <code>patch()</code> contexts replace just the validator and Azure constructor for this
-synthetic test. The injected <code>grading_stub</code> records its position and returns the
-temporary directory. Assertions check order and path identity; the mock's
-<code>assert_not_called()</code> fails if an Azure client is constructed. The four printed
-lines are actual instrumented output. This tests the runtime graph, not the
-assistant's skill selection, real approval validation or handwriting quality.</p>
-<h2>Hand the draft back to the skill-guided assistant and teacher</h2>
-<p>After receiving the draft path, the assistant returns to the skill's review
-guidance: inspect failures/flags, explain choices and offer the teacher's review
-interface. There is no automatic transition to report delivery. The saved
-workbook includes flagged manual-review fields, and the read-only diagnostic
-explicitly retains the human-review requirement.</p>
+<p>Once the workflow yields <code>grading/</code>, the skill-guided assistant hands control back to the teacher to inspect flagged rows and run <code>review-grading</code>.</p>
 <p><img alt="Saved flagged workbook entries, illustrating work that remains after automated orchestration." src="media/08-review-flags.png" /></p>
-<p><em>Figure 3. Actual saved review records, not evidence that the final Executor granted approval.</em></p>
-<p>Deployment hygiene matters too. Use the reviewed lockfile and consult current advisories before changing framework dependencies. A historical pre-incident pin is not a permanent safety certification.</p>
-<p>The architectural lesson is straightforward: use the framework to make sequencing visible, but keep correctness, consent, pricing and release rules explicit in application code. A modest workflow that accurately describes its authority is preferable to a spectacular diagram that overstates it.</p>
-<p>Next: <a href="07-pricing-and-data.html">pricing and data boundaries before AI calls</a>.</p>
-<p><strong>Implementation reference:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/workflow.py">complete workflow source at the inspected revision</a>.</p></article></body></html>
+<p><em>Figure 3. Flagged rows in <code>review.xlsx</code> that remain for human judgment after the Framework workflow yields its draft path.</em></p>
+<p>Next: <a href="07-pricing-and-data.html">Fail-Closed Cost Governance: Retail Price Verification, Token Math, and Caching</a>.</p>
+<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/workflow.py">complete workflow source</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cli.py">CLI orchestrator routing</a>.</p></article></body></html>

@@ -16,6 +16,7 @@ import pypdfium2 as pdfium
 from pptx import Presentation
 from banners import build_banners, SOURCES as BANNER_SOURCES
 from article_content import without_banner_appendix
+from svg_diagrams import build_all_diagrams
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,43 +69,71 @@ def wrapped(text, face, width):
 
 
 def panel(filename, title, content, *, subtitle="Actual saved output excerpt", mono=False):
-    face = font(22 if mono else 25, mono=mono)
+    face = font(21 if mono else 24, mono=mono)
     lines = []
     for line in content.splitlines():
-        lines.extend(wrapped(line, face, 1080))
-    image = Image.new("RGB", (1200, max(260, 155 + 34 * len(lines))), "#f2f6fb")
+        lines.extend(wrapped(line, face, 1060))
+    line_h = 32 if mono else 35
+    card_top = 126
+    card_h = max(140, 48 + line_h * len(lines))
+    total_h = card_top + card_h + 36
+    image = Image.new("RGB", (1200, total_h), "#eef4fb")
     draw = ImageDraw.Draw(image)
-    draw.rectangle((0, 0, 1200, 12), fill="#0867c9")
-    draw.text((40, 35), title, font=font(32, bold=True), fill="#0b2443")
-    draw.text((40, 88), subtitle, font=font(18), fill="#48596c")
-    for index, line in enumerate(lines):
-        draw.text((40, 136 + index * 34), line, font=face, fill="#17344f")
+    draw.rectangle((0, 0, 1200, 8), fill="#0078d4")
+    draw.text((44, 28), title, font=font(30, bold=True), fill="#0f2942")
+    draw.text((44, 72), subtitle, font=font(17), fill="#475569")
+    if mono:
+        draw.rounded_rectangle((44, card_top, 1156, card_top + card_h + 26), radius=14,
+                               fill="#0f172a", outline="#334155", width=2)
+        draw.rounded_rectangle((44, card_top, 1156, card_top + 38), radius=14, fill="#1e293b")
+        draw.rectangle((44, card_top + 24, 1156, card_top + 38), fill="#1e293b")
+        for idx, dot_color in enumerate(("#ef4444", "#f59e0b", "#10b981")):
+            cx = 70 + idx * 22
+            cy = card_top + 19
+            draw.ellipse((cx - 6, cy - 6, cx + 6, cy + 6), fill=dot_color)
+        for index, line in enumerate(lines):
+            draw.text((70, card_top + 56 + index * line_h), line, font=face, fill="#e2e8f0")
+    else:
+        draw.rounded_rectangle((44, card_top, 1156, card_top + card_h), radius=14,
+                               fill="#ffffff", outline="#cbd5e1", width=2)
+        draw.rounded_rectangle((44, card_top, 52, card_top + card_h), radius=4, fill="#0078d4")
+        for index, line in enumerate(lines):
+            draw.text((74, card_top + 24 + index * line_h), line, font=face, fill="#1e293b")
     image.save(MEDIA / filename)
 
 
 def table(filename, title, headers, rows, *, widths=None, subtitle="Actual workbook cells, rendered for the article"):
-    widths = widths or [1120 // len(headers)] * len(headers)
-    face = font(20)
-    line_height = 29
+    widths = widths or [1112 // len(headers)] * len(headers)
+    total_w = sum(widths)
+    x0 = (1200 - total_w) // 2
+    face = font(19)
+    header_face = font(19, bold=True)
+    line_height = 28
     layouts = []
-    for row in [headers, *rows]:
-        cells = [wrapped("" if value is None else str(value), face, width - 18)
+    for row_idx, row in enumerate([headers, *rows]):
+        active_face = header_face if row_idx == 0 else face
+        cells = [wrapped("" if value is None else str(value), active_face, width - 24)
                  for value, width in zip(row, widths)]
-        layouts.append((cells, max(len(cell) for cell in cells) * line_height + 22))
-    image = Image.new("RGB", (1200, 160 + sum(height for _, height in layouts)), "white")
+        layouts.append((cells, max(len(cell) for cell in cells) * line_height + 24))
+    total_h = 166 + sum(height for _, height in layouts)
+    image = Image.new("RGB", (1200, total_h), "#f8fafc")
     draw = ImageDraw.Draw(image)
-    draw.text((40, 25), title, font=font(30, bold=True), fill="#0b2443")
-    draw.text((40, 80), subtitle, font=font(17), fill="#526476")
-    y = 130
+    draw.rectangle((0, 0, 1200, 8), fill="#0078d4")
+    draw.text((x0, 28), title, font=font(30, bold=True), fill="#0f2942")
+    draw.text((x0, 74), subtitle, font=font(17), fill="#475569")
+    y = 122
+    draw.rounded_rectangle((x0 - 2, y - 2, x0 + total_w + 2, y + sum(h for _, h in layouts) + 2),
+                           radius=10, fill="#ffffff", outline="#cbd5e1", width=2)
     for index, (cells, height) in enumerate(layouts):
-        x = 40
-        for cell, width in zip(cells, widths):
-            draw.rectangle((x, y, x + width, y + height),
-                           fill="#10365b" if index == 0 else ("#eaf2fa" if index % 2 else "white"),
-                           outline="#cbd8e7")
+        x = x0
+        row_fill = "#0f2942" if index == 0 else ("#f1f5f9" if index % 2 == 0 else "#ffffff")
+        for col_idx, (cell, width) in enumerate(zip(cells, widths)):
+            draw.rectangle((x, y, x + width, y + height), fill=row_fill, outline="#e2e8f0")
+            active_face = header_face if index == 0 else face
+            text_color = "#ffffff" if index == 0 else "#1e293b"
             for offset, line in enumerate(cell):
-                draw.text((x + 9, y + 9 + offset * line_height), line,
-                          font=face, fill="white" if index == 0 else "#193851")
+                draw.text((x + 12, y + 11 + offset * line_height), line,
+                          font=active_face, fill=text_color)
             x += width
         y += height
     image.save(MEDIA / filename)
@@ -206,20 +235,10 @@ panel("15-q2-result.png", "Peter / Q2: observed saved result",
                  indent=2), mono=True)
 
 def flow(filename, title, nodes, mermaid_name, mermaid):
-    image = Image.new("RGB", (1200, 180 + len(nodes) * 125), "#f2f6fb")
-    draw = ImageDraw.Draw(image)
-    draw.text((40, 30), title, font=font(31, bold=True), fill="#0b2443")
-    for index, node in enumerate(nodes):
-        y = 110 + index * 125
-        draw.rounded_rectangle((100, y, 1100, y + 82), radius=14,
-                               fill="#10365b" if index % 2 == 0 else "#166a9d")
-        for line_index, line in enumerate(wrapped(node, font(24, bold=True), 940)):
-            draw.text((130, y + 12 + line_index * 29), line, font=font(24, bold=True), fill="white")
-        if index < len(nodes) - 1:
-            draw.line((600, y + 84, 600, y + 117), fill="#c17d14", width=5)
-            draw.polygon(((590, y + 106), (610, y + 106), (600, y + 120)), fill="#c17d14")
-    image.save(MEDIA / filename)
     (ROOT / "diagrams" / mermaid_name).write_text(mermaid + "\n", encoding="utf-8")
+
+
+build_all_diagrams(MEDIA)
 
 flow("11-architecture.png", "Application boundaries (explanatory diagram)",
      ["Local exam, scans, roster and rubric", "Input checks + explicit human input approvals",

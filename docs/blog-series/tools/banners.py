@@ -18,14 +18,14 @@ SOURCES = ("mvp.png", "azure-openai.svg", "microsoft-foundry.svg", "agent-framew
            *(f"artworks/{index:02}.jpg" for index in range(1, 9)),
            *(f"prompts/{index:02}.txt" for index in range(1, 9)))
 TITLES = [
-    (("Your first", "AI marking run"), "PREPARE / INSPECT / TEACHER REVIEW"),
-    (("Review, correct", "and return"), "IDENTITY / MARKS / SEPARATE RELEASE"),
-    (("Logic", "before AI"), "APPROVALS / CHECKPOINTS / RECOVERY"),
-    (("Getting the", "image right"), "PAGES / CROPS / CONSERVATIVE ALIGNMENT"),
-    (("Inside", "Azure OpenAI"), "IMAGES / STRUCTURED OUTPUT / VALIDATION"),
-    (("Microsoft Agent", "Framework"), "THREE EXECUTORS / HUMAN REVIEW OUTSIDE"),
-    (("Check prices", "before AI"), "CONSENT / REVIEWED RATES / KNOWN SCOPE"),
-    (("From demo", "to school pilot"), "VISIBLE OUTPUTS / MEASUREMENT / LIMITS"),
+    (("Agent Skills &", "Architecture"), "SKILL.MD / PREFLIGHT / FFT SCAN CONSENSUS"),
+    (("Rubrics &", "Blind Review"), "EXTRACTION / BLIND EDITOR / HIL GATES"),
+    (("State Machine", "& Regrades"), "SHA-256 BINDING / ATOMIC LEDGER / ISOLATION"),
+    (("Regions &", "FFT Alignment"), "PYPDFIUM2 / 0-1000 BOXES / 4-QUADRANT FIT"),
+    (("Multi-Role", "Azure OpenAI"), "ROLE ROUTING / SYNC BATCH / STRICT SCHEMA"),
+    (("Microsoft Agent", "Framework"), "WORKFLOWBUILDER / THREAD BRIDGE / SUPPLY CHAIN"),
+    (("Fail-Closed", "Cost Control"), "RETAIL PRICING API / TOKEN MATH / CACHE KEYS"),
+    (("Reports, LMS,", "Email & Clean"), "ANALYTICS / MOODLE / STARTTLS / SLIM ARCHIVE"),
 ]
 STYLES = [
     ("left", False, "#100a26", "#f4bb67"),
@@ -134,7 +134,7 @@ def build_banners():
             draw.text((x * scale, y * scale), value, font=face(size, bold), fill=color)
 
         text(origin, 49, "AZURE HANDWRITING GRADER", 13, accent, True)
-        text(origin, 77, f"PART {index:02} / 08  /  OUTPUT-LED SERIES", 12, secondary)
+        text(origin, 77, f"PART {index:02} / 08  ·  MS MVP TECHNICAL SERIES", 12, secondary)
         draw.rectangle((origin * scale, 124 * scale, (origin + 53) * scale, 127 * scale), fill=accent)
         for offset, line in enumerate(lines):
             assert draw.textlength(line, font=face(50, True)) <= 530 * scale

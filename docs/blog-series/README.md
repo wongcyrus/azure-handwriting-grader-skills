@@ -76,14 +76,14 @@ run or alteration of the example. It is not a historical exam event trace.
 
 ## Articles
 
-1. [An agent skill for the first reviewed run](01-first-marking-run.md)
-2. [Assist review without approving grades](02-review-and-return.md)
-3. [Skill-guided state and Python recovery](03-logic-and-recovery.md)
-4. [Reason about scans, crops and alignment](04-scans-crops-alignment.md)
-5. [From skill-selected tool to Azure prompts](05-azure-openai.md)
-6. [Skill orchestration versus Framework execution](06-agent-framework.md)
-7. [Skill cost governance and Python pricing gates](07-pricing-and-data.md)
-8. [Post-approval choices and a measured pilot](08-pilot-and-outputs.md)
+1. [Designing an Agent Skill for Exam Grading: Architecture, Preflight, and Scan Consensus](01-first-marking-run.md)
+2. [Human-in-the-Loop by Design: Rubrics, Blind Score Review, and Cryptographic Approvals](02-review-and-return.md)
+3. [Cryptographic State Machines, Atomic Checkpoints, and Isolated Child Regrading](03-logic-and-recovery.md)
+4. [Region Extraction, Localhost Review UI, and FFT Page Alignment](04-scans-crops-alignment.md)
+5. [Multi-Role Azure OpenAI Routing, Multimodal Batching, and Adversarial Prompt Safety](05-azure-openai.md)
+6. [Multi-Agent Orchestration: Skill Policy vs. Microsoft Agent Framework](06-agent-framework.md)
+7. [Fail-Closed Cost Governance: Retail Price Verification, Token Math, and Caching](07-pricing-and-data.md)
+8. [Post-Approval Outputs: Analytics, Office Reports, Moodle/Email Delivery, and Cleanup](08-pilot-and-outputs.md)
 
 ## Evidence and editorial caveats
 

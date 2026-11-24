@@ -1,26 +1,19 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>An agent skill for teacher-reviewed handwriting grading on Azure</title><style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Designing an Agent Skill for Exam Grading: Architecture, Preflight, and Scan Consensus</title><style>
 body{max-width:960px;margin:40px auto;padding:0 24px;font:18px/1.65 system-ui,sans-serif;color:#152d44;overflow-wrap:anywhere}
 h1,h2,h3{line-height:1.2;color:#092f53}h2{margin-top:2em}
 img{max-width:100%;height:auto;border:1px solid #d9e3ed}pre{padding:18px;overflow:auto;background:#f1f5f9}
 code{font-size:.87em}table{border-collapse:collapse;width:100%;font-size:.9em;display:block;overflow-x:auto}
 td,th{border:1px solid #c9d6e4;padding:9px;text-align:left}th{background:#eaf1f8}
 a{color:#0067b8}em{color:#4b6175}
-</style></head><body><article><h1>An agent skill for teacher-reviewed handwriting grading on Azure</h1>
-<p><em>Part 1 of 8 · Agent skills, Python tools and human review</em></p>
-<p><img alt="AI-generated conceptual banner for the first marking run: a folded-paper bridge leads toward a blue gateway." src="media/01-banner.png" /></p>
-<p>The teacher should describe the intended outcome, not remember a sequence of
-terminal commands. An <strong>agent skill</strong> gives the assistant reusable guidance for
-interpreting that request, inspecting an exam workspace, selecting Python tools
-and stopping at decisions that belong to the teacher.</p>
-<p>The <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills">Azure Handwriting Grader Skills</a>
-repository contains three distinct layers. <code>skills/handwriting-grading/SKILL.md</code>
-guides a skill-capable assistant such as Copilot CLI. The Python package provides
-the executable tools and validation. Microsoft Agent Framework coordinates the
-default <strong>grading</strong> operation; Azure OpenAI receives task-specific document/image
-prompts inside that engine. These are not interchangeable meanings of "agent."</p>
-<p>Our example is <strong>four students, eight scanned pages, five questions and 50 possible marks</strong>. Each student has two pages. We inspect an existing VTC-themed assessment and its retained outputs, rather than invent a successful new run.</p>
-<h2>What makes this an agent skill, rather than a command list?</h2>
-<p>The published skill has frontmatter identifying its task and limits:</p>
+</style></head><body><article><h1>Designing an Agent Skill for Exam Grading: Architecture, Preflight, and Scan Consensus</h1>
+<p><em>Part 1 of 8 · MS MVP Technical Series · Agent Skills, Deterministic Preflight &amp; Pipeline Design</em></p>
+<p><img alt="AI-generated conceptual banner for Agent Skills and Exam Architecture." src="media/01-banner.png" /></p>
+<p>When building AI workflows for real-world domains like education, the hardest engineering problem is rarely the model call itself. It is <strong>where the AI stops and deterministic software takes over</strong>.</p>
+<p>In <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills">Azure Handwriting Grader Skills</a>, we intentionally separated the system into four distinct layers: teacher intent in a coding assistant (such as GitHub Copilot CLI), reusable <strong>Agent Skill</strong> policy in <code>skills/handwriting-grading/SKILL.md</code>, a deterministic <strong>Python CLI</strong>, and <strong>Microsoft Agent Framework</strong> wrapping <strong>Azure OpenAI</strong>. Understanding why these layers are decoupled—and how the pipeline validates inputs before spending a single cloud token—is the foundation of the architecture.</p>
+<p><img alt="Four-Layer Agent Skill Architecture" src="media/28-skill-layers.png" /></p>
+<p><em>Figure 1. Four-layer architecture separating conversational skill policy, deterministic Python validation, Agent Framework orchestration, and Azure OpenAI inference.</em></p>
+<h2>Why an Agent Skill instead of a giant system prompt?</h2>
+<p>An <strong>Agent Skill</strong> is a portable, progressive-disclosure instruction package—not executable Python and not a security boundary. Its YAML frontmatter tells the host assistant <em>when</em> the skill applies:</p>
 <pre><code class="language-yaml">name: handwriting-grading
 description: &gt;-
   Guides preparation and human review of scanned handwriting grading with
@@ -29,145 +22,47 @@ description: &gt;-
   of student-score distribution. Does not provide a general OCR service or
   authorize automated grading or email.
 </code></pre>
-<p>The description identifies when the skill is relevant; the body supplies workflow
-decisions, safety instructions and links to detailed references. This actual
-excerpt from <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> defines the
-assistant's first task:</p>
+<p>Instead of stuffing 1,500 lines of CLI flags and edge-case rules into every chat turn, <code>SKILL.md</code> uses <strong>progressive disclosure</strong>:
+1. <strong>Frontmatter</strong>: Lightweight trigger metadata loaded at startup.
+2. <strong>State-oriented router</strong>: A table mapping workspace artifacts (<code>exam.yaml</code>, <code>rubric/approval.json</code>, <code>regions/approval.json</code>, <code>grading/manifest.json</code>) to the next valid action.
+3. <strong>On-demand <code>references/*.md</code></strong>: Deep guides (<code>configuration.md</code>, <code>regions.md</code>, <code>grading.md</code>, <code>pricing.md</code>, <code>regrading.md</code>, <code>email.md</code>) read only when the user reaches that stage.</p>
+<p>This excerpt from <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> defines how the assistant orients itself:</p>
 <pre><code class="language-markdown">Establish whether the user is starting or resuming, what stage they need,
 and which local paths they intend to use. Do not copy or overwrite data.
 </code></pre>
-<p>The skill is <strong>instructions</strong>, not executable Python and not a grant of
-permission. It tells the assistant to inspect artifacts and ask for missing
-decisions instead of blindly starting at command one. Reference files explain
-rubrics, regions, grading, pricing and distribution without turning every user
-request into a giant prompt containing the whole repository.</p>
-<p>For Copilot CLI, register the repository's directory of skills once:</p>
-<pre><code class="language-bash">copilot skill add &quot;/path/to/azure-handwriting-grader-skills/skills&quot;
-</code></pre>
-<p>Copilot CLI documents custom skill directories, as well as project/personal
-skill locations; <code>/skills list</code> lets the user inspect available skills.
-The repository's plain <code>skills/</code> directory is not one of the documented automatic
-project locations, so do not assume cloning alone loads it. Registering the
-directory makes the instructions available; it does not install the Python
-package, configure Azure or execute an exam. An IT colleague separately prepares
-the locked Python environment and private deployment configuration.</p>
-<h2>One teacher request, several skill-guided decisions</h2>
-<p><strong>Illustrative teacher request, not a captured agent transcript</strong></p>
-<pre><code class="language-text">Use the handwriting-grading skill to inspect the existing example exam.
-Work out its current stage from the saved artifacts.
-Explain whether it is ready for grading, show the supporting pages and rubric,
-and stop at any unresolved scan or approval problem. No paid calls or email.
-</code></pre>
-<p>The assistant should resolve the exam paths, inspect the existing output folder,
-read the relevant skill references and choose <strong>read-only</strong> checks. It should not
-create a second run or infer that saved approvals authorize fresh inference.
-The following sequence explains the published skill's intended behavior; the
-outputs are actual saved artifacts/read-only checks, not invented assistant turns.</p>
-<h3>Inspect the page before interpreting the configuration</h3>
-<p><img alt="First page of the original example exam, showing handwritten answers to Q1–Q3 and identification fields." src="media/01-original-page.png" /></p>
-<p><em>Figure 1. Actual page 1 rendered from <code>example/VTC Test.pdf</code>, not a generated illustration.</em></p>
-<p>The page image is the starting evidence. Check that the entire answer area is visible, the handwriting is readable, and the page belongs to the expected layout. Do not judge crop quality from a small thumbnail; enlarge the original image.</p>
-<p><strong>Output to inspect:</strong> the scanned page. <strong>Decision:</strong> can the exam be read and divided into the intended two-page scripts? A filename alone cannot answer that question.</p>
-<h3>Let Python check structure, then interpret its limited result</h3>
-<p>This is the tool boundary used for the captured read-only check. It shows what
-the assistant can invoke, not another instruction the teacher must type:</p>
-<pre><code class="language-bash">handwriting-grader preflight --exam example/example.yaml
-</code></pre>
-<p><strong>Observed output</strong></p>
-<pre><code class="language-text">Preflight passed: 4 students, 0 absent, 8 pages, 2 pages per script.
-Human confirmation of scan order and layout is still required.
-</code></pre>
-<p><img alt="Actual preflight text, followed by a reminder that scan order still needs checking." src="media/02-preflight.png" /></p>
-<p><em>Figure 2. A rendered copy of real terminal output, not a product-interface screenshot.</em></p>
-<p>Preflight establishes basic structural consistency. Four expected students and eight pages fit a two-page-per-script configuration. It does not establish that each page is upright, correctly ordered or correctly associated with a student.</p>
-<p>This distinction matters: a green structural check is not permission to stop looking.</p>
-<h3>Apply the skill's stop rule to the scan-check result</h3>
-<pre><code class="language-bash">handwriting-grader check-scans --exam example/example.yaml
-</code></pre>
-<p><strong>Observed output, shortened</strong></p>
-<pre><code class="language-text">Scan orientation/sequence issues found (3):
-- PDF page 1 (Script #1, page 1): out of sequence
-- PDF page 3 (Script #2, page 1): out of sequence
-- PDF page 5 (Script #3, page 1): out of sequence
-</code></pre>
-<p>The full captured message says those pages match template page 2 instead of page 1
-and asks for manual correction followed by another check. The command returned a
-nonzero exit status. The skill specifically tells the assistant to run this check
-before region setup, report exact page/script numbers and <strong>not silently flip or
-reorder the PDF</strong>.</p>
-<p><img alt="Fresh scan check reporting possible sequence problems on PDF pages 1, 3 and 5." src="media/03-scan-check.png" /></p>
-<p><em>Figure 3. Actual blocker captured while preparing this series.</em></p>
-<p><strong>The assistant should stop here and explain the discrepancy.</strong> A detector can be
-wrong, so the warning is not proof that the pages are definitely shuffled.
-Crucially, the inspected grading route does not automatically rerun <code>check-scans</code>;
-this prerequisite is part of the skill-guided preparation workflow, not a
-scan-check enforcement feature of the Framework Executor. The Python grading
-gate separately checks bound approvals. Keeping those responsibilities distinct
-avoids claiming that Markdown instructions enforce every policy.</p>
-<p>The later articles inspect historical outputs that already exist. We did not rerun paid grading or claim to resolve this blocker during article preparation.</p>
-<h3>Explain the rubric branch instead of asking the teacher to choose commands</h3>
-<p>The existing rubric workbook contains five questions worth ten marks each. Q1 asks students to expand VPET and explain its importance. Its item-specific allocation is 2 marks for the expansion, 4 for practical or specialized skills, and 4 for the workforce benefit.</p>
-<p><img alt="Rubric workbook excerpt showing five ten-mark questions and 50 possible marks." src="media/04-rubric.png" /></p>
-<p><em>Figure 4. A table rendered from actual workbook cells; this is not an Excel screenshot.</em></p>
-<p>The skill asks the assistant to inspect the source format. A structured XLSX uses
-local import/validation; a DOCX requires conversion and optional paid extraction.
-The choice follows the actual file, not a conversational guess. A saved workbook
-does not prove which route created it. In either branch, the assistant presents
-question labels, criteria and maxima for teacher review; it must not manufacture
-the <code>--confirm-reviewed</code> action.</p>
-<h3>Explain what will become an image payload</h3>
-<p><img alt="Saved region coordinates overlaid on the actual first template image, identifying NAME, ID, CLASS and Q1–Q3." src="media/05-region-overlay.png" /></p>
-<p><em>Figure 5. An offline visualization of saved annotations on the saved template—not a capture of the browser editor.</em></p>
-<p>The assistant should explain why a box needs inspection: its pixels, not the
-whole PDF, become an answer payload. Handwriting touching a boundary or a NAME box
-covering the printed heading can corrupt later OCR. Region preparation is local;
-optional model suggestions require separate consent and never approve a box.
-Part 4 explains the exact Python crop and proposal prompt.</p>
-<h2>Before the first paid request</h2>
-<p>Only after preparation problems and reviews are resolved should the skill-guided
-assistant assemble a grading preview from the private configuration. It explains
-the target, transferred data, request estimate and uncertainties, then waits for
-cost consent. Python independently requires <code>--confirm-cost</code> and valid pricing.
-On the default route the CLI then invokes Microsoft Agent Framework; the workflow
-returns a draft location, not approved scores.</p>
-<p><strong>The useful result of this first walkthrough is not “AI marked everything.”</strong> It is a visible exam, a verified structural summary, a real scan blocker and reviewable rubric/crop evidence. Knowing when not to run AI is part of a successful workflow.</p>
-<h2>Technical walkthrough: what the assistant and application actually do</h2>
-<p>There are three sources of instruction: the teacher expresses intent, <code>SKILL.md</code>
-guides the assistant's choices, and Python constructs the Azure task prompt.
-Framework also carries a control string, <code>"grade"</code>, which is not an LLM prompt.
-The teacher's sentence is not sent verbatim to the handwriting model. A request
-such as "do not send email" is useful intent; separate delivery operations and
-approval checks provide the executable boundary.</p>
-<h3>Why preflight is local, not an AI judgment</h3>
-<p><code>cli.check_exam()</code> reads YAML, checks readable input paths, opens the roster with
-<code>openpyxl</code>, checks unique IDs and required columns, and reads the PDF page count
-with <code>PdfReader</code>. If attendance is supplied, it counts the present students.
-Its structural comparison is this actual source excerpt:</p>
+<p>To register the skill in Copilot CLI, an operator adds the <code>skills/</code> directory once (<code>copilot skill add "/path/to/azure-handwriting-grader-skills/skills"</code>) and verifies with <code>/skills list</code>. Cloning the repository alone does not load <code>skills/</code> automatically; the skill instructions also never replace Python's executable gates.</p>
+<h2>Stage 0 &amp; 1: Answer sheets, path-jail preflight, and attendance</h2>
+<p>Before any scan is touched, the pipeline supports three deterministic preparation steps:</p>
+<h3>1. Optional printable answer sheets (<code>answer-sheets</code>)</h3>
+<p>When a teacher has a roster and a DOCX template before the exam, <code>handwriting-grader answer-sheets --exam exam.yaml</code> merges student metadata into personalized DOCX files (including Word text boxes and hyperlinks) and converts them via local LibreOffice into numbered PDFs and a <code>combined.pdf</code> for printing. It runs against the <strong>full roster</strong>—independent of attendance—and leaves pagination verification to the teacher.</p>
+<h3>2. Path-jail and structural preflight (<code>preflight</code>)</h3>
+<p><code>handwriting-grader preflight --exam example/example.yaml</code> is strictly read-only and creates zero files. <code>cli.check_exam()</code> resolves every relative path from <code>exam.yaml</code>'s parent directory (<code>config_dir</code>) rather than the shell's current working directory, then enforces:
+- <strong>Path containment</strong>: <code>output_dir</code> must not contain any input file (preventing accidental self-overwrite or cleanup deletion).
+- <strong>Roster integrity</strong>: Opens the Excel sheet with <code>openpyxl</code>, preserves leading zeroes on <code>ID</code> strings, and rejects missing/duplicate IDs or missing <code>NAME</code>/<code>CLASS</code> columns.
+- <strong>Page-count parity</strong>: Reads the scanned PDF with <code>pypdf</code> and checks <code>P = S × N</code>:</p>
 <pre><code class="language-python">if roster_count and pdf_count is not None and pages and pdf_count != roster_count * pages:
     errors.append(&quot;PDF page count does not equal roster count times pages_per_student&quot;)
 summary.update(exam=name, students=roster_count, absent=absent_count,
                pdf_pages=pdf_count, pages_per_student=pages)
 return errors, summary
 </code></pre>
-<p>For the observed example, <code>4 * 2 == 8</code>, so this check passes. It cannot distinguish
-two correctly ordered pages from two swapped pages. The separate scan checker
-compares downsampled ink maps against expected page offsets and rotated
-alternatives. In the captured command it uses majority-consensus references from
-the PDF, not an AI opinion. This explains why the first command passes while the
-second reports a blocker.</p>
-<p><strong>Actual outputs:</strong> the preflight summary and the three scan warnings shown above.
-No model prompt is involved in either command.</p>
-<p>Read the excerpt as a small contract: <code>roster_count</code> is the present-student count,
-<code>pdf_count</code> comes from the PDF parser, and <code>pages</code> is the configured script length.
-The <code>if</code> appends an error rather than asking a model to judge the mismatch.
-<code>summary.update()</code> returns evidence the assistant can explain. A skill-guided
-assistant must inspect both errors and the summary; a printed count is not
-permission to advance to inference.</p>
-<h3>The complete optional DOCX-extraction prompt</h3>
-<p>If the source marking scheme is DOCX rather than a ready-made XLSX, the application
-converts it to Markdown and supplies the following <strong>complete production prompt</strong>
-from <code>rubric.PROMPT</code>. This is current source, not a recovered transcript proving
-how the historical workbook was created:</p>
+<p><strong>Observed output</strong> on the cleared four-student, two-page-per-script VTC example:</p>
+<p><img alt="Actual preflight text, followed by a reminder that scan order still needs checking." src="media/02-preflight.png" /></p>
+<p><em>Figure 2. Real read-only preflight output. Four students × two pages = eight pages passes structural math, yet cannot prove page orientation.</em></p>
+<h3>3. Explicit attendance (<code>prepare-attendance</code> -&gt; <code>approve-attendance</code>)</h3>
+<p>Absences are <strong>never</strong> inferred from missing PDF pages or blank OCR. If <code>attendance</code> is configured, the teacher supplies an explicit <code>ID,STATUS</code> CSV (<code>present</code>/<code>absent</code> for every roster ID), reviews <code>attendance/review.xlsx</code>, and runs <code>approve-attendance --confirm-reviewed</code> to bind the present-student set with SHA-256 hashes.</p>
+<h2>Why <code>check-scans</code> runs before region setup (4x FFT consensus)</h2>
+<p>A passing <code>preflight</code> cannot tell if Script 1 was fed into the scanner upside-down. If you draw bounding boxes on an upside-down Script 1, every downstream crop for the entire class will be wrong.</p>
+<p><code>handwriting-grader check-scans --exam example/example.yaml</code> solves this <strong>offline at zero AI cost</strong>. It renders pages via pure-Python <code>pypdfium2</code>, downsamples them 4x, and runs FFT phase correlation across the cohort to build a <strong>majority-consensus reference</strong> for each page position (<code>0..N-1</code>). Comparing every page against both upright and rotated (<code>90°</code>, <code>180°</code>, <code>270°</code>) consensus templates catches upside-down, sideways, blank, or swapped pages—even if Script 1 itself is the culprit.</p>
+<p><img alt="Fresh scan check reporting possible sequence problems on PDF pages 1, 3 and 5." src="media/03-scan-check.png" /></p>
+<p><em>Figure 3. Actual <code>check-scans</code> blocker captured on <code>example/example.yaml</code>: PDF pages 1, 3, and 5 match template page 2.</em></p>
+<p>Because <code>check-scans</code> returned a non-zero exit code, <code>SKILL.md</code> enforces an explicit <strong>stop rule</strong>: report the exact 1-based PDF page numbers and script numbers so the teacher fixes the physical PDF manually—never silently flip or reorder pages in code.</p>
+<p><img alt="First page of the original example exam, showing handwritten answers to Q1–Q3 and identification fields." src="media/01-original-page.png" /></p>
+<p><em>Figure 4. Actual page 1 rendered from <code>example/VTC Test.pdf</code> (150 DPI publication export) showing <code>NAME</code>, <code>ID</code>, <code>CLASS</code>, and Q1–Q3.</em></p>
+<h2>Rubric ingestion: deterministic XLSX vs. structured DOCX extraction</h2>
+<p>Before regions can be suggested or grading can run, the system needs an approved rubric (<code>output/rubric/rubric.xlsx</code>). <code>SKILL.md</code> routes by source format:
+- <strong>Structured XLSX (<code>import-rubric</code>)</strong>: Validates the <code>Marking Scheme</code> sheet locally (zero AI cost), rejecting formula cells, non-positive marks, and duplicate normalized <code>question_key()</code> IDs.
+- <strong>Unstructured DOCX (<code>extract-rubric --confirm-cost</code>)</strong>: Converts the DOCX to Markdown via <code>mammoth</code> and calls Azure OpenAI with a Pydantic <code>ExtractedRubric</code> schema and <code>rubric.PROMPT</code>:</p>
 <pre><code class="language-text">Extract the marking scheme from the document. Return every gradable
 question or sub-question as its own separate entry with its exact label,
 question text/context, marking criteria, and individual available marks.
@@ -177,9 +72,6 @@ split each sub-part into its own entry using its combined label rather than
 collapsing multiple sub-parts into one parent entry. Include any general grading
 guidance separately. Do not invent missing information.
 </code></pre>
-<p>The split-subparts instruction prevents one parent question from swallowing
-several separately marked answer spaces. The "do not invent" instruction is not
-the only safeguard: the response must also satisfy these source-defined models:</p>
 <pre><code class="language-python">class RubricQuestion(BaseModel):
     question_number: StrictStr
     question_text: StrictStr
@@ -191,45 +83,16 @@ class ExtractedRubric(BaseModel):
     general_grading_guide: StrictStr = &quot;&quot;
     questions: list[RubricQuestion]
 </code></pre>
-<p><code>BaseModel</code> and <code>StrictStr</code> are Pydantic types. A <code>RubricQuestion</code> represents one
-gradable item: its label stays text, its question and criteria stay explicit
-strings, and <code>marks</code> is the available maximum, not a student score.
-<code>ExtractedRubric</code> groups those items and retains general guidance separately.
-The empty default does not authorize the model to invent missing guidance.
-The application supplies the document separately from the instruction:</p>
 <pre><code class="language-python">response = client.generate_content(
     model=model,
     contents=[PROMPT, content],
     config=GenerationConfig(**rubric_config),
 )
 </code></pre>
-<p>Here <code>content</code> is the Markdown conversion, and <code>rubric_config</code> requests
-<code>ExtractedRubric</code> structured output with a 16,384-token output limit. Python then
-rejects missing question text, duplicate normalized question IDs, metadata labels
-used as question IDs, and nonfinite or nonpositive marks. General guidance is
-appended to each question's marking scheme so it reaches later grading prompts.
-Source and model-config hashes are checked again before publishing the workbook.</p>
-<p>In the call, <code>model</code> is the configured Azure deployment alias.
-<code>contents=[PROMPT, content]</code> separates the stable extraction task from the
-document being interpreted. <code>GenerationConfig(**rubric_config)</code> expands the
-configuration dictionary into the request settings; it is not a second model
-or an approval action. The teacher reviews the extracted items against the
-source before they can become the rubric used by later grading prompts.</p>
-<p><strong>Actual output available:</strong> the five-question workbook in Figure 4. <strong>Not
-captured:</strong> a new DOCX request or its original raw JSON response. The XLSX import
-path instead validates and copies a workbook without calling Azure.</p>
-<h3>How a region becomes a crop</h3>
-<p><code>prepare_regions()</code> renders the first script at 200 DPI, records each page's
-dimensions and digest, and creates an empty annotation draft. A reviewed box is
-stored in the page's pixel coordinates. The example Q3 box is 1191 pixels wide
-and 254 pixels high; a label such as <code>Q3</code> is normalized to the rubric's question
-key before lookup.</p>
-<p>Later, <code>approved_inputs()</code> checks the rubric and region approvals and requires
-the set of question boxes to equal the rubric's question set. Missing Q3 is an
-error, not permission to omit that question. Part 4 shows the actual crop code,
-optional region-suggestion prompt and coordinate conversion.</p>
-<p>This separates four technical responsibilities: the assistant requests an
-operation, Python validates its prerequisites, Azure proposes task-specific
-content only where needed, and a teacher reviews the resulting artifacts.</p>
-<p>Next: <a href="02-review-and-return.html">review the existing proposed marks and reports</a>.</p>
-<p><strong>Implementation reference:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/README.md">installation and reviewed workflow at the inspected revision</a>.</p></article></body></html>
+<p>Python then rejects missing text, duplicate normalized IDs, metadata labels (<code>NAME</code>/<code>ID</code>/<code>CLASS</code>) used as questions, and non-finite marks, appending <code>general_grading_guide</code> to each question's criteria. Optionally, <code>verify-rubric --confirm-cost</code> uses Azure Responses <code>web_search</code> (deliberately uncached) to produce <code>verification.xlsx</code> and <code>verification.docx</code> with cited sources for human fact-checking. Neither extraction nor verification approves the rubric—that requires <code>approve-rubric --confirm-reviewed</code>.</p>
+<p><img alt="Rubric workbook excerpt showing five ten-mark questions and 50 possible marks." src="media/04-rubric.png" /></p>
+<p><em>Figure 5. Saved rubric workbook excerpt: five ten-mark questions totaling 50 marks.</em></p>
+<p><img alt="Saved region coordinates overlaid on the actual first template image, identifying NAME, ID, CLASS and Q1–Q3." src="media/05-region-overlay.png" /></p>
+<p><em>Figure 6. Approved region coordinates overlaid on the 200-DPI template image (<code>1654 × 2338</code> pixels). Part 4 covers region extraction and alignment in detail.</em></p>
+<p>Next: <a href="02-review-and-return.html">Human-in-the-Loop by Design: Rubrics, Blind Score Review, and Cryptographic Approvals</a>.</p>
+<p><strong>Implementation references:</strong> <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cli.py">preflight and CLI</a> and <a href="https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/rubric.py">rubric extraction</a>.</p></article></body></html>

@@ -1,79 +1,33 @@
-# How an agent skill resumes work: state, approvals and Python recovery
+# Cryptographic State Machines, Atomic Checkpoints, and Isolated Child Regrading
 
-*Part 3 of 8 · For developers · Source walkthrough with saved artifact evidence*
+*Part 3 of 8 · MS MVP Technical Series · State Integrity, Recovery & Regrade Isolation*
 
-![AI-generated conceptual banner for approvals and recovery: glass checkpoints separate sections of a path.](media/03-banner.png)
+![AI-generated conceptual banner for State Machine and Child Regrades.](media/03-banner.png)
 
-The assistant should recover its understanding from the workspace, not from a
-vague recollection that "we finished grading." `SKILL.md` supplies the navigation
-policy; Python determines whether a supported state transition is valid.
-Microsoft Agent Framework sequences grading, but neither it nor the skill can
-promote model output into an approved result.
+Long-running AI pipelines fail in predictable ways: network drops mid-batch, a teacher spots a typo in Question 3's rubric *after* grading finishes, or someone edits an Excel cell after approval. If your pipeline trusts file timestamps or mutates results in place, you lose auditability.
 
-The actual [skill](../../skills/handwriting-grading/SKILL.md) says:
+In `azure-handwriting-grader-skills`, `SKILL.md` provides workspace navigation—reading manifests to orient the assistant—while Python enforces a **six-gate cryptographic state machine**, **atomic keyed checkpoints**, and **isolated child regrading**. As [SKILL.md](../../skills/handwriting-grading/SKILL.md) states:
 
 ```markdown
 When resuming an existing workspace or `output_dir`, inspect existing files
 and artifacts to orient immediately (do not rely on prior conversation history):
 ```
 
-Its artifact table helps the assistant select a likely next operation. That table
-is navigation guidance, not the validator: the assistant must inspect the actual
-manifest/ledger and let the Python stage verify its format and hashes.
+![Six-Gate Cryptographic HIL State Machine & Pipeline](media/11-architecture.png)
 
-| Workspace evidence | Skill-guided decision | What Python must establish |
-|---|---|---|
-| Rubric workbook without current approval | Offer rubric review, not grading | Reviewed artifact hashes match |
-| Supported incomplete grading ledger | Offer a resume preview | Original inputs match; missing keyed work is resumable |
-| Completed draft with failed items | Explain retry, manual review or waiting | Selected failure records and bound inputs are valid |
-| Completed scores with changed rubric/crop | Explain an isolated child regrade | Approved parent and separately reviewed change |
-| Current approved review | Offer post-approval outputs | Approval still matches the actual files |
+*Figure 1. End-to-end six-gate cryptographic state machine, from preflight and attendance through grading, HIL review, reporting, and isolated child regrades.*
 
-In [Part 2](02-review-and-return.md), OCR read John's class as `e: John` and his name as part of a printed heading. The saved report nevertheless associates his ID with John in class C. That separation between raw output and reviewed output must exist in the application logic, not only in a prompt.
+## The Anti-Tampering Invariant: SHA-256 `approval.json` bindings
 
-This article explains the boundaries using actual artifact structures and source excerpts. It does not pretend that every recovery path has been exercised against this saved exam.
+No stage trusts an earlier stage because a file exists. Every approval gate (`attendance`, `rubric`, `regions`, `grading`, `ai-analysis`, `email`) writes a separate `approval.json` containing SHA-256 digests of its exact upstream inputs and reviewed artifacts.
 
-## The skill chooses the operation; Python checks its prerequisites
-
-Inputs include the exam configuration, scans, roster, rubric and region definitions. The pipeline does not simply ask whether their files exist. It checks whether the appropriate approvals still match the relevant artifacts.
-
-![Architecture diagram showing local preparation and approvals before Azure inference, and separate review before reporting.](media/11-architecture.png)
-
-*Figure 1. Code-authored explanatory diagram, not a runtime trace. Editable source is included in `diagrams/architecture.mmd`.*
-
-This diagram describes application stages below the assistant. The Framework's
-first Executor calls the same `approved_inputs()` function shown here; it does
-not read `SKILL.md` or interpret a teacher's conversational approval.
-
-The actual `approved_inputs()` starts with these calls:
-
-```python
-approved_attendance(config, config_dir, config_path)
-questions = read_approved_rubric(config, config_dir, config_path)
-root, manifest = verify_run(config, config_dir, config_path)
-```
-
-It then loads the region draft, checks current region approval, validates complete annotations, and compares available question labels with the rubric.
-
-**Expected output of this boundary:** either validated inputs for the next stage or an exception. This is a source contract, not a newly captured exception transcript. Part 1 supplies a real stopping case from the separate scan checker.
-
-## Why "approved earlier" is not enough
-
-The saved grading approval contains these keys:
-
-```text
-version
-review_sha256
-results_sha256
-manifest_sha256
-approved_at
-```
+For example, `grading/approval.json` binds the review workbook, raw results, and grading manifest:
 
 ![Keys and hash prefixes from the saved grading approval, with the sensitive resource configuration excluded.](media/12-approval-evidence.png)
 
-*Figure 2. Selected fields from a real local approval artifact. Hash prefixes are shortened for presentation.*
+*Figure 2. Selected fields from `grading/approval.json` (hash prefixes shortened for display).*
 
-The source in `grade_review.py` checks:
+At the start of `report`, `analytics`, `ai-analysis`, or `preview-email`, `grade_review.py` recomputes every digest and aborts immediately if anything changed:
 
 ```python
 if (
@@ -85,91 +39,13 @@ if (
     raise ValueError("Grading review changed since approval")
 ```
 
-This excerpt demonstrates how a change is detected. It does not establish that every historical artifact is currently valid. The current example also has a scan-check blocker, so the mere existence of `approval.json` is not a fresh readiness certificate.
+Similarly, before `grade` (or Microsoft Agent Framework's `ValidateApproval` Executor) can touch Azure OpenAI, `approved_inputs()` verifies attendance, rubric, and region approvals, then enforces **label parity** between the approved region boxes and the approved rubric:
 
-Hashes support local consistency checks. They do not make a directory tamper-proof against someone able to rewrite both files and approval records.
-
-## Let the assistant compare raw, reviewed and reported values
-
-The saved run gives us three useful views:
-
-| Artifact | Role | Actual example |
-|---|---|---|
-| `grading/results.json` | Raw inference/checkpoint data | Cut-off Q3 transcription and moderator note |
-| `grading/review.xlsx` | Teacher review fields | Explicit manual mark 2 and `reviewed = yes` |
-| `reports/score_report.xlsx` | Saved report output | John, class C, total 10 |
-
-A developer should resist flattening these into one mutable record. Otherwise a manual edit can erase what the model originally proposed, making later diagnosis difficult.
-
-**Suggested operator prompt**
-
-```text
-Explain the differences between raw results, review fields and reports.
-Show the affected script and question keys.
-Do not replace raw model results or record approval for me.
+```python
+approved_attendance(config, config_dir, config_path)
+questions = read_approved_rubric(config, config_dir, config_path)
+root, manifest = verify_run(config, config_dir, config_path)
 ```
-
-**Output to expect:** a comparison keyed by script/question, not a silent rewrite. The figures in Part 2 provide the actual comparison for this exam.
-
-## Explain what a resume can preserve
-
-The saved `results.json` records:
-
-```json
-{
-  "version": 1,
-  "checkpoint_version": 1,
-  "completed": true
-}
-```
-
-The completed run contains four script metadata records and 20 question-mark records. These counts describe the saved checkpoint; they do not mean 20 billable API requests.
-
-The application uses atomic checkpoint publication and a run lock to avoid conflicting writers. On a suitable interrupted run, the skill-guided assistant offers
-`resume-grading`, explains the missing work and previews the intended requests.
-That is a state-dependent choice, not a command to run against every folder.
-
-New paid work still needs fresh consent. A request accepted by Azure just before a crash may not be checkpointed locally. Resumption can repeat that request and incur a second charge. “Resumable” therefore means preserving recorded work—not exactly-once provider execution.
-
-Do not run resume against a completed run simply to obtain a screenshot. Do not delete a live lock.
-
-## Retry and child regrade answer different questions
-
-A completed run with failed work uses `retry-grading`; a revised rubric or crop can require an isolated child regrade.
-
-The assistant should explain the difference before asking the teacher to choose.
-Retry addresses supported failures with the run's existing inputs. A crop/rubric
-change requires its separately reviewed proposal and an isolated child. The
-selected question is rerun for **all present students**, not only the answer that
-motivated the change. The child requires fresh identity/score review. No such
-child was executed for this article.
-
-**Output not captured:** there is no child-run comparison image in this package. The saved flagged answer motivates the workflow, but it is not evidence that a corrected child run exists.
-
-## What this design buys you—and what it does not
-
-It gives operators inspectable artifacts, explicit state transitions and opportunities to stop. It does not establish that a rubric is fair, a crop is complete or an approved score is educationally correct.
-
-The actual scan blocker and OCR failures show why these boundaries matter. A system that can explain why it stopped is more useful than one that turns every failure into an apparently complete report.
-
-## Technical walkthrough: state transitions, not approval by prompt
-
-An operator can ask the assistant to resume safely:
-
-```text
-Inspect the run manifest and checkpoint first.
-Explain which script/question pairs are missing and which inputs are bound by hashes.
-Preview resume or an isolated child regrade, as appropriate.
-Do not remove a lock, replace an approval, alter raw results or make a paid request.
-```
-
-This is an operator prompt, not an Azure model prompt. The following Python
-mechanisms enforce the important parts even if an operator request is vague.
-
-### The prerequisite gate returns a concrete crop map
-
-The first half of `approved_inputs()` validates attendance, reads the approved
-rubric and checks the region run. Its second half is:
 
 ```python
 if not approval_is_current(root, manifest, draft):
@@ -187,20 +63,21 @@ if actual != expected:
 return questions, root, manifest, boxes
 ```
 
-The returned map relates a normalized question key to a page offset and pixel
-box. This is why a changed rubric or missing answer box must be resolved before
-inference, not interpreted as a model's blank answer.
+Returning validated objects (`questions, root, manifest, boxes`) rather than a boolean `True` ensures downstream cropping uses the exact reconciled state that passed the gate.
 
-`validate_annotations(..., complete=True)` checks the whole layout before the
-loop builds `boxes`. `question_key()` puts rubric IDs and annotation labels in
-the same key space. The set subtraction removes metadata fields, which are not
-graded questions; set equality then rejects an extra or missing question.
-The function returns **validated objects**, not just `True`, so downstream code
-uses the same reconciled rubric and crop map that passed the gate.
+## Atomic keyed checkpoints (`results.json`) and exclusive locks
 
-### A checkpoint is a keyed ledger, not a count of API calls
+During grading, `results.json` acts as an append-safe, keyed checkpoint ledger rather than a blind list of API calls:
 
-`continue_grading()` reconstructs dictionaries from saved records:
+```json
+{
+  "version": 1,
+  "checkpoint_version": 1,
+  "completed": true
+}
+```
+
+When `continue_grading()` resumes an interrupted run, it indexes completed work by `script_index` and `(script_index, question_key)` tuples, rejecting duplicates or unexpected keys:
 
 ```python
 scripts = {row["script_index"]: row for row in results["scripts"]}
@@ -208,24 +85,9 @@ marks = {(row["script_index"], question_key(row["question"])): row for row in re
 missing_scripts = [si for si in range(summary["students"]) if si not in scripts]
 ```
 
-It rejects duplicates and unexpected keys before continuing. Batch workers
-publish records keyed by `(script_index, question_key)` under a result lock.
-Completion requires four metadata records, all twenty student/question pairs,
-and coverage of every moderated question in this example. The engine also checks
-model configuration, roster, rubric and region-approval hashes before setting
-`completed = true`. Completion means a full ledger exists; human review is a
-later state transition.
+To prevent half-written JSON during a crash and prevent two processes from racing on the same directory, the engine pairs two OS primitives:
 
-The dictionary comprehensions make lookup explicit: scripts use one integer
-key, and marks use a `(script, question)` tuple. A worker can skip a pair already
-published without relying on list order or a chat message saying it finished.
-Duplicate/unexpected keys are errors, not silently merged work. The assistant
-should explain missing pairs to the user; it must not synthesize replacement
-records to make the ledger look complete.
-
-### How atomic JSON publication works
-
-The exact publication core in `regions.atomic_json()` is:
+1. **Atomic JSON publication (`regions.atomic_json()`)**: Writes to a temporary file in the same directory, flushes, calls `os.fsync()`, and atomically swaps via `os.replace()`:
 
 ```python
 with tempfile.NamedTemporaryFile(
@@ -246,15 +108,7 @@ finally:
     temp.unlink(missing_ok=True)
 ```
 
-The caller has already converted `path` to a `Path`. A temporary file in the same
-directory is flushed before `os.replace()` publishes the new name, so a reader
-does not see half-written JSON. This is not a transaction spanning Azure,
-`results.json`, the review workbook and every directory entry. In particular,
-a provider response can be billed before its record is published locally.
-
-### Why the processing lock is separate
-
-The source uses exclusive file creation, not "check then create":
+2. **Exclusive process lock (`processing.lock`)**: Uses `open("x")` (atomic `O_CREAT | O_EXCL`), never "check then create":
 
 ```python
 lock = target / "processing.lock"
@@ -265,25 +119,23 @@ except FileExistsError as exc:
     raise ValueError("Another grading process or a stale lock exists") from exc
 ```
 
-The surrounding context manager removes its lock on exit. A terminated process
-can leave a stale lock, which needs investigation rather than automatic deletion.
-Atomic JSON prevents partial records; the run lock prevents two writers from
-independently advancing the same checkpoint. They solve different problems.
+## Recovery vs. Isolated Child Regrading (`resume`, `retry`, `regrade`)
 
-### What changes when an input changes
+A mature grading system separates three distinct recovery operations:
 
-Resume uses the original run's bound inputs and missing-record ledger. A changed
-question rubric or crop belongs to a separately reviewed proposal and child run,
-with fresh review afterwards. Copying an old approval into a child folder would
-not make its digests match. Neither path provides exactly-once provider billing:
-the application can know which results were recorded, not whether a request
-accepted just before a crash was charged.
+| Scenario | Command | Behavior & Invariant |
+|---|---|---|
+| **Crash / power loss mid-run** | `resume-grading --confirm-cost` | Skips already checkpointed `(script_index, question_key)` pairs; in-flight calls may repeat and be billed. |
+| **Transient 429/504/5xx or scanner shift** | `retry-grading --confirm-cost` | Isolates `grading_failed=True` / moderation errors; supports `--align-images`, `--re-ocr-id`, `--re-ocr-metadata`, `--question Q` while preserving manual marks. |
+| **Rubric or crop change on 1 question** | `regrade --run CHILD_RUN --confirm-cost` | Creates an **isolated child run** under `runs/<child>/` without mutating parent history. |
 
-**Observed evidence remains:** the completed four-script/twenty-mark checkpoint
-and saved approval fields above. No interrupted-run, stale-lock deletion or child
-regrade was performed to illustrate these source contracts.
+### How isolated child regrading (`regrade` + `crop_proposals.py`) works
+When a teacher realizes Q3's rubric was unfair or Q3's crop cut off handwriting across the class:
+1. **Parent immutability**: `regrade` requires an approved parent (`grading/approval.json`) and creates `runs/<child>/` with a provenance manifest recording the parent ID and immutable input hashes.
+2. **Optional crop proposals (`crop_proposals.py`)**: A teacher can propose a `shared` crop or per-script `students` crop overrides for that single question, validate them within page bounds, and approve them separately (`regrade-crops/<proposal_id>/approval.json`).
+3. **Full-cohort single-question rerun**: The selected question is regraded and moderated across **all present students** (with optional `--reuse-parent-cache` for unchanged prompts).
+4. **Fresh HIL review**: The child `review.xlsx` preserves unchanged question marks as drafts, displays old vs. new marks for the rerun question, and **clears all `reviewed` flags** so every identity and score receives fresh teacher approval before `--run CHILD_RUN` can generate reports.
 
-Next: [inspect the images and alignment logic](04-scans-crops-alignment.md).
+Next: [Region Extraction, Localhost Review UI, and FFT Page Alignment](04-scans-crops-alignment.md).
 
-
-**Implementation references:** [approval validation](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/grade_review.py) and [targeted regrading](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/skills/handwriting-grading/references/regrading.md).
+**Implementation references:** [approval validation](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/grade_review.py), [crop proposals](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/crop_proposals.py), and [targeted regrading](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/skills/handwriting-grading/references/regrading.md).
