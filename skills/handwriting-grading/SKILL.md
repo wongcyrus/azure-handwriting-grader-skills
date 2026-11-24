@@ -203,8 +203,16 @@ execute a notebook as a workaround, or claim a human approval occurred.
         `advanced-report` defaults to offline Teacher DOCX/Class PPTX generation.
         Optional Azure infographics require a configured `models.analytics_image`
         deployment or override and explicit `--infographics --confirm-cost
-        [--image-model DEPLOYMENT]`. Images are single-attempt, with text fallback;
-        report failed images and never retry without a fresh user decision.
+        [--image-model DEPLOYMENT]`. For a separate image resource, read the
+        [image configuration guide](references/configuration.md#separate-image-generation-resource)
+        and pass `--image-model-config /private/image.config.yaml`.
+        Preserve prior reports with a fresh `--report-name reports-infographics`;
+        do not edit the configuration bound to approved analysis. Preview first,
+        then obtain separate data/cost consent and current manual image pricing.
+        This path uses Azure Images API, not native Agent Framework image tools.
+        Images are single-attempt, with text fallback; report failed images and
+        never retry without a fresh user decision. Point users to the PPTX in the
+        new named folder; the teacher DOCX remains text-only.
      4. **Moodle / LMS Export (`moodle-export`)** *(Offline, zero AI cost)*: Exports combined per-student PDFs (`student_pdfs/<ID>_<Name>.pdf` with AI feedback cover page + marked script), builds `recipients.csv` from a Moodle participants CSV, and (with `--worksheet`) fills a Moodle Assignment grading worksheet CSV + `feedback_files.zip` for bulk Moodle upload.
      5. **Email Distribution (`preview-email` -> `approve-email` -> `send-email`)**: Previews and emails marked PDFs and feedback to students (accepts `ID,EMAIL` or Moodle participants CSV directly).
 

@@ -99,12 +99,32 @@ format survives import.
 For infographics on a different Azure resource, use a separate private
 `image.config.yaml` with `azure_openai.endpoint`, explicit `api_version`,
 `models.analytics_image`, and that resource's reviewed image pricing evidence.
-Pass it with `advanced-report --infographics --image-model-config /private/image.config.yaml`.
+Use the [complete image YAML example](../../../docs/model-configuration-and-caching.md#separate-image-configuration-for-infographics),
+including `deployment_models`, `pricing_lookup`, `pricing` and `pricing_sources`.
+All alias-keyed entries must match the actual image deployment name. Replace
+placeholders only after current manual pricing review; see [pricing](pricing.md).
+Keep credentials out of YAML and keep the real file private (`*.config.yaml` is ignored).
+
+Use the HTTPS resource root, without `/openai/v1` or `/api/projects/...`.
+The filename is not auto-discovered; select the configuration explicitly.
+After analysis approval, preview without inference:
+
+```sh
+handwriting-grader advanced-report --exam /private/exam.yaml \
+  --infographics --image-model-config /private/image.config.yaml \
+  --report-name reports-infographics
+```
+
+Repeat with `--confirm-cost` only after separate data/cost consent.
 Do not edit the model configuration bound to an already-approved analysis.
 Use `--report-name reports-infographics` to preserve existing `reports/`.
 Named reports keep their infographic images separately, and refuse overwrite.
-Preview before `--confirm-cost`; image generation still requires current manual
-pricing review and separate consent. See [pricing](pricing.md).
+Open `ai-analysis/reports-infographics/class-presentation.pptx` for the images;
+the teacher DOCX remains text-only. Check `manifest.json` for image failures and
+review generated content before sharing. A retry requires a fresh user decision
+and new report name. This implementation calls Azure Images API, not a native
+Agent Framework hosted image tool, and needs only the image deployment.
+
 Azure Identity requests the `https://ai.azure.com/.default` audience for
 `*.services.ai.azure.com` resources, and `https://cognitiveservices.azure.com/.default`
 for Azure OpenAI resources. Resource access and model permissions still need

@@ -75,9 +75,89 @@ handwriting-grader grade --exam /private/exam.yaml \
 ```
 
 The endpoint must be an explicit HTTPS Azure endpoint; public OpenAI fallback
-is not supported. The transport uses Azure Responses API calls with `store=False`.
+is not supported. Text/vision transport uses Azure Responses API calls with `store=False`.
 That flag does not guarantee zero provider retention: verify Azure data handling,
 region, identity permissions and institutional policy before sending student work.
+
+## Separate image configuration for infographics
+
+An image deployment can live on a different Azure resource from the text/vision
+deployments. Keep its settings in a private `image.config.yaml`; never edit the
+configuration bound to approved AI analysis. The filename is a convention, not
+automatic discovery: select it explicitly with `--image-model-config`.
+Files named `*.config.yaml` are Git-ignored; keep generated output private too.
+
+This example is deliberately **not ready for inference**. Replace the resource
+and deployment alias, verify the actual ARM region and deployment type, and fill
+every pricing placeholder only after reviewing applicable Microsoft prices.
+Never copy another resource's rates or fabricate a verification timestamp.
+
+```yaml
+azure_openai:
+  endpoint: https://IMAGE_RESOURCE.services.ai.azure.com
+  api_version: v1
+models:
+  analytics_image: school-image
+deployment_models:
+  school-image: gpt-image-2.5-sunburst
+pricing_lookup:
+  region: REPLACE_WITH_VERIFIED_ARM_REGION
+  deployment_type: global-standard
+pricing:
+  school-image:
+    input: REPLACE_WITH_VERIFIED_RATE
+    cached: REPLACE_WITH_VERIFIED_RATE
+    output: REPLACE_WITH_VERIFIED_RATE
+    image: REPLACE_WITH_VERIFIED_PER_IMAGE_FEE
+pricing_sources:
+  school-image:
+    verification: manual
+    verified_at: "REPLACE_WITH_TODAYS_UTC_TIMESTAMP"
+    model: gpt-image-2.5-sunburst
+    azure_endpoint: https://IMAGE_RESOURCE.services.ai.azure.com
+    region: REPLACE_WITH_VERIFIED_ARM_REGION
+    deployment_type: global-standard
+    currency: USD
+    unit: "USD per million tokens; image USD per generated image"
+    source: https://azure.microsoft.com/en-us/pricing/details/azure-openai/
+    image_size: "1536x1024"
+    image_quality: auto
+```
+
+`school-image` must be the exact Azure deployment name in every alias-keyed
+section. The endpoint is the HTTPS **resource root**, either
+`https://IMAGE_RESOURCE.services.ai.azure.com` or
+`https://IMAGE_RESOURCE.openai.azure.com`; do not include `/openai/v1` or
+`/api/projects/PROJECT`. The client appends the API path. Credentials never
+belong in this file. Verify the deployment family and access in Azure separately.
+
+Image rates are USD per million tokens, except `image`, which is USD per generated
+image. Set `image: 0` only if reviewed token pricing covers the entire image fee.
+Manual evidence must be dated today in UTC, not in the future, and match the
+resource, model, region, deployment type, size and quality. Missing, incomplete or
+stale evidence blocks paid calls. See the [pricing reference](../skills/handwriting-grading/references/pricing.md).
+
+After reviewing and approving AI analysis, preview a new report without inference:
+
+```sh
+handwriting-grader advanced-report --exam /private/exam.yaml \
+  --infographics --image-model-config /private/image.config.yaml \
+  --report-name reports-infographics
+```
+
+The preview prints the target, transferred data and up to one class image plus
+one image per question, then exits without generating reports or images.
+Only after explicit data/cost consent, repeat the same command with
+`--confirm-cost`. Image generation uses the **Azure Images API**, not a native
+Microsoft Agent Framework hosted image tool; this path needs no chat/orchestrator
+deployment on the image resource.
+
+`--report-name` selects a new folder under `output_dir/ai-analysis/` and refuses
+overwrite. Named reports keep PNGs in that folder's `infographics/`, and record
+image configuration/resource provenance in `manifest.json`. Existing analysis,
+its approval and previous reports remain unchanged. See [report outputs](reporting-and-analytics-engine.md#4-advanced-office-reports-advanced-report)
+for which Office file contains the infographics. Failures use text fallback;
+never retry without a fresh user decision and a new report folder.
 
 ## Current recommendations and offline template generation
 
@@ -143,6 +223,9 @@ Otherwise `azure-identity` uses `DefaultAzureCredential`. For production set
 `AZURE_OPENAI_AUTH=managed_identity` and grant only required resource access.
 Do not put keys in YAML, source, reports or Git; do not use public OpenAI keys.
 Offline stages do not require credentials.
+Azure Identity uses `https://ai.azure.com/.default` for
+`*.services.ai.azure.com` resource endpoints and
+`https://cognitiveservices.azure.com/.default` for Azure OpenAI resource endpoints.
 
 ## Response cache
 

@@ -63,9 +63,9 @@ consent before `--confirm-cost`. No accuracy or pedagogical quality is guarantee
 ## 4. Advanced Office Reports (`advanced-report`)
 
 1. **Teacher Report (`teacher-report.docx`)**:
-   - Generates executive Word document with class overview, question breakdown, and individual student feedback.
+   - Generates a text-only executive Word document with class overview, question breakdown, and individual student feedback. Infographics are not embedded in this file.
 2. **Class Presentation (`class-presentation.pptx`)**:
-   - Generates PowerPoint presentation with native editable bar charts and slide-by-slide question breakdowns.
+   - Generates PowerPoint presentation with a native editable bar chart and slide-by-slide question breakdowns. Successful infographics replace the class/question text cards; the approved analysis text remains in speaker notes.
 
 `advanced-report --exam /private/exam.yaml` is offline by default and requires
 current analysis approval. Optional infographics require an Azure image deployment
@@ -75,3 +75,33 @@ in `models.analytics_image` (such as an alias for `gpt-image-2.5-flare`) or over
 not a chat deployment. Retries are disabled; cached PNGs may be reused and failed
 images use text-card fallback. Inspect `failed_infographics` in the report manifest,
 disclose failures and never retry without a fresh user decision.
+
+### Separate image resource and preserved report folders
+
+Use a private `image.config.yaml` to select a different resource for image
+generation. See the [complete YAML example and pricing requirements](model-configuration-and-caching.md#separate-image-configuration-for-infographics).
+The image configuration is selected explicitly; it is not inferred from its name
+or the exam configuration. It does not change the approved text-analysis config.
+
+Preview without inference, then repeat with `--confirm-cost` only after reviewing
+the target, transferred analysis text and image pricing and obtaining consent:
+
+```sh
+handwriting-grader advanced-report --exam /private/exam.yaml \
+  --infographics --image-model-config /private/image.config.yaml \
+  --report-name reports-infographics
+```
+
+The new outputs are under `output_dir/ai-analysis/reports-infographics/`:
+
+| File | Contents |
+|---|---|
+| `class-presentation.pptx` | Class infographic, score chart and one infographic per question; text cards replace failed images. |
+| `teacher-report.docx` | Reviewed class/question analysis and student feedback, text-only. |
+| `infographics/class.png`, `infographics/q_000.png`, ... | Successful generated images. |
+| `manifest.json` | `infographics_count`, `failed_infographics` and image-resource/configuration provenance. |
+
+Open the PPTX in the **new named folder**, not the earlier offline `reports/`
+folder or a failed attempt's folder. Existing reports are not updated or renamed.
+If the destination exists, choose a fresh `--report-name`; overwriting is refused.
+Images are single-attempt and require human accuracy review before sharing.
