@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+_MIN_PAGE_MATCH_SCORE = 0.1
+
 
 def _prepare_ink_map(image: Image.Image) -> np.ndarray:
     """Downsample 2x and extract thresholded ink intensity for registration."""
@@ -329,12 +331,20 @@ def check_scan_orientation_and_sequence(
                 best_other_idx = other
                 best_other_flipped = True
 
-        if s_180 > s_exp * 1.15 and s_180 >= best_other_score:
+        if (
+            s_180 >= _MIN_PAGE_MATCH_SCORE
+            and s_180 > s_exp * 1.15
+            and s_180 >= best_other_score
+        ):
             issues.append(
                 f"PDF page {pdf_page} (Script #{script_num}, page {expected + 1}): "
                 "appears upside-down (180° rotated). Fix orientation manually."
             )
-        elif best_other_idx is not None and best_other_score > s_exp * 1.15:
+        elif (
+            best_other_idx is not None
+            and best_other_score >= _MIN_PAGE_MATCH_SCORE
+            and best_other_score > s_exp * 1.15
+        ):
             flip_note = " and upside-down (180° rotated)" if best_other_flipped else ""
             issues.append(
                 f"PDF page {pdf_page} (Script #{script_num}, page {expected + 1}): "

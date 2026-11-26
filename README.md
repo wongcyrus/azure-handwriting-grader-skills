@@ -182,6 +182,11 @@ Relative paths resolve from that file's directory.
 
 ```sh
 .venv/bin/handwriting-grader preflight --exam exam.yaml
+# Preview paid marker discovery; repeat with --confirm-cost only after consent:
+.venv/bin/handwriting-grader suggest-scan-markers --exam exam.yaml \
+  --model-config config.yaml --endpoint https://RESOURCE.openai.azure.com --api-version v1
+# Review scan-markers/markers.json and images under output_dir, then:
+.venv/bin/handwriting-grader approve-scan-markers --exam exam.yaml --confirm-reviewed
 .venv/bin/handwriting-grader check-scans --exam exam.yaml
 .venv/bin/handwriting-grader import-rubric --exam exam.yaml
 # Review the rubric workbook before approving:
@@ -194,6 +199,34 @@ For configured attendance, review and approve attendance separately. In the
 region editor, draw or correct each box, save, review every page, and approve.
 Optional `suggest-regions` and DOCX `extract-rubric` use Azure OpenAI; preview
 their target and obtain consent before adding `--confirm-cost`.
+
+Scan order checking uses reviewed printed text markers, not whole-page ink
+similarity. `suggest-scan-markers` uses `models.annotation` through a Microsoft
+Agent Framework validation -> discovery -> human-review workflow. One Azure
+request sends the first student's complete script; pricing verification and
+telemetry use the same Azure Responses boundary as grading. The first script
+cannot validate its own order: the teacher must verify it and each proposed
+marker/box before approval. At least two distinct printed phrases are required
+per page, unique across the script. Edit proposals if necessary.
+
+`check-scans` and the pre-inference grading gate use local Tesseract OCR on
+those marker boxes. Text matching ignores case, punctuation and whitespace,
+but retains words and numbers. Wrong-page matches, rotated pages, unreadable
+markers and ambiguous matches block grading; never automatically reorder or
+rotate source scans. If the form has no unique readable printed phrases, this
+checker cannot safely validate it. Approval is bound to the exam, PDF, marker
+file and first-script review images. Changes require a new output directory;
+existing artifacts and approvals are not overwritten.
+
+Install Tesseract and the selected language data separately on each machine:
+Windows installer plus `tesseract` on PATH, Ubuntu/Debian
+`apt install tesseract-ocr tesseract-ocr-eng`, or macOS
+`brew install tesseract`. English (`eng`) is the default; select installed
+language packs with `suggest-scan-markers --ocr-language LANGUAGE`.
+No Python OCR package or Windows-specific executable path is required.
+The scan checker remains offline after marker approval. Installations on Linux
+and macOS should be validated locally; these platforms are not certified by
+a Windows-only test run.
 
 Preview grading first:
 

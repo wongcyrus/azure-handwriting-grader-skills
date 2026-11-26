@@ -10,6 +10,13 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    confirmation of scan order, page layout, output location and intended
    Azure endpoint/API version/deployments. When attendance is configured, review and approve the
    complete list separately; see `attendance.md`.
+   Before region setup, preview `suggest-scan-markers`, obtain cost/data consent,
+   and use Azure to propose printed markers from the first script through the
+   Microsoft Agent Framework workflow. Review the markers and that script's
+   order, then `approve-scan-markers --confirm-reviewed`. Install local
+   Tesseract/language data and run offline `check-scans`; unreadable, ambiguous,
+   rotated or wrong-page markers block grading. Source corrections require a
+   fresh output directory and marker review.
 3. **Rubric:** extract the scheme and have a teacher approve questions,
    answers and maximum marks.
 4. **Regions:** optionally request Azure suggestions after explicit cost

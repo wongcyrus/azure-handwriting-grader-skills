@@ -171,7 +171,17 @@ def main(argv=None):
     regions_approve = commands.add_parser("approve-regions", help="Validate and explicitly approve page-layout regions")
     regions_approve.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     regions_approve.add_argument("--confirm-reviewed", action="store_true", help="Confirm human region review")
-    check_scans_cmd = commands.add_parser("check-scans", help="Verify all scanned pages match expected orientation and page sequence (offline)")
+    marker_suggest = commands.add_parser("suggest-scan-markers", help="Propose printed page markers from the first script using Azure OpenAI")
+    marker_suggest.add_argument("--exam", required=True, type=Path)
+    marker_suggest.add_argument("--model-config", required=True, type=Path)
+    marker_suggest.add_argument("--endpoint", required=True)
+    marker_suggest.add_argument("--api-version", required=True)
+    marker_suggest.add_argument("--ocr-language", default="eng", help="Installed Tesseract language (default: eng)")
+    marker_suggest.add_argument("--confirm-cost", action="store_true")
+    marker_approve = commands.add_parser("approve-scan-markers", help="Approve reviewed printed markers and first-script order")
+    marker_approve.add_argument("--exam", required=True, type=Path)
+    marker_approve.add_argument("--confirm-reviewed", action="store_true")
+    check_scans_cmd = commands.add_parser("check-scans", help="Check reviewed printed markers with local Tesseract OCR (offline)")
     check_scans_cmd.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     suggest = commands.add_parser("suggest-regions", help="Request optional Azure OpenAI region proposals")
     suggest.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
@@ -989,6 +999,7 @@ def main(argv=None):
             run_dir = run_directory(config, path.parent, args.run)
             grading_dir = run_dir / "grading"
             telemetry_files = [
+                run_dir / "scan-markers" / "telemetry" / "azure_usage.jsonl",
                 run_dir / "rubric" / "telemetry" / "azure_usage.jsonl",
                 run_dir / "rubric" / "verification" / "telemetry" / "azure_usage.jsonl",
                 run_dir / "regions" / "telemetry" / "azure_usage.jsonl",
@@ -1027,7 +1038,9 @@ def main(argv=None):
             print("------------------------------------------------------------")
             print("By Model Breakdown:")
             for model, m_stat in summary.get("by_model", {}).items():
-                print(f"  - {model:20}: {m_stat['calls']} calls, {m_stat['total_tokens']:,} tokens, ${m_stat['cost_usd']:.4f}")
+                cost = m_stat["cost_usd"]
+                label = f"${cost:.4f}" if cost is not None else "UNPRICED"
+                print(f"  - {model:20}: {m_stat['calls']} calls, {m_stat['total_tokens']:,} tokens, {label}")
             print("============================================================")
             print(f"Detailed Excel and JSON reports written to: {cost_file.parent}")
         except Exception as exc:
@@ -1168,22 +1181,65 @@ def main(argv=None):
             return 1
         print("Regions approved; later changes invalidate the approval.")
         return 0
-    if args.command == "check-scans":
-        import tempfile
-        from .alignment import check_scan_orientation_and_sequence
-        from .pdf_renderer import render_pdf_to_images
-        from .regions import resolve_path
+    if args.command == "suggest-scan-markers":
+        from .scan_markers import inspect_marker_discovery, marker_root
+        from .workflow import run_marker_workflow
 
         try:
-            pdf = resolve_path(path.parent, config["exam"]["scanned_pdf"])
-            per_student = summary["pages_per_student"]
-            with tempfile.TemporaryDirectory(prefix=".check-scans-") as temp:
-                pages = render_pdf_to_images(
-                    pdf_path=pdf, output_dir=Path(temp), prefix="page",
-                    dpi=200, first_page=1, last_page=summary["pdf_pages"],
-                )
-                issues = check_scan_orientation_and_sequence(pages, None, per_student)
-        except (OSError, ValueError, yaml.YAMLError) as exc:
+            model = inspect_marker_discovery(config, path.parent, args.model_config, args.ocr_language)
+        except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError) as exc:
+            print(f"Cannot prepare scan markers: {exc}", file=sys.stderr)
+            return 1
+        print(
+            f"Azure OpenAI target: endpoint={args.endpoint}, api_version={args.api_version}, model={model}. "
+            f"One request sends {summary['pages_per_student']} images from the first student's script "
+            "for printed marker discovery and can incur charges; retries may cost more. "
+            "All subsequent scan OCR is local."
+        )
+        if not args.confirm_cost:
+            print("No request sent. Obtain user approval and rerun with --confirm-cost.", file=sys.stderr)
+            return 1
+        root = marker_root(config, path.parent)
+        tracker = TelemetryTracker(log_dir=root / "telemetry", config_path=args.model_config)
+        set_active_tracker(tracker)
+        try:
+            output = run_marker_workflow(
+                config, path.parent, args.model_config, args.endpoint, args.api_version, args.ocr_language,
+            )
+            tracker.write_cost_report(root)
+        except Exception as exc:
+            print(
+                f"Scan marker discovery failed ({type(exc).__name__}): {exc}. "
+                "Requests already sent may have incurred charges; preserve partial output.",
+                file=sys.stderr,
+            )
+            return 1
+        finally:
+            set_active_tracker(None)
+        print(f"Review {output / 'markers.json'} against {output / 'images'} and confirm first-script page order.")
+        print("Edit marker text/boxes if needed, then run approve-scan-markers --confirm-reviewed.")
+        return 0
+    if args.command == "approve-scan-markers":
+        from .scan_markers import approve_markers, load_markers
+
+        try:
+            root, _, _ = load_markers(config, path.parent, approved=False)
+            if not args.confirm_reviewed:
+                print(f"Review {root / 'markers.json'} and the first-script images. No approval recorded.",
+                      file=sys.stderr)
+                return 1
+            approve_markers(config, path.parent)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            print(f"Scan marker approval failed: {exc}", file=sys.stderr)
+            return 1
+        print("Printed markers and first-script order approved; changes invalidate approval.")
+        return 0
+    if args.command == "check-scans":
+        from .scan_markers import check_scans
+
+        try:
+            issues = check_scans(config, path.parent)
+        except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError) as exc:
             print(f"Scan check failed: {exc}", file=sys.stderr)
             return 1
         if issues:
@@ -1194,7 +1250,7 @@ def main(argv=None):
                   file=sys.stderr)
             return 1
         print(f"Scan check passed: all {summary['pdf_pages']} pages ({summary['students']} scripts) "
-              "match expected orientation and sequence.")
+              "match reviewed printed markers in the expected orientation and sequence.")
         return 0
     if args.command == "suggest-regions":
         from .regions import resolve_path, verify_run

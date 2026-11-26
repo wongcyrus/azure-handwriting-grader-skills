@@ -199,6 +199,32 @@ class TestPageAlignment(unittest.TestCase):
             self.assertIn("PDF page 1 (Script #1, page 1)", issues[0])
             self.assertIn("upside-down", issues[0])
 
+    def test_weak_page_similarity_does_not_trigger_sequence_warning(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            images = root / "regions" / "images"
+            images.mkdir(parents=True)
+            pages_dir = root / "pages"
+            pages_dir.mkdir()
+            page = _make_form_image()
+            for i in range(2):
+                page.save(images / f"{i}.jpg", format="JPEG", quality=95)
+                page.save(pages_dir / f"{i}.jpg", format="JPEG", quality=95)
+
+            # The alternative template scores slightly higher, but neither score
+            # is strong enough to distinguish page order reliably.
+            with patch(
+                "handwriting_grader.alignment._max_phase_score",
+                side_effect=[0.05, 0.01, 0.074, 0.02, 0.15, 0.01, 0.02, 0.01],
+            ):
+                issues = check_scan_orientation_and_sequence(
+                    [pages_dir / "0.jpg", pages_dir / "1.jpg"], root / "regions", 2
+                )
+
+        self.assertEqual(issues, [])
+
     def test_cli_help_includes_check_scans(self):
         from unittest.mock import patch
         with patch("sys.stdout"), patch("sys.stderr"):

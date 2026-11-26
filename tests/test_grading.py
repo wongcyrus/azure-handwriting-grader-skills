@@ -68,6 +68,39 @@ class FakeGrader:
         }
 
 
+def prepare_scan_marker_fixture(test, config, config_dir):
+    from handwriting_grader.scan_markers import marker_root, marker_snapshot
+
+    root = marker_root(config, config_dir)
+    (root / "images").mkdir(parents=True, exist_ok=True)
+    count = config["layout"]["pages_per_student"]
+    images = []
+    for index in range(count):
+        image = root / "images" / f"page-{index + 1:02d}.jpg"
+        shutil.copyfile(config_dir / config["exam"]["output_dir"] / "regions" / "images" / f"{index}.jpg", image)
+        images.append(image)
+    atomic_json(root / "manifest.json", {
+        **marker_snapshot(config, config_dir), "language": "eng",
+        "image_sha256": [file_hash(image) for image in images],
+    })
+    atomic_json(root / "markers.json", {"pages": [
+        {"page_number": index + 1, "markers": [
+            {"text": f"Page {index + 1} marker {number}", "x": 0, "y": number * 100,
+             "width": 500, "height": 50}
+            for number in (1, 2)
+        ]}
+        for index in range(count)
+    ]})
+    atomic_json(root / "approval.json", {
+        "manifest_sha256": file_hash(root / "manifest.json"),
+        "markers_sha256": file_hash(root / "markers.json"),
+    })
+    for name, value in (("require_tesseract", "tesseract"), ("check_marker_pages", [])):
+        mock = patch(f"handwriting_grader.scan_markers.{name}", return_value=value)
+        mock.start()
+        test.addCleanup(mock.stop)
+
+
 class GradingTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -129,10 +162,28 @@ class GradingTests(unittest.TestCase):
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"],
             "revision": 1,
         })
+        prepare_scan_marker_fixture(self, self.config, self.root)
 
     def run_grading(self, provider=FakeGrader):
         return grade_exam(self.config, self.root, self.exam, self.models, "https://test.openai.azure.com", "v1",
                           self.summary, provider_factory=provider)
+
+    def test_unreadable_scan_markers_block_before_paid_grading(self):
+        from unittest.mock import Mock
+        provider = Mock()
+        with patch("handwriting_grader.scan_markers.check_marker_pages",
+                   return_value=["PDF page 3: unreadable printed markers"]):
+            with self.assertRaisesRegex(ValueError, "PDF page 3"):
+                self.run_grading(provider)
+        provider.assert_not_called()
+        self.assertFalse((self.root / "output" / "grading").exists())
+
+    def test_changed_marker_review_invalidates_grading_run(self):
+        self.run_grading()
+        atomic_json(self.root / "output" / "scan-markers" / "approval.json", {})
+        from handwriting_grader.grade_review import verify_grading_run
+        with self.assertRaisesRegex(ValueError, "approval is no longer current"):
+            verify_grading_run(self.config, self.root, self.exam)
 
     def fill_review(self, path, *, flagged_override=1):
         book = load_workbook(path)
@@ -990,6 +1041,7 @@ class GradingTests(unittest.TestCase):
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"],
             "revision": draft["revision"],
         })
+        prepare_scan_marker_fixture(self, self.config, self.root)
         root = self.run_grading()
         self.fill_review(root / "review.xlsx", flagged_override=2)
         approve_grading(self.config, self.root, self.exam)

@@ -30,7 +30,7 @@ from handwriting_grader.regions import atomic_json, file_hash, prepare_regions, 
 from handwriting_grader.reporting import create_reports
 from handwriting_grader.rubric import approve_rubric, import_rubric, write_rubric
 from handwriting_grader.score_editor import ScoreServer, load_state
-from test_grading import FakeGrader
+from test_grading import FakeGrader, prepare_scan_marker_fixture
 
 
 class RegradingTests(unittest.TestCase):
@@ -83,6 +83,7 @@ class RegradingTests(unittest.TestCase):
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"], "revision": 1,
         })
         _, summary = check_exam(self.config, self.root)
+        prepare_scan_marker_fixture(self, self.config, self.root)
         self.parent = grade_exam(self.config, self.root, self.exam, self.models, "endpoint", "v1", summary,
                                  provider_factory=FakeGrader)
         self.review(self.parent / "review.xlsx")
@@ -233,6 +234,7 @@ class RegradingTests(unittest.TestCase):
             "revision": draft["revision"],
         })
         _, summary = check_exam(config, self.root)
+        prepare_scan_marker_fixture(self, config, self.root)
         parent = grade_exam(config, self.root, exam, models, "endpoint", "v1", summary,
                             provider_factory=FakeGrader)
         self.review(parent / "review.xlsx")

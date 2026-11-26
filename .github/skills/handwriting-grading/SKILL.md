@@ -86,6 +86,7 @@ execute a notebook as a workaround, or claim a human approval occurred.
    |---|---|---|
    | No `exam.yaml` / `config.yaml` | Not configured | `discover-models` (for `config.yaml`) -> configure `exam.yaml` -> `preflight` -> `check-scans` |
    | `exam.yaml` exists (no `rubric/` or `attendance/`) | Configured | `preflight` -> `check-scans` -> `prepare-attendance` (if configured) or `extract-rubric`/`import-rubric` |
+   | No `scan-markers/approval.json` | Printed scan markers not approved | Preview `suggest-scan-markers` with explicit cost/data consent before paid calls -> teacher reviews markers and first-script order -> `approve-scan-markers` -> offline `check-scans` before region setup or grading |
    | `attendance/review.xlsx` (no `attendance/approval.json`) | Attendance extracted | Teacher reviews `attendance/review.xlsx` -> `approve-attendance` |
    | `rubric/rubric.xlsx` (no `rubric/approval.json`) | Rubric extracted/imported | Teacher reviews `rubric/rubric.xlsx` -> `approve-rubric` |
    | `rubric/approval.json` (no `regions/images/`) | Rubric approved | `prepare-regions` -> optional paid `suggest-regions` -> `review-regions` |
@@ -120,12 +121,21 @@ execute a notebook as a workaround, or claim a human approval occurred.
 5. Fix reported errors with the user's input and rerun. A successful preflight
    does not verify scan order, leading zeroes, rubric contents, credentials,
    model access or approval.
-   **Run `check-scans` BEFORE region setup**:
+   **Prepare reviewed printed markers, then run `check-scans` BEFORE region setup**:
+   Preview `suggest-scan-markers --exam /path/to/exam.yaml --model-config /private/config.yaml
+   --endpoint https://RESOURCE.openai.azure.com --api-version v1`.
+   It proposes page-unique printed phrases from the first student's script through
+   a Microsoft Agent Framework workflow using `models.annotation`. Obtain separate
+   cost/data consent before `--confirm-cost`. The teacher must review the first
+   script's order and `output_dir/scan-markers/markers.json` against the saved images,
+   then explicitly run `approve-scan-markers --exam /path/to/exam.yaml --confirm-reviewed`.
+   Tesseract and the selected language pack must be installed locally.
    `handwriting-grader check-scans --exam /path/to/exam.yaml`
-   (offline, zero AI cost). It compares scripts by majority consensus so even if
-   Script 1 itself is upside-down or out of order, it catches Script 1 rather than
-   creating bad region bounding boxes for the whole exam. If any page is flagged
-   (upside-down `180°`, sideways `90°/270°`, blank, or out of sequence), **do not
+   (offline, zero AI cost). It OCRs reviewed printed marker boxes rather than
+   comparing handwriting across whole pages. Missing, unreadable or ambiguous
+   markers block grading, as do wrong-page and orientation matches. The first
+   script is a human-confirmed reference, not independent proof of correct order.
+   If any page is flagged, **do not
    silently flip or reorder pages in code** — report the exact PDF page numbers and
    script numbers to the user so they fix the physical scan or source PDF manually
    and re-run `check-scans`.

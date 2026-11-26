@@ -1425,10 +1425,8 @@ def grade_exam(config, config_dir, config_path, model_config_path, endpoint, api
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".grading-", dir=output) as temp:
         pages = render_scripts(config, config_dir, region_manifest, summary["pdf_pages"], Path(temp))
-        from .alignment import check_scan_orientation_and_sequence
-        scan_issues = check_scan_orientation_and_sequence(
-            pages, regions_root, len(region_manifest["pages"])
-        )
+        from .scan_markers import check_scanned_pages
+        scan_issues, markers_digest = check_scanned_pages(config, config_dir, pages)
         if scan_issues:
             preview = "\n".join(f"- {issue}" for issue in scan_issues[:10])
             more = f"\n... and {len(scan_issues) - 10} more issue(s)." if len(scan_issues) > 10 else ""
@@ -1460,6 +1458,7 @@ def grade_exam(config, config_dir, config_path, model_config_path, endpoint, api
             "roster_sha256": file_hash(resolve_path(config_dir, config["exam"]["roster"])),
             "rubric_sha256": file_hash(resolve_path(config_dir, config["exam"]["output_dir"]) / "rubric" / "rubric.xlsx"),
             "regions_approval_sha256": file_hash(regions_root / "approval.json"),
+            "scan_markers_approval_sha256": markers_digest,
             "annotations_sha256": file_hash(regions_root / "annotations.json"),
             "model_config_path": str(Path(model_config_path).resolve()), "model_config_sha256": model_hash,
             "endpoint": endpoint, "api_version": api_version, "models": models, "image_sha256": image_hashes,
@@ -1491,6 +1490,11 @@ def attendance_guard(config, config_dir, config_path, manifest):
     from .attendance import approved_attendance
 
     def check():
+        if "scan_markers_approval_sha256" in manifest:
+            from .scan_markers import load_markers
+            root, _, _ = load_markers(config, config_dir)
+            if file_hash(root / "approval.json") != manifest["scan_markers_approval_sha256"]:
+                raise ValueError("Scan marker approval changed during grading")
         if "attendance_approval_sha256" in manifest:
             attendance = approved_attendance(config, config_dir, config_path)
             if not attendance or attendance[1] != manifest["attendance_approval_sha256"]:

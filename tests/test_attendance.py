@@ -19,7 +19,7 @@ from handwriting_grader.regrading import regrade
 from handwriting_grader.reporting import create_reports
 from handwriting_grader.rubric import approve_rubric, import_rubric, write_rubric
 from handwriting_grader.score_editor import ScoreServer, load_state
-from test_grading import FakeGrader
+from test_grading import FakeGrader, prepare_scan_marker_fixture
 
 
 class AttendanceTests(unittest.TestCase):
@@ -81,6 +81,7 @@ class AttendanceTests(unittest.TestCase):
             "annotations_sha256": file_hash(regions / "annotations.json"),
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"], "revision": 1,
         })
+        prepare_scan_marker_fixture(self, self.config, self.root)
 
     def test_validation_and_review_versioning(self):
         errors, summary = check_exam(self.config, self.root)

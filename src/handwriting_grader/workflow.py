@@ -52,3 +52,45 @@ def run_grading_workflow(*args, **kwargs):
         return Path(outputs[0])
 
     return asyncio.run(run())
+
+
+def run_marker_workflow(config, config_dir, model_config_path, endpoint, api_version,
+                        language="eng"):
+    from .scan_markers import discover_markers, inspect_marker_discovery
+
+    class ValidateMarkerInputs(Executor):
+        @handler
+        async def process(self, request: str, ctx: WorkflowContext[str]) -> None:
+            inspect_marker_discovery(config, config_dir, model_config_path, language)
+            await ctx.send_message(request)
+
+    class DiscoverPrintedMarkers(Executor):
+        @handler
+        async def process(self, request: str, ctx: WorkflowContext[str]) -> None:
+            output = await asyncio.to_thread(
+                discover_markers, config, config_dir, model_config_path, endpoint,
+                api_version, language,
+            )
+            await ctx.send_message(str(output))
+
+    class RequireMarkerReview(Executor):
+        @handler
+        async def process(self, output: str, ctx: WorkflowContext[Never, str]) -> None:
+            await ctx.yield_output(output)
+
+    async def run():
+        validate = ValidateMarkerInputs(id="validate-marker-inputs")
+        discover = DiscoverPrintedMarkers(id="discover-printed-markers")
+        review = RequireMarkerReview(id="await-human-marker-review")
+        workflow = (
+            WorkflowBuilder(start_executor=validate, name="human-reviewed-scan-markers",
+                            max_iterations=4)
+            .add_edge(validate, discover).add_edge(discover, review).build()
+        )
+        events = await workflow.run("suggest-markers")
+        outputs = events.get_outputs()
+        if len(outputs) != 1:
+            raise ValueError("Marker workflow did not produce exactly one output")
+        return Path(outputs[0])
+
+    return asyncio.run(run())

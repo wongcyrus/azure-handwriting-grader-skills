@@ -51,6 +51,11 @@ def verify_grading_run(config, config_dir, config_path, *, require_completed=Tru
     root = run_directory(config, config_dir, run_id) / "grading"
     with (root / "manifest.json").open(encoding="utf-8") as file:
         manifest = json.load(file)
+    if "scan_markers_approval_sha256" in manifest:
+        from .scan_markers import load_markers
+        markers_root, _, _ = load_markers(config, config_dir)
+        if file_hash(markers_root / "approval.json") != manifest["scan_markers_approval_sha256"]:
+            raise ValueError("Scan marker approval changed; this grading run is no longer valid")
     if run_id is None:
         rubric = resolve_path(config_dir, config["exam"]["output_dir"]) / "rubric" / "rubric.xlsx"
         parent = None
