@@ -16,8 +16,9 @@ import yaml
 from handwriting_grader.cli import main
 from handwriting_grader.regions import atomic_json, file_hash
 from handwriting_grader.scan_markers import (
-    approve_markers, check_marker_pages, check_scanned_pages, discover_markers,
-    load_markers, marker_root, marker_snapshot, require_tesseract, validate_markers,
+    approve_markers, check_marker_pages, check_scanned_pages, confirm_scanned_pages,
+    discover_markers, load_markers, marker_root, marker_snapshot, matching_templates,
+    require_tesseract, validate_markers,
 )
 from handwriting_grader.workflow import run_marker_workflow
 
@@ -95,6 +96,15 @@ class ScanMarkerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "box"):
             validate_markers(data, 2)
 
+    def test_one_page_unique_multiword_marker_is_valid(self):
+        data = marker_data()
+        data["pages"][0]["markers"] = data["pages"][0]["markers"][:1]
+        data["pages"][1]["markers"] = data["pages"][1]["markers"][:1]
+        self.assertEqual(
+            [len(page.markers) for page in validate_markers(data, 2).pages],
+            [1, 1],
+        )
+
     def test_approval_is_explicit_and_changes_invalidate_it(self):
         root, images = self.prepare_review()
         with self.assertRaisesRegex(ValueError, "approve-scan-markers"):
@@ -102,7 +112,8 @@ class ScanMarkerTests(unittest.TestCase):
         with patch("handwriting_grader.scan_markers.require_tesseract", return_value="tesseract"), \
                 patch("handwriting_grader.scan_markers.check_marker_pages", return_value=[]):
             approve_markers(self.config, self.root)
-            self.assertEqual(check_scanned_pages(self.config, self.root, images)[0], [])
+            with self.assertRaisesRegex(ValueError, "Azure marker confirmation"):
+                check_scanned_pages(self.config, self.root, images)
             with self.assertRaisesRegex(ValueError, "already exists"):
                 approve_markers(self.config, self.root)
         data = marker_data()
@@ -122,7 +133,12 @@ class ScanMarkerTests(unittest.TestCase):
     def test_missing_markers_block_check_scans_with_no_model_call(self):
         with patch("handwriting_grader.scan_markers.AzureClient") as client, \
                 redirect_stderr(io.StringIO()):
-            self.assertEqual(main(["check-scans", "--exam", str(self.exam)]), 1)
+            self.assertEqual(main([
+                "check-scans", "--exam", str(self.exam),
+                "--model-config", str(self.models),
+                "--endpoint", "https://school.openai.azure.com",
+                "--api-version", "v1",
+            ]), 1)
         client.assert_not_called()
 
     def test_paid_preview_does_not_run_workflow_or_create_artifacts(self):
@@ -207,6 +223,58 @@ class ScanMarkerTests(unittest.TestCase):
             issues = check_marker_pages(images, markers, "tesseract", "eng")
         self.assertEqual(len(issues), 2)
         self.assertTrue(all("ambiguous" in issue for issue in issues))
+
+    def test_local_ocr_does_not_rewrite_character_confusions(self):
+        _, images = self.prepare_review()
+        data = marker_data()
+        data["pages"][0]["markers"][0]["text"] = "Q1 Page"
+        data["pages"][1]["markers"][0]["text"] = "Q2 Page"
+        markers = validate_markers(data, 2)
+        with patch(
+            "handwriting_grader.scan_markers.ocr_marker",
+            side_effect=["o1 page", "explain photosynthesis", "not present", "not present"],
+        ), Image.open(images[0]) as image:
+            matches = matching_templates(image, markers, "tesseract", "eng")
+        self.assertEqual(matches, [])
+
+    def test_azure_confirmation_sends_all_marker_crops_in_one_call(self):
+        root, images = self.prepare_review()
+        (root / "approval.json").write_text("{}", encoding="utf-8")
+        from handwriting_grader.scan_markers import MarkerConfirmationItem
+
+        manifest = root / "manifest.json"
+        approval = {
+            "markers_sha256": file_hash(root / "markers.json"),
+            "manifest_sha256": file_hash(manifest),
+        }
+        (root / "approval.json").write_text(json.dumps(approval), encoding="utf-8")
+        client = Mock()
+        crop_count = len(marker_data()["pages"][0]["markers"]) * len(images)
+        client.generate_content.return_value = SimpleNamespace(
+            parsed={
+                "items": [
+                    MarkerConfirmationItem(
+                        crop_index=index,
+                        matches_expected_text=True,
+                        transcription=f"marker {index}",
+                    ).model_dump()
+                    for index in range(crop_count)
+                ]
+            },
+            usage_metadata=None,
+        )
+        with patch("handwriting_grader.scan_markers.load_model_settings", return_value="gpt-5.4"), \
+                patch("handwriting_grader.scan_markers.AzureClient") as factory:
+            factory.return_value.__enter__.return_value = client
+            issues = confirm_scanned_pages(
+                self.config, self.root, images, self.models,
+                "https://school.openai.azure.com", "v1",
+            )
+        self.assertEqual(issues, [])
+        self.assertEqual(client.generate_content.call_count, 1)
+        contents = client.generate_content.call_args.kwargs["contents"]
+        from handwriting_grader.azure_ai import ImagePart
+        self.assertEqual(sum(isinstance(part, ImagePart) for part in contents), crop_count)
 
     @unittest.skipUnless(shutil.which("tesseract"), "Local Tesseract is not installed")
     def test_real_local_ocr_ignores_answers_and_flags_swaps_rotation_and_missing_text(self):

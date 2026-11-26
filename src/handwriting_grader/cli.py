@@ -181,8 +181,12 @@ def main(argv=None):
     marker_approve = commands.add_parser("approve-scan-markers", help="Approve reviewed printed markers and first-script order")
     marker_approve.add_argument("--exam", required=True, type=Path)
     marker_approve.add_argument("--confirm-reviewed", action="store_true")
-    check_scans_cmd = commands.add_parser("check-scans", help="Check reviewed printed markers with local Tesseract OCR (offline)")
+    check_scans_cmd = commands.add_parser("check-scans", help="Confirm all reviewed marker crops with Azure OpenAI")
     check_scans_cmd.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
+    check_scans_cmd.add_argument("--model-config", required=True, type=Path, help="Path to existing AI config.yaml")
+    check_scans_cmd.add_argument("--endpoint", required=True, help="Explicit Azure OpenAI endpoint")
+    check_scans_cmd.add_argument("--api-version", required=True, help="Explicit Azure OpenAI api_version")
+    check_scans_cmd.add_argument("--confirm-cost", action="store_true", help="Confirm sending all marker crops")
     suggest = commands.add_parser("suggest-regions", help="Request optional Azure OpenAI region proposals")
     suggest.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     suggest.add_argument("--model-config", required=True, type=Path, help="Path to existing AI config.yaml")
@@ -1235,13 +1239,47 @@ def main(argv=None):
         print("Printed markers and first-script order approved; changes invalidate approval.")
         return 0
     if args.command == "check-scans":
-        from .scan_markers import check_scans
+        from .regions import resolve_path
+        from .scan_markers import check_scans, scan_marker_request_count
+        from .suggestions import load_model_settings
 
         try:
-            issues = check_scans(config, path.parent)
+            if (not args.endpoint.strip() or not args.api_version.strip()
+                    or any(char.isspace() for char in args.endpoint)
+                    or any(char.isspace() for char in args.api_version)):
+                raise ValueError("Azure OpenAI endpoint and api_version must be provided")
+            model = load_model_settings(args.model_config, "ocr")
+            crop_count, request_count = scan_marker_request_count(config, path.parent)
         except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError) as exc:
-            print(f"Scan check failed: {exc}", file=sys.stderr)
+            print(f"Cannot prepare scan check: {exc}", file=sys.stderr)
             return 1
+        print(
+            f"Azure OpenAI target: endpoint={args.endpoint}, api_version={args.api_version}, "
+            f"model={model}. This sends all {crop_count} reviewed marker crops in "
+            f"{request_count} request(s) and can incur charges."
+        )
+        if not args.confirm_cost:
+            print("No request sent. Obtain user approval and rerun with --confirm-cost.",
+                  file=sys.stderr)
+            return 1
+        tracker = TelemetryTracker(log_dir=None, config_path=args.model_config)
+        set_active_tracker(tracker)
+        try:
+            issues = check_scans(
+                config, path.parent, args.model_config,
+                args.endpoint.strip(), args.api_version.strip(),
+            )
+            telemetry_root = (
+                resolve_path(path.parent, config["exam"]["output_dir"]) / "scan-markers"
+            )
+            tracker.flush_jsonl(telemetry_root / "telemetry")
+            tracker.write_cost_report(telemetry_root)
+        except Exception as exc:
+            print(f"Scan check failed ({type(exc).__name__}); requests may have incurred charges.",
+                  file=sys.stderr)
+            return 1
+        finally:
+            set_active_tracker(None)
         if issues:
             print(f"Scan orientation/sequence issues found ({len(issues)}):", file=sys.stderr)
             for issue in issues:
