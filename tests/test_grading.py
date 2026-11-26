@@ -95,6 +95,13 @@ def prepare_scan_marker_fixture(test, config, config_dir):
         "manifest_sha256": file_hash(root / "manifest.json"),
         "markers_sha256": file_hash(root / "markers.json"),
     })
+    atomic_json(root / "azure_confirmation-v2.json", {
+        "version": 2,
+        "pdf_sha256": file_hash(config_dir / config["exam"]["scanned_pdf"]),
+        "marker_approval_sha256": file_hash(root / "approval.json"),
+        "crop_count": len(PdfReader(config_dir / config["exam"]["scanned_pdf"]).pages) * 2,
+        "issues": [],
+    })
     for name, value in (("require_tesseract", "tesseract"), ("check_marker_pages", [])):
         mock = patch(f"handwriting_grader.scan_markers.{name}", return_value=value)
         mock.start()
@@ -171,10 +178,12 @@ class GradingTests(unittest.TestCase):
     def test_unreadable_scan_markers_block_before_paid_grading(self):
         from unittest.mock import Mock
         provider = Mock()
-        with patch("handwriting_grader.scan_markers.check_marker_pages",
-                   return_value=["PDF page 3: unreadable printed markers"]):
-            with self.assertRaisesRegex(ValueError, "PDF page 3"):
-                self.run_grading(provider)
+        confirmation = self.root / "output" / "scan-markers" / "azure_confirmation-v2.json"
+        data = json.loads(confirmation.read_text(encoding="utf-8"))
+        data["issues"] = ["PDF page 3: unreadable printed markers"]
+        atomic_json(confirmation, data)
+        with self.assertRaisesRegex(ValueError, "PDF page 3"):
+            self.run_grading(provider)
         provider.assert_not_called()
         self.assertFalse((self.root / "output" / "grading").exists())
 
@@ -790,6 +799,170 @@ class GradingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "manual mark"):
             validate_review(self.config, self.root, self.exam)
 
+    def test_batch_recovery_bisects_and_preserves_review(self):
+        from types import SimpleNamespace
+        from handwriting_grader.azure_ai import AzureIncompleteResponse
+        from handwriting_grader.batch_recovery import inspect_batch_recovery, recover_question_batches
+        from handwriting_grader.grading import QuestionBatchGradeResponse, StudentBatchGradeItem
+        from handwriting_grader.score_editor import load_state, save_review
+
+        root = self.run_grading()
+        results = json.loads((root / "results.json").read_text())
+        for row in results["marks"]:
+            row.update(answer="", reasoning="", raw_mark=None, moderated_mark=None,
+                       moderator_flag=True, grading_failed=True)
+        atomic_json(root / "results.json", results)
+        book = load_workbook(root / "review.xlsx")
+        for row in list(book["Marks"].iter_rows())[1:]:
+            row[3].value = ""
+            row[6].value = ""
+        book.save(root / "review.xlsx")
+        book.close()
+        info = inspect_batch_recovery(self.config, self.root, self.exam, "Q1")
+        self.assertEqual(info["max_requests"], 3)
+        calls = []
+
+        class FilterOne(FakeGrader):
+            def grade_question_batch(self, question, items):
+                indices = [item["script_index"] for item in items]
+                calls.append(indices)
+                if 0 in indices:
+                    raise AzureIncompleteResponse("incomplete", "content_filter", "request-id")
+                return QuestionBatchGradeResponse(grades=[
+                    StudentBatchGradeItem(script_index=indices[0], answer="Recovered answer", mark=1,
+                                          similarity_score=0.5, reasoning="Recovered reason")
+                ])
+
+        outcome = recover_question_batches(self.config, self.root, self.exam, "Q1", info["revision"], 3,
+                                            provider_factory=FilterOne)
+        self.assertEqual(calls, [[0, 1], [0], [1]])
+        self.assertEqual((outcome["recovered"], outcome["blocked"], outcome["pending"]), (1, 1, 0))
+        server = SimpleNamespace(config=self.config, config_dir=self.root, config_path=self.exam, run_id=None)
+        _, revision, _, _, _, marks = load_state(server)
+        self.assertTrue(marks[(0, "1")]["grading_failed"])
+        self.assertEqual(marks[(1, "1")]["answer"], "Recovered answer")
+        self.assertFalse(marks[(1, "1")]["reviewed"])
+        save_review(server, {"revision": revision, "kind": "mark", "script_index": 1,
+                             "question_index": 0, "answer": "", "reasoning": "",
+                             "manual_mark": "", "reviewed": False})
+        _, _, _, _, _, marks = load_state(server)
+        self.assertEqual(marks[(1, "1")]["answer"], "")
+
+    def test_batch_recovery_does_not_overwrite_concurrent_review(self):
+        from handwriting_grader.batch_recovery import inspect_batch_recovery, recover_question_batches
+        from handwriting_grader.grading import QuestionBatchGradeResponse, StudentBatchGradeItem
+
+        root = self.run_grading()
+        results = json.loads((root / "results.json").read_text())
+        for row in results["marks"]:
+            row.update(answer="", reasoning="", raw_mark=None, moderated_mark=None,
+                       moderator_flag=True, grading_failed=True)
+        atomic_json(root / "results.json", results)
+        book = load_workbook(root / "review.xlsx")
+        for row in list(book["Marks"].iter_rows())[1:]:
+            row[3].value = ""
+            row[6].value = ""
+        book.save(root / "review.xlsx")
+        book.close()
+        before = (root / "results.json").read_bytes()
+        info = inspect_batch_recovery(self.config, self.root, self.exam, "Q1")
+
+        class ConcurrentEdit(FakeGrader):
+            def grade_question_batch(self, question, items):
+                book = load_workbook(root / "review.xlsx")
+                book["Marks"]["K2"] = 0
+                book.save(root / "review.xlsx")
+                book.close()
+                return QuestionBatchGradeResponse(grades=[
+                    StudentBatchGradeItem(script_index=item["script_index"], answer="Recovered",
+                                          mark=1, similarity_score=0.5, reasoning="Reason")
+                    for item in items
+                ])
+
+        with self.assertRaisesRegex(ValueError, "Review or grading changed"):
+            recover_question_batches(self.config, self.root, self.exam, "Q1", info["revision"], 3,
+                                     provider_factory=ConcurrentEdit)
+        self.assertEqual((root / "results.json").read_bytes(), before)
+        book = load_workbook(root / "review.xlsx")
+        self.assertEqual(book["Marks"]["K2"].value, 0)
+        book.close()
+
+    def test_batch_recovery_finds_multiple_filtered_answers_and_obeys_limit(self):
+        from handwriting_grader.azure_ai import AzureIncompleteResponse
+        from handwriting_grader.batch_recovery import inspect_batch_recovery, recover_question_batches
+
+        root = self.run_grading()
+        results = json.loads((root / "results.json").read_text())
+        for row in results["marks"]:
+            row.update(answer="", reasoning="", raw_mark=None, moderated_mark=None,
+                       moderator_flag=True, grading_failed=True)
+        atomic_json(root / "results.json", results)
+        book = load_workbook(root / "review.xlsx")
+        for row in list(book["Marks"].iter_rows())[1:]:
+            row[3].value = ""
+            row[6].value = ""
+        book.save(root / "review.xlsx")
+        book.close()
+
+        class FilterAll(FakeGrader):
+            def grade_question_batch(self, question, items):
+                raise AzureIncompleteResponse("incomplete", "content_filter", "request-id")
+
+        info = inspect_batch_recovery(self.config, self.root, self.exam, "Q1")
+        limited = recover_question_batches(self.config, self.root, self.exam, "Q1", info["revision"], 2,
+                                           provider_factory=FilterAll)
+        self.assertEqual((limited["requests"], limited["blocked"], limited["pending"]), (2, 1, 1))
+        info = inspect_batch_recovery(self.config, self.root, self.exam, "Q1")
+        full = recover_question_batches(self.config, self.root, self.exam, "Q1", info["revision"], 3,
+                                        provider_factory=FilterAll)
+        self.assertEqual((full["requests"], full["blocked"], full["pending"]), (3, 2, 0))
+
+    def test_batch_recovery_keeps_successes_when_later_request_errors(self):
+        from handwriting_grader.azure_ai import AzureIncompleteResponse
+        from handwriting_grader.batch_recovery import inspect_batch_recovery, recover_question_batches
+        from handwriting_grader.grading import QuestionBatchGradeResponse, StudentBatchGradeItem
+
+        root = self.run_grading()
+        results = json.loads((root / "results.json").read_text())
+        for row in results["marks"]:
+            row.update(answer="", reasoning="", raw_mark=None, moderated_mark=None,
+                       moderator_flag=True, grading_failed=True)
+        atomic_json(root / "results.json", results)
+        book = load_workbook(root / "review.xlsx")
+        for row in list(book["Marks"].iter_rows())[1:]:
+            row[3].value = ""
+            row[6].value = ""
+        book.save(root / "review.xlsx")
+        book.close()
+        calls = []
+
+        class FailAfterSuccess(FakeGrader):
+            def grade_question_batch(self, question, items):
+                indices = [item["script_index"] for item in items]
+                calls.append(indices)
+                if len(indices) > 1:
+                    raise AzureIncompleteResponse("incomplete", "content_filter", "request-id")
+                if indices == [1]:
+                    raise ValueError("invalid response")
+                return QuestionBatchGradeResponse(grades=[
+                    StudentBatchGradeItem(script_index=0, answer="Recovered", mark=1,
+                                          similarity_score=0.5, reasoning="Reason")
+                ])
+
+        info = inspect_batch_recovery(self.config, self.root, self.exam, "Q1")
+        with self.assertRaisesRegex(ValueError, "changed after preview"):
+            recover_question_batches(self.config, self.root, self.exam, "Q1", "stale", 3,
+                                     provider_factory=FailAfterSuccess)
+        self.assertEqual(calls, [])
+        outcome = recover_question_batches(self.config, self.root, self.exam, "Q1", info["revision"], 3,
+                                            provider_factory=FailAfterSuccess)
+        self.assertEqual(calls, [[0, 1], [0], [1]])
+        self.assertEqual((outcome["recovered"], outcome["pending"]), (1, 1))
+        self.assertIn("invalid response", outcome["error"])
+        rows = json.loads((root / "results.json").read_text())["marks"]
+        self.assertEqual(rows[0]["answer"], "Recovered")
+        self.assertTrue(rows[1]["grading_failed"])
+
     def test_interrupted_grading_resumes_without_repeating_checkpointed_marks(self):
         class InterruptedGrader(FakeGrader):
             calls = 0
@@ -807,9 +980,29 @@ class GradingTests(unittest.TestCase):
         self.assertEqual(len(partial["scripts"]), 2)
         self.assertEqual(len(partial["marks"]), 1)
         self.assertFalse((root / "processing.lock").exists())
-        with patch("handwriting_grader.grading.resume_grading") as resume:
-            self.assertEqual(main(["resume-grading", "--exam", str(self.exam)]), 1)
+        preview = io.StringIO()
+        with patch("handwriting_grader.grading.resume_grading") as resume, redirect_stdout(preview):
+            self.assertEqual(main(["resume-grading", "--exam", str(self.exam),
+                                   "--continue-on-image-policy-block"]), 1)
             resume.assert_not_called()
+        self.assertIn("0 metadata request(s) and 1 question request(s)", preview.getvalue())
+        self.assertIn("flagged for manual review", preview.getvalue())
+
+        def fail_after_recording_usage(*args, **kwargs):
+            self.assertTrue(kwargs["continue_on_image_policy_block"])
+            from handwriting_grader.azure_ai import Usage
+            from handwriting_grader.telemetry import get_active_tracker
+            tracker = get_active_tracker()
+            self.assertIsNotNone(tracker)
+            tracker.record_call("ocr", "resume test", "test-model", Usage(10, 5, 15), 0.1)
+            raise RuntimeError("simulated failure")
+
+        with patch("handwriting_grader.grading.resume_grading", side_effect=fail_after_recording_usage):
+            self.assertEqual(main(["resume-grading", "--exam", str(self.exam), "--confirm-cost",
+                                   "--continue-on-image-policy-block"]), 1)
+        usage = root / "telemetry" / "azure_usage.jsonl"
+        self.assertEqual(len(usage.read_text(encoding="utf-8").splitlines()), 1)
+        self.assertEqual(json.loads((root / "cost_summary.json").read_text())["total_calls"], 1)
 
         class ResumingGrader(FakeGrader):
             calls = 0

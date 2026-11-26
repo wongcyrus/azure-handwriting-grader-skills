@@ -21,6 +21,7 @@ from handwriting_grader.scan_markers import (
     require_tesseract, validate_markers,
 )
 from handwriting_grader.workflow import run_marker_workflow
+from handwriting_grader.grading import grading_run_exists
 
 
 def marker_data():
@@ -91,6 +92,15 @@ class ScanMarkerTests(unittest.TestCase):
         data["pages"][1]["markers"][0]["text"] = "question ONE!"
         with self.assertRaisesRegex(ValueError, "unique"):
             validate_markers(data, 2)
+
+    def test_cost_only_grading_directory_is_not_treated_as_a_grading_run(self):
+        root = self.root / "grading"
+        root.mkdir()
+        (root / "cost_report.xlsx").write_bytes(b"report")
+        (root / "cost_summary.json").write_text("{}")
+        self.assertFalse(grading_run_exists(root))
+        (root / "manifest.json").write_text("{}")
+        self.assertTrue(grading_run_exists(root))
         data = marker_data()
         data["pages"][0]["markers"][0]["width"] = 1000
         with self.assertRaisesRegex(ValueError, "box"):
@@ -129,6 +139,25 @@ class ScanMarkerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "not reliably readable"):
                 approve_markers(self.config, self.root)
         self.assertFalse((root / "approval.json").exists())
+
+    def test_azure_generated_marker_approval_preserves_local_ocr_warning_and_old_review(self):
+        root, _ = self.prepare_review()
+        manifest = json.loads((root / "manifest.json").read_text())
+        manifest["model"] = "gpt-6.1-terra"
+        (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (root / "approval.json").write_text(json.dumps({
+            "markers_sha256": "stale",
+            "manifest_sha256": "stale",
+        }), encoding="utf-8")
+        with patch("handwriting_grader.scan_markers.require_tesseract", return_value="tesseract"), \
+                patch(
+                    "handwriting_grader.scan_markers.check_marker_pages",
+                    return_value=["OCR read q12e as qi2e"],
+                ):
+            approve_markers(self.config, self.root)
+        approval = json.loads((root / "approval.json").read_text())
+        self.assertEqual(approval["local_ocr_warnings"], ["OCR read q12e as qi2e"])
+        self.assertEqual(len(list((root / "approval-history").glob("approval-*.json"))), 1)
 
     def test_missing_markers_block_check_scans_with_no_model_call(self):
         with patch("handwriting_grader.scan_markers.AzureClient") as client, \
@@ -181,6 +210,25 @@ class ScanMarkerTests(unittest.TestCase):
         self.assertFalse((root / "approval.json").exists())
         with self.assertRaisesRegex(ValueError, "already exists"):
             discover_markers(self.config, self.root, self.models, "https://school.openai.azure.com", "v1")
+
+    def test_discovery_accepts_unique_printed_question_labels(self):
+        valid = marker_data()
+        valid["pages"][0]["markers"][0]["text"] = "q12e"
+        valid["pages"][1]["markers"][0]["text"] = "q39a"
+        client = Mock()
+        client.generate_content.return_value = SimpleNamespace(
+            parsed=valid, usage_metadata=None,
+        )
+        with patch("handwriting_grader.scan_markers.require_tesseract", return_value="tesseract"), \
+                patch("handwriting_grader.scan_markers.AzureClient") as factory:
+            factory.return_value.__enter__.return_value = client
+            discover_markers(
+                self.config, self.root, self.models,
+                "https://school.openai.azure.com", "v1",
+            )
+        root = marker_root(self.config, self.root)
+        self.assertTrue((root / "manifest.json").exists())
+        self.assertEqual(json.loads((root / "markers.json").read_text()), valid)
 
     def test_missing_language_or_failed_engine_is_explicit(self):
         with patch("handwriting_grader.scan_markers.shutil.which", return_value=None):
@@ -237,7 +285,7 @@ class ScanMarkerTests(unittest.TestCase):
             matches = matching_templates(image, markers, "tesseract", "eng")
         self.assertEqual(matches, [])
 
-    def test_azure_confirmation_sends_all_marker_crops_in_one_call(self):
+    def test_azure_confirmation_sends_one_composite_image_per_script(self):
         root, images = self.prepare_review()
         (root / "approval.json").write_text("{}", encoding="utf-8")
         from handwriting_grader.scan_markers import MarkerConfirmationItem
@@ -274,7 +322,81 @@ class ScanMarkerTests(unittest.TestCase):
         self.assertEqual(client.generate_content.call_count, 1)
         contents = client.generate_content.call_args.kwargs["contents"]
         from handwriting_grader.azure_ai import ImagePart
-        self.assertEqual(sum(isinstance(part, ImagePart) for part in contents), crop_count)
+        self.assertEqual(sum(isinstance(part, ImagePart) for part in contents), 1)
+        self.assertIn("crop_index=3", " ".join(str(part) for part in contents))
+
+    def test_large_scan_confirmation_uses_one_image_per_script_and_safe_batches(self):
+        root, images = self.prepare_review()
+        data = marker_data()
+        for page in data["pages"]:
+            page["markers"] = page["markers"][:1]
+        atomic_json(root / "markers.json", data)
+        manifest = root / "manifest.json"
+        (root / "approval.json").write_text(json.dumps({
+            "markers_sha256": file_hash(root / "markers.json"),
+            "manifest_sha256": file_hash(manifest),
+        }), encoding="utf-8")
+        from handwriting_grader.scan_markers import MarkerConfirmationItem
+        batches = [(0, 100), (100, 116)]
+        client = Mock()
+        client.generate_content.side_effect = [
+            SimpleNamespace(
+                parsed={
+                    "items": [
+                        MarkerConfirmationItem(
+                            crop_index=index, matches_expected_text=True,
+                            transcription=f"marker {index}",
+                        ).model_dump()
+                        for index in range(start, end)
+                    ],
+                },
+                usage_metadata=None,
+            )
+            for start, end in batches
+        ]
+        page_paths = [images[index % 2] for index in range(116)]
+        with patch("handwriting_grader.scan_markers.load_model_settings", return_value="gpt-6.1-terra"), \
+                patch("handwriting_grader.scan_markers.AzureClient") as factory:
+            factory.return_value.__enter__.return_value = client
+            issues = confirm_scanned_pages(
+                self.config, self.root, page_paths, self.models,
+                "https://school.openai.azure.com", "v1",
+            )
+        self.assertEqual(issues, [])
+        self.assertEqual(client.generate_content.call_count, 2)
+        for call, (_, end) in zip(client.generate_content.call_args_list, batches):
+            contents = call.kwargs["contents"]
+            from handwriting_grader.azure_ai import ImagePart
+            self.assertLessEqual(
+                sum(isinstance(part, ImagePart) for part in contents),
+                50,
+            )
+            last_index = end - 1
+            self.assertTrue(any(f"crop_index={last_index}" in str(part) for part in contents))
+
+    def test_check_scans_reports_provider_failure_detail_and_preserves_cost_report(self):
+        stderr = io.StringIO()
+        with patch(
+            "handwriting_grader.scan_markers.scan_marker_request_count",
+            return_value=(116, 58, 2),
+        ), patch(
+            "handwriting_grader.suggestions.load_model_settings",
+            return_value="gpt-6-luna",
+        ), patch(
+            "handwriting_grader.scan_markers.check_scans",
+            side_effect=RuntimeError("provider rejected 116 image parts"),
+        ), redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+            status = main([
+                "check-scans", "--exam", str(self.exam),
+                "--model-config", str(self.models),
+                "--endpoint", "https://school.openai.azure.com",
+                "--api-version", "v1", "--confirm-cost",
+            ])
+        self.assertEqual(status, 1)
+        self.assertIn("provider rejected 116 image parts", stderr.getvalue())
+        self.assertTrue(
+            (marker_root(self.config, self.root) / "cost_summary.json").exists()
+        )
 
     @unittest.skipUnless(shutil.which("tesseract"), "Local Tesseract is not installed")
     def test_real_local_ocr_ignores_answers_and_flags_swaps_rotation_and_missing_text(self):

@@ -10,6 +10,15 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel
 
 
+class AzureIncompleteResponse(ValueError):
+    def __init__(self, status, reason, request_id):
+        self.status = status
+        self.reason = reason
+        self.request_id = request_id
+        super().__init__(f"Azure response status={status}, reason={reason or 'unknown'}, "
+                         f"request_id={request_id or 'unavailable'}")
+
+
 def validate_endpoint(endpoint):
     if not isinstance(endpoint, str):
         raise ValueError("An explicit Azure OpenAI HTTPS endpoint is required")
@@ -213,7 +222,10 @@ class AzureClient:
             request["tools"] = [{"type": "web_search"}]
         result = self.client.responses.create(**request)
         if getattr(result, "status", "completed") != "completed":
-            raise ValueError("Azure response is incomplete or failed; no result accepted")
+            details = getattr(result, "incomplete_details", None)
+            raise AzureIncompleteResponse(getattr(result, "status", None),
+                                          getattr(details, "reason", None),
+                                          getattr(result, "_request_id", None))
         text = getattr(result, "output_text", None)
         sources = []
         for item in getattr(result, "output", []) or []:

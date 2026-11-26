@@ -305,7 +305,7 @@ class TelemetryTracker:
         if extra_note:
             parts.append(extra_note)
 
-        line = " ── ".join(parts)
+        line = " -- ".join(parts)
         print(line, flush=True)
         return line
 

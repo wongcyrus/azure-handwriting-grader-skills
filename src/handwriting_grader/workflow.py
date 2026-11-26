@@ -1,6 +1,7 @@
 """Microsoft Agent Framework execution around the persistent grading pipeline."""
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Never
 
@@ -11,7 +12,8 @@ from .grading import approved_inputs, grade_exam
 
 def build_grading_workflow(config, config_dir, config_path, model_config_path,
                            endpoint, api_version, summary, *, mode="batch",
-                           batch_concurrency=3, grade_function=grade_exam):
+                           batch_concurrency=3, grade_function=grade_exam,
+                           continue_on_image_policy_block=False):
     class ValidateApproval(Executor):
         @handler
         async def process(self, request: str, ctx: WorkflowContext[str]) -> None:
@@ -25,6 +27,7 @@ def build_grading_workflow(config, config_dir, config_path, model_config_path,
                 grade_function, config, config_dir, config_path, model_config_path,
                 endpoint, api_version, summary,
                 mode=mode, batch_concurrency=batch_concurrency,
+                continue_on_image_policy_block=continue_on_image_policy_block,
             )
             await ctx.send_message(str(output))
 
@@ -50,6 +53,47 @@ def run_grading_workflow(*args, **kwargs):
         if len(outputs) != 1:
             raise ValueError("Grading workflow did not produce exactly one output")
         return Path(outputs[0])
+
+    return asyncio.run(run())
+
+
+def run_batch_recovery_workflow(config, config_dir, config_path, question, revision, max_requests):
+    from .batch_recovery import inspect_batch_recovery, recover_question_batches
+
+    class ValidateRecovery(Executor):
+        @handler
+        async def process(self, request: str, ctx: WorkflowContext[str]) -> None:
+            info = inspect_batch_recovery(config, config_dir, config_path, question)
+            if info["revision"] != revision:
+                raise ValueError("Grading or review changed after preview")
+            await ctx.send_message(request)
+
+    class ExecuteRecovery(Executor):
+        @handler
+        async def process(self, request: str, ctx: WorkflowContext[str]) -> None:
+            result = await asyncio.to_thread(
+                recover_question_batches, config, config_dir, config_path, question, revision, max_requests,
+            )
+            result["history"] = str(result["history"])
+            await ctx.send_message(json.dumps(result))
+
+    class RequireHumanReview(Executor):
+        @handler
+        async def process(self, output: str, ctx: WorkflowContext[Never, str]) -> None:
+            await ctx.yield_output(output)
+
+    async def run():
+        validate = ValidateRecovery(id="validate-recovery")
+        execute = ExecuteRecovery(id="recover-filtered-batches")
+        review = RequireHumanReview(id="await-human-score-review")
+        workflow = (WorkflowBuilder(start_executor=validate, name="human-reviewed-batch-recovery",
+                                    max_iterations=4)
+                    .add_edge(validate, execute).add_edge(execute, review).build())
+        events = await workflow.run("recover")
+        outputs = events.get_outputs()
+        if len(outputs) != 1:
+            raise ValueError("Batch recovery workflow did not produce exactly one output")
+        return json.loads(outputs[0])
 
     return asyncio.run(run())
 

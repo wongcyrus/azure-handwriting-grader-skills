@@ -1,6 +1,8 @@
 import json
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 from handwriting_grader.azure_ai import Usage, normalize_usage
@@ -8,6 +10,13 @@ from handwriting_grader.telemetry import TelemetryTracker, get_thinking_config
 
 
 class TestAzureTelemetry(unittest.TestCase):
+    def test_progress_supports_windows_legacy_encoding(self):
+        stream = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+        with redirect_stdout(stream):
+            TelemetryTracker().show_progress("metadata_ocr", 1, 2, "Script #1")
+        stream.flush()
+        self.assertIn(b"Script #1", stream.buffer.getvalue())
+
     def test_verified_rates_account_for_cached_tokens(self):
         tracker = TelemetryTracker()
         tracker.rates_table = {"school-grader": {"input": 2, "output": 8, "cached": 0.5}}

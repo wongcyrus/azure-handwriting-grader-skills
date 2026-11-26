@@ -5,6 +5,7 @@ import json
 import math
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,6 +26,9 @@ from .regions import (
 from .rubric import question_key, read_approved_rubric
 from .suggestions import load_model_settings
 from .telemetry import get_active_tracker, get_thinking_config
+
+
+MAX_IMAGES_PER_REQUEST = 50
 
 
 class GradeResponse(BaseModel):
@@ -218,6 +222,11 @@ class AzureGrader:
         return response.text.strip()
 
     def ocr_metadata_batch(self, items, fields=("ID", "CLASS", "NAME"), roster_list=None):
+        image_count = sum(
+            bool(item.get("crops", {}).get(field)) for item in items for field in fields
+        )
+        if image_count > MAX_IMAGES_PER_REQUEST:
+            raise ValueError(f"Metadata request exceeds {MAX_IMAGES_PER_REQUEST} images")
         fields_str = ", ".join(fields)
         prompt = (
             f"Extract the student metadata ({fields_str}) from the attached images.\n"
@@ -380,6 +389,7 @@ class AzureGrader:
     def grade_question_batch(self, question, script_items, chunk_size=50):
         if type(chunk_size) is not int or chunk_size <= 0:
             raise ValueError("Chunk size must be a positive integer")
+        chunk_size = min(chunk_size, MAX_IMAGES_PER_REQUEST)
         all_grades = []
         model_name = self.models.get("one_pass_grading", self.models.get("batch_grading", self.models.get("moderation", self.models["grading"])))
         tracker = get_active_tracker()
@@ -574,55 +584,67 @@ def batch_extract_metadata(provider, script_indices, fields, boxes, stride, imag
     """Extract metadata fields for script indices using batch multimodal OCR when available.
 
     Returns a dict mapping script_index -> {'id_ocr': ..., 'class_ocr': ..., 'name_ocr': ..., 'errors': [...]}.
-    Falls back gracefully to individual provider.ocr calls if batch extraction is unsupported or fails.
+    Uses individual OCR only when the provider does not support batch extraction.
     """
+    from .cache import CachedGrader
+
     results_by_si = {}
     active_fields = [f for f in fields if f in boxes]
     if not active_fields or not script_indices:
         return results_by_si
 
-    use_batch = hasattr(provider, "ocr_metadata_batch")
+    if type(chunk_size) is not int or chunk_size <= 0:
+        raise ValueError("Chunk size must be a positive integer")
+    if len(active_fields) > MAX_IMAGES_PER_REQUEST:
+        raise ValueError("Too many metadata fields for one request")
+    chunk_size = min(chunk_size, MAX_IMAGES_PER_REQUEST // len(active_fields))
+    underlying = provider.provider if isinstance(provider, CachedGrader) else provider
+    use_batch = hasattr(underlying, "ocr_metadata_batch")
     if use_batch:
-        try:
-            total_scripts = len(script_indices)
-            done_scripts = 0
-            for i in range(0, total_scripts, chunk_size):
-                chunk = script_indices[i : i + chunk_size]
-                chunk_items = []
-                for si in chunk:
-                    if guard:
-                        guard()
-                    crops = {}
-                    for field in active_fields:
-                        page, box = boxes[field]
-                        crops[field] = crop_image(image_dir / f"{si * stride + page}.jpg", box)
-                    chunk_items.append({"script_index": si, "crops": crops})
+        total_scripts = len(script_indices)
+        done_scripts = 0
+        for i in range(0, total_scripts, chunk_size):
+            chunk = script_indices[i : i + chunk_size]
+            chunk_items = []
+            for si in chunk:
+                if guard:
+                    guard()
+                crops = {}
+                for field in active_fields:
+                    page, box = boxes[field]
+                    crops[field] = crop_image(image_dir / f"{si * stride + page}.jpg", box)
+                chunk_items.append({"script_index": si, "crops": crops})
 
+            try:
                 resp = provider.ocr_metadata_batch(chunk_items, fields=active_fields, roster_list=roster_list)
-                for item in resp.students:
-                    res = {"errors": []}
-                    if "ID" in active_fields:
-                        res["id_ocr"] = item.id_ocr
-                    if "CLASS" in active_fields:
-                        res["class_ocr"] = item.class_ocr
-                    if "NAME" in active_fields:
-                        res["name_ocr"] = item.name_ocr
-                    results_by_si[item.script_index] = res
-                done_scripts += len(chunk)
-                if tracker:
-                    tracker.show_progress(
-                        phase="metadata_ocr",
-                        current=done_scripts,
-                        total=total_scripts,
-                        item_label=f"Scripts #{chunk[0] + 1}-{chunk[-1] + 1} metadata batch",
-                    )
-                else:
-                    print(f"[Metadata Batch {done_scripts}/{total_scripts}] Extracted scripts #{chunk[0] + 1}-{chunk[-1] + 1}", flush=True)
-            return results_by_si
-        except Exception as exc:
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Metadata batch for scripts #{chunk[0] + 1}-{chunk[-1] + 1} failed "
+                    f"({type(exc).__name__}): {exc}"
+                ) from exc
+            actual = [item.script_index for item in resp.students]
+            if len(actual) != len(chunk) or set(actual) != set(chunk):
+                raise ValueError("Metadata response must cover every requested script exactly once")
+            for item in resp.students:
+                res = {"errors": []}
+                if "ID" in active_fields:
+                    res["id_ocr"] = item.id_ocr
+                if "CLASS" in active_fields:
+                    res["class_ocr"] = item.class_ocr
+                if "NAME" in active_fields:
+                    res["name_ocr"] = item.name_ocr
+                results_by_si[item.script_index] = res
+            done_scripts += len(chunk)
             if tracker:
-                tracker.record_error("batch_metadata_ocr", str(exc))
-            results_by_si.clear()
+                tracker.show_progress(
+                    phase="metadata_ocr",
+                    current=done_scripts,
+                    total=total_scripts,
+                    item_label=f"Scripts #{chunk[0] + 1}-{chunk[-1] + 1} metadata batch",
+                )
+            else:
+                print(f"[Metadata Batch {done_scripts}/{total_scripts}] Extracted scripts #{chunk[0] + 1}-{chunk[-1] + 1}", flush=True)
+        return results_by_si
 
     # Fallback: sequential single-field OCR
     total_ocr = len(script_indices) * len(active_fields)
@@ -658,7 +680,7 @@ def batch_extract_metadata(provider, script_indices, fields, boxes, stride, imag
 def continue_grading(target, results, questions, boxes, summary, stride, models, endpoint, api_version, provider_factory,
                      cache_agents, cache_root, metadata_fields, attendance_guard, effective_crops=None,
                      mode="batch", batch_concurrency=3, metadata_candidates=None, metadata_roster=None,
-                     pricing_config=None):
+                     pricing_config=None, continue_on_image_policy_block=False):
     from .cache import CachedGrader
     expected_questions = {question_key(q["question_number"]) for q in questions}
     scripts = {row["script_index"]: row for row in results["scripts"]}
@@ -713,8 +735,11 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
         if mode == "batch" and hasattr(underlying, "grade_question_batch"):
             import threading
             results_lock = threading.Lock()
+            stop_batches = threading.Event()
 
             def process_batch_question(q_index, question):
+                if stop_batches.is_set():
+                    return
                 key = question_key(question["question_number"])
                 page, _ = boxes[key]
                 attendance_guard()
@@ -746,8 +771,11 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
                             "page_image": f"images/{image_index}.jpg",
                         })
 
+                batch_error = None
                 if non_blank_items:
                     attendance_guard()
+                    if stop_batches.is_set():
+                        return
                     try:
                         batch_resp = provider.grade_question_batch(question, non_blank_items)
                         if hasattr(batch_resp, "grades"):
@@ -794,6 +822,17 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
                                     "grading_failed": True,
                                 }
                     except Exception as exc:
+                        bad_request = getattr(sys.modules.get("openai"), "BadRequestError", None)
+                        image_policy_block = (
+                            isinstance(bad_request, type) and isinstance(exc, bad_request)
+                            and exc.status_code == 400
+                            and "Image processing blocked due to content policy violation" in str(exc)
+                        )
+                        continue_after_block = continue_on_image_policy_block and image_policy_block
+                        if not continue_after_block:
+                            stop_batches.set()
+                        detail = " ".join(str(exc).split())[:2000] or "No provider error detail available"
+                        batch_error = f"Question {question['question_number']} batch failed ({type(exc).__name__}): {detail}"
                         for item in non_blank_items:
                             si = item["script_index"]
                             rows_by_script[si] = {
@@ -802,7 +841,10 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
                                 "raw_mark": None, "moderated_mark": None,
                                 "similarity_score": None, "reasoning": "",
                                 "moderator_flag": True,
-                                "moderator_note": f"batch_grading_error:{type(exc).__name__}",
+                                "moderator_note": ("image_policy_block" if image_policy_block
+                                                   else f"batch_grading_error:{type(exc).__name__}"),
+                                "grading_error_detail": detail,
+                                "image_policy_block": image_policy_block,
                                 "grading_failed": True,
                             }
 
@@ -814,6 +856,11 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
                             results["marks"].append(row)
                     moderated.append(key)
                     atomic_json(target / "results.json", results)
+                    if batch_error:
+                        if not continue_after_block:
+                            raise RuntimeError(batch_error)
+                        print(f"{batch_error}; affected answers require manual review.", flush=True)
+                        return
                     if tracker:
                         tracker.show_progress(
                             phase="batch_question_done",
@@ -830,8 +877,15 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
             ]
             workers = min(batch_concurrency, max(1, len(unmoderated_questions))) if unmoderated_questions else 1
             if unmoderated_questions:
+                def process_or_stop(q_index, question):
+                    try:
+                        process_batch_question(q_index, question)
+                    except BaseException:
+                        stop_batches.set()
+                        raise
+
                 with ThreadPoolExecutor(max_workers=workers) as executor:
-                    futures = [executor.submit(process_batch_question, idx, q) for idx, q in unmoderated_questions]
+                    futures = [executor.submit(process_or_stop, idx, q) for idx, q in unmoderated_questions]
                     for f in as_completed(futures):
                         f.result()
         else:
@@ -990,7 +1044,8 @@ def finish_grading(config, config_dir, config_path, target, manifest, results):
         tracker.write_cost_report(target)
 
 
-def resume_grading(config, config_dir, config_path, summary, provider_factory=AzureGrader, mode=None, batch_concurrency=3):
+def resume_grading(config, config_dir, config_path, summary, provider_factory=AzureGrader, mode=None, batch_concurrency=3,
+                   continue_on_image_policy_block=False):
     from .attendance import present_roster
     from .grade_review import verify_grading_run
 
@@ -1006,6 +1061,8 @@ def resume_grading(config, config_dir, config_path, summary, provider_factory=Az
         _, _, _, boxes = approved_inputs(config, config_dir, config_path)
         if not results.get("completed"):
             grading_mode = mode if mode is not None else manifest.get("grading_mode", "batch")
+            if continue_on_image_policy_block and grading_mode != "batch":
+                raise ValueError("Continuing after an image policy block requires batch mode")
             metadata_candidates = load_metadata_candidates(config, config_dir, config_path)
             metadata_roster = load_metadata_roster(config, config_dir, config_path)
             continue_grading(target, results, questions, boxes, summary, config["layout"]["pages_per_student"],
@@ -1015,8 +1072,197 @@ def resume_grading(config, config_dir, config_path, summary, provider_factory=Az
                              attendance_guard(config, config_dir, config_path, manifest),
                              mode=grading_mode, batch_concurrency=batch_concurrency,
                              metadata_candidates=metadata_candidates, metadata_roster=metadata_roster,
-                             pricing_config=manifest["model_config_path"])
+                             pricing_config=manifest["model_config_path"],
+                             continue_on_image_policy_block=continue_on_image_policy_block)
         finish_grading(config, config_dir, config_path, target, manifest, results)
+    return target
+
+
+def inspect_failed_question_batches(config, config_dir, config_path, summary, *, exclude_questions=(), locked=False):
+    from .grade_review import verify_grading_run
+
+    target, manifest, results, questions = verify_grading_run(
+        config, config_dir, config_path, require_completed=False,
+    )
+    if not locked and (target / "processing.lock").exists():
+        raise ValueError("Another grading process or a stale lock exists")
+    if (target / "review.xlsx").exists() or (target / "approval.json").exists():
+        raise ValueError("A review or approval already exists; do not overwrite it")
+    if results.get("completed") is not False or results.get("checkpoint_version") != 1:
+        raise ValueError("Question-batch retry requires an incomplete resumable checkpoint")
+    if manifest.get("grading_mode") != "batch":
+        raise ValueError("Question-batch retry requires a batch grading run")
+    indices = set(range(summary["students"]))
+    scripts = [row["script_index"] for row in results["scripts"]]
+    question_keys = {question_key(q["question_number"]) for q in questions}
+    pairs = [(row["script_index"], question_key(row["question"])) for row in results["marks"]]
+    moderated = results.get("moderated_questions")
+    pair_set = set(pairs)
+    if (len(scripts) != len(indices) or any(type(si) is not int for si in scripts) or set(scripts) != indices
+            or any(type(si) is not int or si not in indices or key not in question_keys for si, key in pairs)
+            or len(pair_set) != len(pairs) or not isinstance(moderated, list)
+            or len(set(moderated)) != len(moderated) or not set(moderated).issubset(question_keys)
+            or any((si, key) not in pair_set for key in moderated for si in indices)):
+        raise ValueError("Grading checkpoint is invalid")
+    failed = [row for row in results["marks"] if row.get("grading_failed") or row.get("raw_mark") is None]
+    failed_keys = {question_key(row["question"]) for row in failed}
+    if not failed_keys.issubset(set(moderated)):
+        raise ValueError("Failed questions must be complete in the checkpoint")
+    excluded = {question_key(question) for question in exclude_questions}
+    if not excluded.issubset(failed_keys):
+        raise ValueError("Excluded questions must have failed answers")
+    failed = [row for row in failed if question_key(row["question"]) not in excluded]
+    failed_keys -= excluded
+    return {
+        "target": target, "manifest": manifest, "results": results, "questions": questions,
+        "failed": failed, "failed_keys": failed_keys,
+        "requests": sum(math.ceil(sum(question_key(row["question"]) == key for row in failed)
+                                  / MAX_IMAGES_PER_REQUEST) for key in failed_keys),
+        "checkpoint_hash": file_hash(target / "results.json"),
+    }
+
+
+def export_failed_review(config, config_dir, config_path, summary, output):
+    from .grade_review import verify_grading_run
+
+    target = resolve_path(config_dir, config["exam"]["output_dir"]) / "grading"
+    output = Path(output).expanduser().resolve()
+    with grading_lock(target):
+        info = inspect_failed_question_batches(config, config_dir, config_path, summary, locked=True)
+        if not info["failed"]:
+            raise ValueError("There are no failed answers to export")
+        questions, _, _, boxes = approved_inputs(config, config_dir, config_path)
+        questions_by_key = {question_key(q["question_number"]): q for q in questions}
+        output.mkdir()
+        crops = output / "crops"
+        crops.mkdir()
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Failed answers"
+        sheet.append(["question", "script_index", "script_number", "crop", "question_text",
+                      "marking_scheme", "maximum_mark", "manual_mark", "reviewed", "notes"])
+        try:
+            question_order = {question_key(q["question_number"]): i for i, q in enumerate(questions)}
+            failed = sorted(info["failed"], key=lambda row: (
+                question_order[question_key(row["question"])], row["script_index"],
+            ))
+            for number, row in enumerate(failed, 1):
+                key = question_key(row["question"])
+                question = questions_by_key[key]
+                page, box = boxes[key]
+                image_name = f"images/{row['script_index'] * config['layout']['pages_per_student'] + page}.jpg"
+                if row.get("page_image") != image_name:
+                    raise ValueError(f"Question {key} has an invalid image path")
+                crop_name = f"crop-{number:04}.png"
+                with (crops / crop_name).open("xb") as file:
+                    file.write(crop_image(target / image_name, box))
+                safe_append(sheet, [
+                    row["question"], row["script_index"], row["script_index"] + 1,
+                    f"crops\\{crop_name}", question["question_text"], question["marking_scheme"],
+                    question["marks"], "", "", "",
+                ])
+                sheet.cell(sheet.max_row, 4).hyperlink = f"crops\\{crop_name}"
+                sheet.cell(sheet.max_row, 4).style = "Hyperlink"
+            sheet.freeze_panes = "A2"
+            sheet.auto_filter.ref = sheet.dimensions
+            for column, width in {"A": 14, "B": 14, "C": 16, "D": 24, "E": 55,
+                                  "F": 55, "G": 16, "H": 16, "I": 14, "J": 40}.items():
+                sheet.column_dimensions[column].width = width
+            with (output / "review.xlsx").open("xb") as file:
+                workbook.save(file)
+        finally:
+            workbook.close()
+        verify_grading_run(config, config_dir, config_path, require_completed=False)
+        if file_hash(target / "results.json") != info["checkpoint_hash"]:
+            raise ValueError("Grading checkpoint changed during export; do not use the incomplete export")
+        atomic_json(output / "manifest.json", {
+            "version": 1, "checkpoint_sha256": info["checkpoint_hash"],
+            "annotations_sha256": info["manifest"]["annotations_sha256"],
+            "rubric_sha256": info["manifest"]["rubric_sha256"],
+            "failed_answers": len(info["failed"]),
+            "notice": "Offline worksheet only; manual marks are not imported into the grading run.",
+        })
+    return output
+
+
+def retry_failed_question_batches(config, config_dir, config_path, summary, checkpoint_hash,
+                                  provider_factory=AzureGrader, *, exclude_questions=()):
+    from .cache import CachedGrader
+    from .grade_review import verify_grading_run
+
+    target = resolve_path(config_dir, config["exam"]["output_dir"]) / "grading"
+    with grading_lock(target):
+        info = inspect_failed_question_batches(
+            config, config_dir, config_path, summary, exclude_questions=exclude_questions, locked=True,
+        )
+        if info["checkpoint_hash"] != checkpoint_hash:
+            raise ValueError("Grading checkpoint changed after retry preview")
+        if not info["failed"]:
+            return target
+        manifest, results = info["manifest"], info["results"]
+        _, _, _, boxes = approved_inputs(config, config_dir, config_path)
+        guard = attendance_guard(config, config_dir, config_path, manifest)
+        history = target / "retry-history"
+        history.mkdir(exist_ok=True)
+        backup = Path(tempfile.mkdtemp(prefix="question-batch-", dir=history))
+        shutil.copy2(target / "results.json", backup / "results.json")
+        price_options = {}
+        if provider_factory is AzureGrader:
+            from .pricing import pricing_client_options
+            price_options = pricing_client_options(manifest["model_config_path"], target / "telemetry")
+        with provider_factory(manifest["models"], manifest["endpoint"], manifest["api_version"],
+                              **price_options) as underlying:
+            provider = CachedGrader(
+                underlying, Path(manifest.get("cache_root", target / "cache")),
+                manifest.get("cache_agents", []), manifest["models"], manifest["endpoint"],
+                manifest["api_version"],
+            )
+            for question in info["questions"]:
+                key = question_key(question["question_number"])
+                rows = [row for row in info["failed"] if question_key(row["question"]) == key]
+                if not rows:
+                    continue
+                page, box = boxes[key]
+                stride = config["layout"]["pages_per_student"]
+                items = []
+                for row in rows:
+                    image_name = f"images/{row['script_index'] * stride + page}.jpg"
+                    if row.get("page_image") != image_name:
+                        raise ValueError(f"Question {key} has an invalid image path")
+                    items.append({"script_index": row["script_index"],
+                                  "image": crop_image(target / image_name, box)})
+                guard()
+                try:
+                    response = provider.grade_question_batch(question, items)
+                    grades = response.grades
+                    expected = {item["script_index"] for item in items}
+                    if (len(grades) != len(expected)
+                            or {grade.script_index for grade in grades} != expected
+                            or any(not math.isfinite(grade.similarity_score)
+                                   or not 0 <= grade.similarity_score <= 1 for grade in grades)):
+                        raise ValueError("Batch grading response does not cover every script with valid scores")
+                except Exception as exc:
+                    detail = " ".join(str(exc).split())[:2000] or "No provider error detail available"
+                    atomic_json(backup / "failure.json", {
+                        "question": key, "error_type": type(exc).__name__, "detail": detail,
+                    })
+                    raise RuntimeError(f"Question {key} batch failed ({type(exc).__name__}): {detail}") from exc
+                guard()
+                verify_grading_run(config, config_dir, config_path, require_completed=False)
+                if file_hash(target / "results.json") != checkpoint_hash:
+                    raise ValueError("Grading checkpoint changed during retry")
+                grades_by_script = {grade.script_index: grade for grade in grades}
+                for row in rows:
+                    grade = grades_by_script[row["script_index"]]
+                    row.update(
+                        answer=grade.answer, raw_mark=grade.mark, moderated_mark=grade.mark,
+                        similarity_score=grade.similarity_score, reasoning=grade.reasoning,
+                        moderator_flag=grade.moderator_flag, moderator_note=grade.moderator_note,
+                        grading_failed=False,
+                    )
+                    row.pop("grading_error_detail", None)
+                atomic_json(target / "results.json", results)
+                checkpoint_hash = file_hash(target / "results.json")
     return target
 
 
@@ -1086,7 +1332,7 @@ def inspect_retry_grading(config, config_dir, config_path, run_id=None,
     num_scripts = len(results.get("scripts", []))
     estimated_requests = len(failed_marks) + len(unmoderated_questions)
     if valid_re_ocr_fields:
-        estimated_requests += math.ceil(num_scripts / 35)
+        estimated_requests += math.ceil(num_scripts / min(35, MAX_IMAGES_PER_REQUEST // len(valid_re_ocr_fields)))
     if target_question:
         estimated_requests += num_scripts + 1
 
@@ -1401,12 +1647,25 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
     return target
 
 
+def grading_run_exists(target: Path) -> bool:
+    if not target.exists():
+        return False
+    markers = {
+        "manifest.json", "results.json", "review.xlsx", "checkpoint.json",
+        "approval.json", "images", "processing.lock",
+    }
+    return any((target / marker).exists() for marker in markers)
+
+
 def grade_exam(config, config_dir, config_path, model_config_path, endpoint, api_version, summary,
-               provider_factory=AzureGrader, mode="batch", batch_concurrency=3):
+               provider_factory=AzureGrader, mode="batch", batch_concurrency=3,
+               continue_on_image_policy_block=False):
     from .attendance import approved_attendance, present_roster
     from .cache import cache_directory, enabled_agents
     from .reporting import question_passing_policy
 
+    if continue_on_image_policy_block and mode != "batch":
+        raise ValueError("Continuing after an image policy block requires batch mode")
     questions, regions_root, region_manifest, boxes = approved_inputs(config, config_dir, config_path)
     question_passing_policy(config, questions)
     attendance = approved_attendance(config, config_dir, config_path)
@@ -1420,7 +1679,7 @@ def grade_exam(config, config_dir, config_path, model_config_path, endpoint, api
     output = resolve_path(config_dir, config["exam"]["output_dir"])
     target = output / "grading"
     cache_root = cache_directory(Path(model_config_path), target) if cache_agents else target / "cache"
-    if target.exists():
+    if grading_run_exists(target):
         raise ValueError("A grading run already exists; choose a different output directory")
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".grading-", dir=output) as temp:
@@ -1440,7 +1699,11 @@ def grade_exam(config, config_dir, config_path, model_config_path, endpoint, api
         try:
             target.mkdir(mode=0o700)
         except FileExistsError as exc:
-            raise ValueError("A grading run already exists; choose a different output directory") from exc
+            if grading_run_exists(target) or any(
+                item.name not in {"cost_report.xlsx", "cost_summary.json"}
+                for item in target.iterdir()
+            ):
+                raise ValueError("A grading run already exists; choose a different output directory") from exc
         image_dir = target / "images"
         image_dir.mkdir(mode=0o700)
         from .alignment import align_page_file, prepare_reference_maps
@@ -1481,7 +1744,8 @@ def grade_exam(config, config_dir, config_path, model_config_path, endpoint, api
                              manifest["metadata_fields"], attendance_guard(config, config_dir, config_path, manifest),
                              mode=mode, batch_concurrency=batch_concurrency,
                              metadata_candidates=metadata_candidates, metadata_roster=metadata_roster,
-                             pricing_config=model_config_path)
+                             pricing_config=model_config_path,
+                             continue_on_image_policy_block=continue_on_image_policy_block)
             finish_grading(config, config_dir, config_path, target, manifest, results)
     return target
 

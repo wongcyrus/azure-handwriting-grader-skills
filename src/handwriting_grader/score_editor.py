@@ -66,20 +66,37 @@ def load_state(server):
                 "reviewed_id": item["reviewed_id"], "reviewed": confirmed(item["reviewed"]),
             }
         marks = {}
+        mark_headers = [str(cell.value).strip().lower() if cell.value is not None else ""
+                        for cell in book["Marks"][1]]
+        if mark_headers.count("recovery_touched") > 1:
+            raise ValueError("Review workbook has duplicate recovery columns")
+        touched_column = mark_headers.index("recovery_touched") + 1 if "recovery_touched" in mark_headers else None
+        touched = {}
+        if touched_column:
+            for row in book["Marks"].iter_rows(min_row=2):
+                pair = (row[mark_headers.index("script_index")].value,
+                        question_key(row[mark_headers.index("question")].value))
+                touched[pair] = row[touched_column - 1].value == "yes"
         for item in reviewed_rows(book, "Marks", (
                 "script_index", "question", "answer", "reasoning", "manual_mark", "reviewed")):
             pair = (item["script_index"], question_key(item["question"]))
             if type(pair[0]) is not int or pair not in expected_marks or pair in marks:
                 raise ValueError("Review workbook contains invalid marks")
             original = raw_marks[pair]
+            use_recovered = (
+                original.get("batch_recovery_review_pending") is True
+                and item["answer"] in (None, "") and item["reasoning"] in (None, "")
+                and item["manual_mark"] is None and not confirmed(item["reviewed"]) and not touched.get(pair)
+            )
             marks[pair] = {
-                "answer": item["answer"] if item["answer"] is not None else "",
-                "reasoning": item["reasoning"] if item["reasoning"] is not None else "",
+                "answer": original["answer"] if use_recovered else (item["answer"] if item["answer"] is not None else ""),
+                "reasoning": original["reasoning"] if use_recovered else (item["reasoning"] if item["reasoning"] is not None else ""),
                 "manual_mark": item["manual_mark"], "reviewed": confirmed(item["reviewed"]),
                 "raw_mark": original["raw_mark"], "moderated_mark": original["moderated_mark"],
                 "similarity_score": original.get("similarity_score"),
                 "moderator_flag": original["moderator_flag"], "moderator_note": original["moderator_note"],
                 "grading_failed": original["grading_failed"], "original_answer": original["answer"],
+                "batch_recovery_review_pending": original.get("batch_recovery_review_pending", False),
                 "previous": previous.get(pair),
             }
         if set(scripts) != expected or set(marks) != expected_marks:
@@ -200,6 +217,11 @@ def _apply_review_item(book, roster, questions, scripts, marks, data, *, seen_id
             cell = sheet.cell(row, pos[name], value)
             cell.data_type = "s"
         sheet.cell(row, pos["manual_mark"]).value = manual
+        if original.get("batch_recovery_review_pending"):
+            headers = [str(cell.value).strip().lower() if cell.value is not None else "" for cell in sheet[1]]
+            column = headers.index("recovery_touched") + 1 if "recovery_touched" in headers else len(headers) + 1
+            sheet.cell(1, column, "recovery_touched")
+            sheet.cell(row, column, "yes")
     else:
         raise ValueError("Invalid review kind")
     sheet.cell(row, pos["reviewed"], "yes" if reviewed else "")
