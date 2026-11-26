@@ -36,23 +36,48 @@ must be supplied together, and canonical question labels must be unique.
 
 ## Azure deployments, credentials and consent
 
-### Required initial Azure profile
+### Azure discovery when needed
 
-Collect this profile before preflight or scan processing, not stage by stage.
-Present existing detected values and ask the user to confirm or replace them.
+First reuse the relevant settings and stage selections already established by
+the user or existing approved configuration. Offline preflight and review do
+not require Azure setup. When live discovery is needed, ask for the Foundry
+account name or account/project ARM resource ID only if it is not already known.
+`handwriting-grader discover-foundry --resource NAME` uses the signed-in Azure
+identity to read account and deployment metadata and query supported public
+retail prices. It sends no student data and performs no inference. A project
+name by itself is not resolved; provide the full project ARM resource ID.
+Ask only for unresolved choices relevant to the requested stage.
+
+An unambiguous text deployment is suggested for text stages; its actual image
+capability and quality are not verified. A single embedding or image deployment
+is suggested if present. Multiple optional deployments remain unconfigured
+unless selected with `--embedding-deployment` or `--image-deployment`; multiple
+text deployments require `--text-deployment` only when writing a configuration.
+Read-only discovery can list them without a selection. Unavailable, unsupported or
+ambiguous prices remain UNPRICED. No API key is read or written.
+
+Use `--write-config /private/new-config.yaml` only when requested. It refuses to
+overwrite and does not change a configuration bound to an existing approval.
+The discovered resource region is the initial retail search region, not proof
+that it is the applicable global meter profile. If an alternate eastus profile
+is shown, review it and explicitly select `--meter-region eastus` before saving.
+Public retail prices are estimates, not negotiated prices. `discover-foundry`
+requires Azure management read access and public-cloud ARM; if access is denied,
+offer manual configuration. Separate resources may be discovered separately.
+
+For manual setup, collect only settings still needed for the requested stage:
 
 | Scope | Required settings |
 |---|---|
 | Text/vision | HTTPS resource root, API version, stage aliases, underlying model for custom aliases, resource ARM region, retail meter profile, deployment/billing type, reviewed rates, auth |
-| Embeddings | Endpoint/API version/deployment and reviewed rates, or explicit opt-out from paid semantic grouping |
-| Image generation | HTTPS resource root, API version, `models.analytics_image` deployment and manually reviewed image rates, or explicit opt-out from infographics |
+| Embeddings, when requested | Endpoint/API version/deployment and reviewed rates |
+| Image generation, when requested | Separate resource if applicable, HTTPS endpoint, API version, `models.analytics_image` deployment and reviewed image rates |
 | Privacy/caching | Data-transfer scope, cache opt-in, run/shared scope and private cache path |
 
 Do not assume that an image deployment shares the text endpoint, that an
 embedding alias exists on either resource, or that endpoint names reveal the
-underlying model, resource region, retail meter region or billing type. Ask separately for text/vision,
-embeddings and image generation even when the user expects only offline or
-manual review later. An initial configuration decision is not cost consent:
+underlying model, resource region, retail meter region or billing type.
+An initial configuration decision is not cost consent:
 every paid stage still needs its own preview and `--confirm-cost`.
 
 The canonical text/vision and embeddings template is the repository-root
@@ -78,7 +103,7 @@ Custom text/vision aliases must declare their underlying models in
 `deployment_models` (for example, `school-chat: gpt-6.1-terra`). Embeddings and image
 generation are exempt from the GPT version floor. Verify actual deployment
 models and capabilities in Azure; declarations are not live verification.
-- There is no live deployment capability, quality or availability verification.
+- Discovery shows provisioning state, not live inference capability or quality.
   Explicit public retail-price lookup is available through `fetch-pricing`; see
   [pricing](pricing.md) for region/type selection, provenance and limitations.
     If an explicitly supplied Global Standard resource region returns no effective
@@ -113,7 +138,7 @@ even for an explicit missing path. Inspect the actual file before consent and
 prefer an existing absolute `exam.model_config` path. No eager paid network calls
 occur merely by opening the editor.
 
-Caches are opt-in and default to one run. Shared reuse requires explicit
+Caches are disabled by default; when enabled, scope defaults to one run. Shared reuse requires explicit
 `caching.scope: shared` and a private, user-owned `caching.directory` relative
 to the model config. Azure response cache identity includes endpoint/API version,
 deployment and transport namespace; embeddings include endpoint namespace.

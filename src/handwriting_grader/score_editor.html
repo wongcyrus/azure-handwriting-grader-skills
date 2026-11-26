@@ -603,6 +603,28 @@ function textSimilarity(a, b) {
   return inter / (setA.size + setB.size - inter);
 }
 
+function moveBlankZeroAnswersLast(clusters) {
+  const blankZeros = [];
+  const remaining = [];
+  for (const cluster of clusters) {
+    const items = [];
+    for (const item of cluster.items) {
+      if (!item.answer.trim() && item.hasScore && item.score === 0 && !item.needsManual) {
+        blankZeros.push(item);
+      } else {
+        items.push(item);
+      }
+    }
+    if (items.length) {
+      remaining.push({...cluster, items, repText: cluster.repText || items[0].answer});
+    }
+  }
+  if (blankZeros.length) {
+    remaining.push({repText: "(empty)", items: blankZeros, blankZero: true});
+  }
+  return remaining;
+}
+
 let allStatusIncompleteOnly = false;
 
 function renderAllStatusRows() {
@@ -1062,7 +1084,9 @@ async function renderMarksheetTable() {
   let entries = state.scripts.map(s => {
     const mark = isId ? null : state.marks[s.script_index][qIdx];
     const rawScore = mark ? (mark.manual_mark != null && String(mark.manual_mark).trim() !== "" ? mark.manual_mark : mark.moderated_mark ?? mark.raw_mark) : 0;
-    const numScore = rawScore != null && Number.isFinite(Number(rawScore)) ? Number(rawScore) : 0;
+    const hasScore = rawScore != null && typeof rawScore !== "boolean" &&
+      String(rawScore).trim() !== "" && Number.isFinite(Number(rawScore));
+    const numScore = hasScore ? Number(rawScore) : 0;
     const simScore = mark ? (Number(mark.similarity_score) || 0) : 0;
     const ansText = isId
       ? (metaField === "name" ? (s.name_ocr || "") : (metaField === "class" ? (s.class_ocr || "") : (s.id_ocr || "")))
@@ -1077,6 +1101,7 @@ async function renderMarksheetTable() {
       script: s,
       mark,
       score: numScore,
+      hasScore,
       similarity: simScore,
       answer: ansText,
       normAnswer: normalizeAnswer(ansText),
@@ -1109,7 +1134,8 @@ async function renderMarksheetTable() {
     const cachedClusterData = useEmbedding ? qClusterCache.get(qIdx) : null;
     let clusters = [];
 
-    if (useEmbedding && cachedClusterData && cachedClusterData.clusters && cachedClusterData.clusters.length > 0) {
+    if (useEmbedding && cachedClusterData && cachedClusterData.method === "embedding" &&
+        cachedClusterData.clusters && cachedClusterData.clusters.length > 0) {
       const entryMap = new Map();
       for (const e of entries) {
         entryMap.set(e.script.script_index, e);
@@ -1128,12 +1154,13 @@ async function renderMarksheetTable() {
             id: c.id,
             repText: c.rep_text,
             items: cItems,
-            model: cachedClusterData.model || "gemini-embedding-2"
+            model: cachedClusterData.model
           });
         }
       }
     } else {
-      if (useEmbedding && !qClusterLoading.has(qIdx)) {
+      if (useEmbedding && !cachedClusterData && !qClusterLoading.has(qIdx)) {
+        const clusterRevision = state.revision;
         qClusterLoading.add(qIdx);
         fetch(`/api/cluster/${qIdx}`, {
           headers: {"Authorization": `Bearer ${token}`}
@@ -1141,7 +1168,7 @@ async function renderMarksheetTable() {
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           qClusterLoading.delete(qIdx);
-          if (data && data.clusters) {
+          if (data && data.clusters && state.revision === clusterRevision) {
             qClusterCache.set(qIdx, data);
             if (section === String(qIdx) && marksheetSort.mode === "group") {
               renderMarksheetTable();
@@ -1161,7 +1188,7 @@ async function renderMarksheetTable() {
           }
         }
         if (!placed) {
-          clusters.push({repNorm: e.normAnswer, repText: e.answer, items: [e], model: useEmbedding ? "" : "Word Overlap"});
+          clusters.push({repNorm: e.normAnswer, repText: e.answer, items: [e], model: "Word Overlap"});
         }
       }
     }
@@ -1172,6 +1199,7 @@ async function renderMarksheetTable() {
       const simB = b.items.reduce((acc, i) => acc + i.similarity, 0) / b.items.length;
       return simB - simA;
     });
+    clusters = moveBlankZeroAnswersLast(clusters);
 
     let groupNum = 1;
     for (const cluster of clusters) {
@@ -1188,7 +1216,7 @@ async function renderMarksheetTable() {
         const badge = document.createElement("span");
         badge.className = "group-badge";
         const modelLabel = cluster.model ? ` · ${cluster.model}` : "";
-        badge.textContent = `Similar Group ${groupNum}${modelLabel}`;
+        badge.textContent = cluster.blankZero ? "Blank answers · 0 marks" : `Similar Group ${groupNum}${modelLabel}`;
         divCell.append(badge);
 
         const strongCount = document.createElement("strong");
@@ -2074,7 +2102,12 @@ function updateClusterDropdown() {
 
 async function reload() {
   const firstLoad = !state;
+  const previousRevision = state && state.revision;
   state = await (await api("/api/state")).json();
+  if (previousRevision && previousRevision !== state.revision) {
+    qClusterCache.clear();
+    qClusterLoading.clear();
+  }
   if (firstLoad) {
     try {
       const savedSec = localStorage.getItem("handwriting_grader_section");

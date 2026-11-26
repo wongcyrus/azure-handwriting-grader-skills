@@ -179,8 +179,16 @@ rates independently; unknown costs remain UNPRICED, not free.
 
 ## Public retail pricing and first-use enforcement
 
+`discover-foundry --resource ACCOUNT_NAME` reads the signed-in account's Azure
+metadata and supported retail prices. It can write a new private configuration
+after review, never overwriting an existing file. Optional model choices,
+unmatched prices and alternative meter regions remain explicit decisions; no
+student data or inference calls are sent during discovery.
+
 `fetch-pricing --region eastus --deployment-type global-standard` queries
-Microsoft's public Retail Prices API for the curated GPT-6 candidates.
+Microsoft's public Retail Prices API for the curated GPT-6 candidates. Configured
+Global Standard `text-embedding-3-small` and `text-embedding-3-large` deployments
+also use exact public retail meters.
 `data-zone-standard` is also supported. Add `--model-config PATH` to resolve
 your declared model families without transmitting aliases or configuration.
 Add `--write-config NEW_PATH` only when saving is requested: it creates a

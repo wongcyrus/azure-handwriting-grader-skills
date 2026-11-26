@@ -8,8 +8,11 @@ from unittest.mock import patch
 import yaml
 
 from handwriting_grader.discovery import discover_and_report, validate_model_eligibility, write_model_config
+from handwriting_grader.foundry_discovery import discover_foundry, prepare_foundry_config, report_foundry
+from handwriting_grader.cli import main
 from handwriting_grader.grading import grading_models
 from handwriting_grader.suggestions import load_model_settings
+from test_pricing import meter, standard_meters
 
 
 class TestAzureDeploymentConfiguration(unittest.TestCase):
@@ -95,3 +98,121 @@ class TestAzureDeploymentConfiguration(unittest.TestCase):
             path.write_text("vertex_ai:\n  use_vertexai: true\nmodels:\n  grading: gpt-5.4\n")
             with self.assertRaisesRegex(ValueError, "azure_openai"):
                 load_model_settings(path, "grading")
+
+
+class TestFoundryDiscovery(unittest.TestCase):
+    account_id = ("/subscriptions/12345678-1234-1234-1234-123456789012/resourceGroups/school"
+                  "/providers/Microsoft.CognitiveServices/accounts/foundry")
+
+    def account(self):
+        return {"id": self.account_id, "name": "foundry", "location": "eastus",
+                "properties": {"endpoint": "https://school.cognitiveservices.azure.com",
+                               "endpoints": {"OpenAI Language Model Instance API":
+                                             "https://school.openai.azure.com/"}}}
+
+    def deployments(self):
+        def deployment(name, family):
+            return {"name": name, "sku": {"name": "GlobalStandard"}, "properties": {
+                "provisioningState": "Succeeded",
+                "model": {"format": "OpenAI", "name": family,
+                          "version": "2026-11-17" if family == "gpt-6.2-sol" else "1"}}}
+        return [deployment("grade", "gpt-6.2-sol"), deployment("embed", "text-embedding-3-small")]
+
+    def test_account_name_and_project_id_resolve_without_inference(self):
+        def fetch(url, credential):
+            if "/subscriptions?" in url:
+                return {"value": [{"subscriptionId": "12345678-1234-1234-1234-123456789012"}]}
+            if "/accounts?" in url:
+                return {"value": [self.account()]}
+            if "/deployments?" in url:
+                return {"value": self.deployments()}
+            return self.account()
+        for resource in ("foundry", self.account_id + "/projects/my-project"):
+            result = discover_foundry(resource, credential=object(), fetch_page=fetch)
+            self.assertEqual(result["resource_id"], self.account_id)
+            self.assertEqual(result["endpoint"], "https://school.openai.azure.com")
+            self.assertEqual(result["deployments"], self.deployments())
+
+    def test_cli_passes_selection_without_an_inference_call(self):
+        with patch("handwriting_grader.foundry_discovery.report_foundry") as report:
+            self.assertEqual(main(["discover-foundry", "--resource", "foundry",
+                                   "--text-deployment", "grade"]), 0)
+        report.assert_called_once_with("foundry", text_deployment="grade", embedding_deployment=None,
+                                       image_deployment=None, meter_region=None, write_config=None)
+
+    def test_pagination_must_not_send_credentials_to_untrusted_hosts(self):
+        fetch = lambda url, credential: {"value": [], "nextLink": "https://example.test/next"}
+        with self.assertRaisesRegex(ValueError, "pagination"):
+            discover_foundry("foundry", credential=object(), fetch_page=fetch)
+
+    def test_config_uses_discovered_models_and_prices_and_refuses_overwrite(self):
+        sku = "text-embedding-3-small-glbl"
+        row = meter(sku, 0.00002, productName="Azure OpenAI",
+                    meterName=f"{sku} Tokens", unitOfMeasure="1K")
+        foundry = {**self.account(), "resource_id": self.account_id, "endpoint": "https://school.openai.azure.com",
+                   "region": "eastus", "deployments": self.deployments()}
+        with tempfile.TemporaryDirectory() as temp, \
+                patch("handwriting_grader.foundry_discovery.discover_foundry", return_value=foundry), \
+                patch("handwriting_grader.pricing._fetch_page",
+                      side_effect=lambda url: {"Items": [row] if sku in url else standard_meters()}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            target = Path(temp) / "foundry.yaml"
+            config = report_foundry("foundry", write_config=target)
+            self.assertEqual(config["models"]["grading"], "grade")
+            self.assertEqual(config["models"]["embedding"], "embed")
+            self.assertEqual(config["pricing"]["embed"]["input"], 0.02)
+            self.assertEqual(yaml.safe_load(target.read_text()), config)
+            with self.assertRaises(FileExistsError):
+                report_foundry("foundry", write_config=target)
+
+    def test_multiple_candidates_require_selection(self):
+        deployments = self.deployments()
+        deployments.append({**deployments[0], "name": "another"})
+        foundry = {"endpoint": "https://school.openai.azure.com", "region": "eastus", "deployments": deployments}
+        with self.assertRaisesRegex(ValueError, "--text-deployment"):
+            prepare_foundry_config(foundry)
+
+    def test_preview_reports_multiple_text_candidates_without_requiring_selection(self):
+        deployments = self.deployments()
+        deployments.append({**deployments[0], "name": "another"})
+        foundry = {**self.account(), "resource_id": self.account_id, "endpoint": "https://school.openai.azure.com",
+                   "region": "eastus", "deployments": deployments}
+        sku = "text-embedding-3-small-glbl"
+        row = meter(sku, 0.00002, productName="Azure OpenAI",
+                    meterName=f"{sku} Tokens", unitOfMeasure="1K")
+        output = io.StringIO()
+        with patch("handwriting_grader.foundry_discovery.discover_foundry", return_value=foundry), \
+                patch("handwriting_grader.pricing._fetch_page",
+                      side_effect=lambda url: {"Items": [row] if sku in url else standard_meters()}), \
+                contextlib.redirect_stdout(output):
+            config = report_foundry("foundry")
+        self.assertIn("Multiple grading deployments", output.getvalue())
+        self.assertNotIn("grading", config["models"])
+        self.assertEqual(config["models"]["embedding"], "embed")
+
+    def test_optional_ambiguity_is_skipped_and_model_version_mismatch_is_unpriced(self):
+        deployments = self.deployments()
+        deployments[0]["properties"]["model"]["version"] = "unrecognized"
+        deployments.append({**deployments[1], "name": "another-embedding"})
+        foundry = {"endpoint": "https://school.openai.azure.com", "region": "eastus", "deployments": deployments}
+        with patch("handwriting_grader.pricing._fetch_page", return_value={"Items": standard_meters()}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            config = prepare_foundry_config(foundry)
+        self.assertNotIn("embedding", config["models"])
+        self.assertEqual(config["pricing"]["grade"], {})
+
+    def test_alternate_global_meter_is_previewed_but_not_silently_selected(self):
+        sku = "text-embedding-3-small-glbl"
+        row = meter(sku, 0.00002, productName="Azure OpenAI",
+                    meterName=f"{sku} Tokens", unitOfMeasure="1K")
+        foundry = {**self.account(), "resource_id": self.account_id, "endpoint": "https://school.openai.azure.com",
+                   "region": "eastasia", "deployments": [self.deployments()[1]]}
+        output = io.StringIO()
+        with patch("handwriting_grader.foundry_discovery.discover_foundry", return_value=foundry), \
+                patch("handwriting_grader.pricing._fetch_page",
+                      side_effect=lambda url: {"Items": [row] if "eastus" in url else []}), \
+                contextlib.redirect_stdout(output):
+            config = report_foundry("foundry")
+        self.assertIn("Alternative eastus retail profile: 0.02", output.getvalue())
+        self.assertEqual(config["pricing"]["embed"], {})
+        self.assertEqual(config["pricing_sources"]["embed"]["region"], "eastasia")

@@ -28,6 +28,10 @@ CONTEXT_SOURCE = (
 RATE_KEYS = ("input", "cached", "output", "cache_write", "cache_write_12h", "image")
 DEPLOYMENT_TYPES = ("global-standard", "data-zone-standard")
 MODEL_VERSIONS = {model: version for model, version, _ in RECOMMENDED_MODELS}
+EMBEDDING_SKUS = {
+    "text-embedding-3-small": "text-embedding-3-small-glbl",
+    "text-embedding-3-large": "text-embedding-3-large-glbl",
+}
 LONG_CONTEXT_THRESHOLD = 272_000
 SKU_PATTERN = re.compile(
     r"(?P<version>6\.1|61|6\.2|6)[- ]?(?P<variant>sol|terra|astra|luna) "
@@ -192,6 +196,35 @@ def lookup_pricing(region, deployment_type, models=None, *, fetch_page=None, now
         key = _classify(item, region, deployment_type)
         if key:
             groups.setdefault(key, []).append(item)
+    embedding_results = {}
+    if deployment_type == "global-standard":
+        for family in set(models.values()) & EMBEDDING_SKUS.keys():
+            sku = EMBEDDING_SKUS[family]
+            query = (f"productName eq 'Azure OpenAI' and armRegionName eq '{region}' "
+                     f"and skuName eq '{sku}' and priceType eq 'Consumption'")
+            embedding_url = f"{RETAIL_API}?{urlencode({'$filter': query})}"
+            rows, embedding_seen = [], set()
+            while embedding_url:
+                _validate_url(embedding_url)
+                if embedding_url in embedding_seen or len(embedding_seen) >= 10:
+                    raise ValueError("Retail pagination is repeated or exceeds ten pages; no snapshot accepted")
+                embedding_seen.add(embedding_url)
+                page = fetch_page(embedding_url)
+                if (not isinstance(page, dict) or not isinstance(page.get("Items"), list)
+                        or len(page["Items"]) > 1000
+                        or any(not isinstance(item, dict) for item in page["Items"])):
+                    raise ValueError("Retail API returned an invalid page")
+                rows.extend(page["Items"])
+                embedding_url = page.get("NextPageLink")
+                if embedding_url is not None and not isinstance(embedding_url, str):
+                    raise ValueError("Retail API returned invalid pagination")
+            matching = [item for item in rows
+                        if item.get("productName") == "Azure OpenAI"
+                        and item.get("serviceName") in ("Foundry Models", "Cognitive Services")
+                        and item.get("skuName") == sku and item.get("meterName") == f"{sku} Tokens"
+                        and item.get("armRegionName") == region and item.get("currencyCode") == "USD"
+                        and item.get("type") == "Consumption"]
+            embedding_results[family] = (_choose_meter(matching, now), embedding_seen)
     report = {
         "source": initial_url, "fetched_at": now.isoformat(), "currency": "USD",
         "region": region, "deployment_type": deployment_type,
@@ -203,8 +236,18 @@ def lookup_pricing(region, deployment_type, models=None, *, fetch_page=None, now
                  "context_threshold_source": f"https://developers.openai.com/api/docs/models/{model}",
                  "status": "UNPRICED", "tiers": {}, "meters": {}, "issues": []}
         report["deployments"][deployment] = entry
+        if model in embedding_results:
+            (meter, issue), pages = embedding_results[model]
+            entry["source"] = next(iter(pages)) if len(pages) == 1 else RETAIL_API
+            entry["pages_fetched"] = len(pages)
+            entry["input"] = meter["rate"] if meter else None
+            entry["meters"] = {"input": meter} if meter else {}
+            entry["status"] = "PRICED" if meter else "UNPRICED"
+            if issue:
+                entry["issues"].append(issue)
+            continue
         if model not in MODEL_VERSIONS:
-            entry["issues"].append("Automatic lookup supports the curated GPT-6 models only; verify other families manually")
+            entry["issues"].append("Automatic lookup does not support this model and deployment type; verify manually")
             continue
         for context in ("short", "long"):
             rates, meters = {}, {}
@@ -223,7 +266,7 @@ def lookup_pricing(region, deployment_type, models=None, *, fetch_page=None, now
     return report
 
 
-def write_priced_config(target, config, report):
+def priced_config(config, report):
     updated = copy.deepcopy(config)
     updated["pricing_lookup"] = {
         "region": report["region"], "deployment_type": report["deployment_type"],
@@ -240,16 +283,28 @@ def write_priced_config(target, config, report):
                 **{context: {key: value for key, value in rates.items() if value is not None}
                    for context, rates in entry["tiers"].items()},
             }
+        elif entry.get("input") is not None:
+            pricing[deployment] = {"input": entry["input"]}
         sources[deployment] = {
             **{key: value for key, value in report.items() if key != "deployments"},
             "azure_endpoint": config["azure_openai"]["endpoint"],
             **entry,
         }
+    return updated
+
+
+def write_priced_config(target, config, report):
+    updated = priced_config(config, report)
+    write_new_config(target, updated)
+    return updated
+
+
+def write_new_config(target, config):
     target = Path(target)
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent, delete=False) as file:
         temporary = Path(file.name)
         try:
-            yaml.safe_dump(updated, file, sort_keys=False)
+            yaml.safe_dump(config, file, sort_keys=False)
             file.flush()
             os.fsync(file.fileno())
         except BaseException:
@@ -259,7 +314,6 @@ def write_priced_config(target, config, report):
         os.link(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
-    return updated
 
 
 def fetch_and_report(region, deployment_type, model_config=None, write_config=None):
@@ -280,13 +334,18 @@ def fetch_and_report(region, deployment_type, model_config=None, write_config=No
     print("| Deployment/model | Context | Input | Cached | Output | Cache write 30m | Cache write 12h |")
     print("|---|---|---|---|---|---|---|")
     for deployment, entry in report["deployments"].items():
+        if "input" in entry:
+            print(f"| {deployment} | embedding | {entry['input'] if entry['input'] is not None else 'UNPRICED'} | - | - | - | - |")
+            print(f"Embedding retail source: {entry['source']}")
         for context, rates in entry["tiers"].items():
             values = [str(rates[key]) if rates[key] is not None else "UNPRICED"
                       for key in RATE_KEYS[:-1]]
             print(f"| {deployment} | {context} | {' | '.join(values)} |")
         for issue in entry["issues"]:
             print(f"UNPRICED component for {deployment}: {issue}")
-    print(f"Source: {report['source']}\nFetched: {report['fetched_at']}")
+    if report["pages_fetched"]:
+        print(f"GPT-6 retail source: {report['source']}")
+    print(f"Fetched: {report['fetched_at']}")
     supported = [entry for entry in report["deployments"].values() if entry["tiers"]]
     if (deployment_type == "global-standard" and region != "eastus" and supported
             and all(entry["status"] == "UNPRICED" for entry in supported)):
@@ -298,7 +357,9 @@ def fetch_and_report(region, deployment_type, model_config=None, write_config=No
             "retail meter profile; no region was substituted."
         )
     print("Retail estimates only. Verify deployment model/version, billing mode and current prices; this is not your Azure invoice.")
-    print("Full-request long-context rates apply above 272,000 input tokens. No inference, credentials or student data are used.")
+    if report["pages_fetched"]:
+        print("Full-request long-context rates apply above 272,000 input tokens.")
+    print("No inference, credentials or student data are used.")
     if write_config is not None:
         write_priced_config(write_config, config, report)
         print(f"New priced configuration: {write_config}. Source unchanged; review before using a fresh run.")
@@ -429,26 +490,39 @@ class RunPricingVerifier:
                     return copy.deepcopy(self._verified[key])
                 now = self._now().astimezone(timezone.utc)
                 row = config.get("pricing", {}).get(model)
-                if kind == "text" and family in MODEL_VERSIONS:
-                    if profile not in self._reports:
+                source = config.get("pricing_sources", {}).get(model, {})
+                automatic_embedding = (kind == "embedding" and family in EMBEDDING_SKUS
+                                       and profile[1] == "global-standard"
+                                       and source.get("verification") != "manual")
+                if kind == "text" and family in MODEL_VERSIONS or automatic_embedding:
+                    report_key = (profile, family if automatic_embedding else "text")
+                    report_targets = {alias: target for alias, target in targets.items()
+                                      if (target == family if automatic_embedding else target in MODEL_VERSIONS)}
+                    if report_key not in self._reports:
                         try:
-                            self._reports[profile] = lookup_pricing(
-                                *profile, targets, fetch_page=self._fetch_page, now=now,
+                            self._reports[report_key] = lookup_pricing(
+                                *profile, report_targets, fetch_page=self._fetch_page, now=now,
                             )
                         except Exception as exc:
-                            self._reports[profile] = exc
-                    report = self._reports[profile]
+                            self._reports[report_key] = exc
+                    report = self._reports[report_key]
                     if isinstance(report, Exception):
                         raise PriceVerificationError(f"Microsoft retail price refresh failed ({type(report).__name__})")
                     entry = report["deployments"][model]
-                    required = ("input", "cached", "output", "cache_write")
-                    rates = self._rates({"long_context_threshold": report["long_context_threshold"],
-                                         **entry["tiers"]}, required, tiered=True)
-                    reviewed = self._rates(row, required, tiered=True)
-                    if (reviewed["long_context_threshold"] != rates["long_context_threshold"]
-                            or any(reviewed[tier][part] != rates[tier][part]
-                                   for tier in ("short", "long") for part in required)):
-                        raise PriceVerificationError("Current retail prices differ from reviewed rates")
+                    if automatic_embedding:
+                        rates = self._rates({"input": entry.get("input")}, ("input",))
+                        reviewed = self._rates(row, ("input",))
+                        if reviewed != rates:
+                            raise PriceVerificationError("Current retail prices differ from reviewed rates")
+                    else:
+                        required = ("input", "cached", "output", "cache_write")
+                        rates = self._rates({"long_context_threshold": report["long_context_threshold"],
+                                             **entry["tiers"]}, required, tiered=True)
+                        reviewed = self._rates(row, required, tiered=True)
+                        if (reviewed["long_context_threshold"] != rates["long_context_threshold"]
+                                or any(reviewed[tier][part] != rates[tier][part]
+                                       for tier in ("short", "long") for part in required)):
+                            raise PriceVerificationError("Current retail prices differ from reviewed rates")
                     source = {**{name: value for name, value in report.items() if name != "deployments"},
                               **entry, "verification": "retail", "azure_endpoint": endpoint}
                 else:

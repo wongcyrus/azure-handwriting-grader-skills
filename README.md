@@ -153,9 +153,11 @@ handwriting-grader fetch-pricing \
 
 This explicitly queries Microsoft's unauthenticated Retail Prices API; it makes
 no inference calls and sends no credentials, endpoint, aliases or student data.
-Specify the actual ARM region and Global/Data Zone Standard type. Discovery and
-preflight remain offline. Lookup currently covers the curated GPT-6 families;
-other families, embeddings and image generation require verified manual rates.
+Specify the retail meter region and Global/Data Zone Standard type; it may differ
+from the resource location. `discover-models` and preflight remain offline, while
+`discover-foundry` reads Azure metadata and public prices. Lookup covers the
+curated GPT-6 families and Global Standard text-embedding-3-small/large; other
+families, embedding types and image generation require verified manual rates.
 
 Before the first paid request in each new run, the transport refreshes public
 prices once per region/billing profile and checks every requested model against
@@ -260,6 +262,12 @@ the target and obtaining the relevant cost consent.
 .venv/bin/handwriting-grader report --exam exam.yaml
 .venv/bin/handwriting-grader analytics --exam exam.yaml
 ```
+
+`handwriting-grader discover-foundry --resource ACCOUNT_NAME` reads the signed-in
+Azure account's deployments and supported retail prices without inference. Provide
+an account/project ARM resource ID when the name is ambiguous; use
+`--write-config /private/new-config.yaml` only to create a new configuration.
+Missing prices stay UNPRICED and paid stages still require separate consent.
 
 The editor and `cluster-answers` use offline/cached grouping by default.
 Their `--confirm-cost` flag enables Azure embeddings. Set `exam.model_config`

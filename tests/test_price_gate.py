@@ -219,6 +219,7 @@ class TestFirstUsePrices(unittest.TestCase):
         client = AzureClient(ENDPOINT, client=sdk, pricing_verifier=verifier)
         self.assertEqual(client.embed_content(model="manual-alias", contents=["Synthetic"]).embeddings[0].values, [1, 0])
         fetch.assert_not_called()
+
         for case in ("stale", "future", "wrong-unit", "missing-rate", "undeclared-family"):
             with self.subTest(case=case):
                 config = copy.deepcopy(original)
@@ -243,6 +244,38 @@ class TestFirstUsePrices(unittest.TestCase):
                     )
                 sdk.embeddings.create.assert_not_called()
                 fetch.assert_not_called()
+
+    def test_automatic_embedding_pricing_is_refreshed_and_changed_rates_block_calls(self):
+        sku = "text-embedding-3-small-glbl"
+        row = meter(sku, 0.00002, productName="Azure OpenAI",
+                    meterName=f"{sku} Tokens", unitOfMeasure="1K")
+        config = {"azure_openai": {"endpoint": ENDPOINT},
+                  "models": {"embedding": "embed"},
+                  "deployment_models": {"embed": "text-embedding-3-small"}}
+        report = lookup_pricing("eastus", "global-standard", configured_models(config),
+                                fetch_page=lambda url: {"Items": [row]}, now=NOW)
+        path = self.root / "embedding.yaml"
+        write_priced_config(path, config, report)
+        verifier, fetch = self.verifier(path, [row])
+        self.assertEqual(verifier.verify(ENDPOINT, "embed", kind="embedding")["input"], 0.02)
+        fetch.assert_called_once()
+        verifier, _ = self.verifier(path, [{**row, "retailPrice": 0.00003}])
+        with self.assertRaisesRegex(PriceVerificationError, "differ"):
+            verifier.verify(ENDPOINT, "embed", kind="embedding")
+
+    def test_unused_embedding_price_lookup_does_not_block_text(self):
+        path, config = self.native_config()
+        config["models"]["embedding"] = "embed"
+        config["deployment_models"]["embed"] = "text-embedding-3-small"
+        path.write_text(yaml.safe_dump(config))
+
+        def fetch(url):
+            if "text-embedding" in url:
+                raise OSError("embedding retail unavailable")
+            return {"Items": self.rows}
+
+        verifier = RunPricingVerifier(path, fetch_page=fetch, now=lambda: NOW)
+        self.assertEqual(verifier.verify(ENDPOINT, "grade-alias")["short"]["input"], 2)
 
     def test_image_price_must_match_request_size_and_quality(self):
         path, config = self.manual_config("analytics_image", "gpt-image-2.5-flare")

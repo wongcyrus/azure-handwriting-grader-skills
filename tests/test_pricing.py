@@ -141,7 +141,7 @@ class TestRetailPricing(unittest.TestCase):
 
     def test_unsupported_family_does_not_make_network_requests_or_guess_rates(self):
         fetch = Mock()
-        report = lookup_pricing("eastus", "global-standard", {"embed": "text-embedding-3-small"},
+        report = lookup_pricing("eastus", "global-standard", {"embed": "text-embedding-ada-002"},
                                 fetch_page=fetch, now=NOW)
         fetch.assert_not_called()
         self.assertEqual(report["deployments"]["embed"]["status"], "UNPRICED")
@@ -187,7 +187,7 @@ class TestRetailPricing(unittest.TestCase):
                     patch("handwriting_grader.azure_ai.AzureClient", side_effect=AssertionError("No inference")):
                 self.assertEqual(main(args), 0)
                 self.assertEqual(main(args), 1)
-            fetch.assert_called_once()
+            self.assertEqual(fetch.call_count, 2)
             self.assertEqual(source.read_bytes(), original)
             saved = yaml.safe_load(target.read_text())
             self.assertEqual(saved["models"], config["models"])
@@ -201,6 +201,21 @@ class TestRetailPricing(unittest.TestCase):
             target.write_text(yaml.safe_dump(saved))
             with patch("pathlib.Path.home", return_value=root):
                 self.assertEqual(load_pricing_rates(target)["private-grader"], {})
+
+    def test_embedding_prices_require_exact_active_global_meter(self):
+        sku = "text-embedding-3-small-glbl"
+        row = meter(sku, 0.00002, productName="Azure OpenAI",
+                    meterName=f"{sku} Tokens", unitOfMeasure="1K")
+        rows = [row, {**row, "armRegionName": "westeurope", "retailPrice": 99}]
+        report = lookup_pricing("eastus", "global-standard", {"embed": "text-embedding-3-small"},
+                                fetch_page=lambda url: {"Items": rows}, now=NOW)
+        entry = report["deployments"]["embed"]
+        self.assertEqual(entry["status"], "PRICED")
+        self.assertEqual(entry["input"], 0.02)
+        rows.append({**row, "meterId": "conflict", "retailPrice": 1})
+        report = lookup_pricing("eastus", "global-standard", {"embed": "text-embedding-3-small"},
+                                fetch_page=lambda url: {"Items": rows}, now=NOW)
+        self.assertEqual(report["deployments"]["embed"]["status"], "UNPRICED")
 
     def test_unpriced_export_blocks_stale_cache_and_preserves_source_configuration(self):
         with tempfile.TemporaryDirectory() as temp:

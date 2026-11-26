@@ -39,6 +39,28 @@ class TestAzureTelemetry(unittest.TestCase):
             self.assertIsNone(json.loads((root / "cost_summary.json").read_text())["total_cost_usd"])
             self.assertTrue((root / "azure_usage.jsonl").is_file())
 
+    def test_small_embedding_calls_are_not_rounded_away_before_aggregation(self):
+        tracker = TelemetryTracker()
+        tracker.rates_table = {"embedding": {"input": 0.02}}
+        tracker.record_call("embedding", "question", "embedding", Usage(10, 0, 10), 1)
+        self.assertAlmostEqual(tracker.get_summary()["total_cost_usd"], 0.0000002, places=12)
+        for _ in range(99):
+            tracker.record_call("embedding", "question", "embedding", Usage(10, 0, 10), 1)
+        summary = tracker.get_summary()
+        self.assertAlmostEqual(summary["total_cost_usd"], 0.00002)
+        self.assertAlmostEqual(summary["by_phase"]["embedding"]["cost_usd"], 0.00002)
+        self.assertAlmostEqual(summary["by_model"]["embedding"]["cost_usd"], 0.00002)
+        with tempfile.TemporaryDirectory() as temp:
+            from openpyxl import load_workbook
+
+            root = Path(temp)
+            tracker.write_cost_report(root)
+            self.assertAlmostEqual(json.loads((root / "cost_summary.json").read_text())["total_cost_usd"], 0.00002)
+            workbook = load_workbook(root / "cost_report.xlsx", data_only=True)
+            self.assertAlmostEqual(workbook["API Audit Log"]["K2"].value, 0.0000002, places=12)
+            self.assertAlmostEqual(workbook["Summary"]["G2"].value, 0.00002)
+            workbook.close()
+
     def test_missing_usage_keeps_cost_unknown(self):
         tracker = TelemetryTracker()
         tracker.rates_table = {"school-grader": {"input": 2, "output": 8}}

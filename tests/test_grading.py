@@ -68,6 +68,39 @@ class FakeGrader:
         }
 
 
+class GroupedAnswerOrderingTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required")
+    def test_blank_zero_answers_move_last_without_hiding_unscored_items(self):
+        editor = Path(__file__).resolve().parents[1] / "src" / "handwriting_grader" / "score_editor.html"
+        script = """
+const fs = require("fs"), vm = require("vm"), assert = require("assert");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const start = source.indexOf("function moveBlankZeroAnswersLast(");
+const end = source.indexOf("\\nlet allStatusIncompleteOnly", start);
+assert(start >= 0 && end > start);
+vm.runInThisContext(source.slice(start, end));
+const item = (id, answer, score, hasScore = true, needsManual = false) =>
+  ({id, answer, score, hasScore, needsManual});
+for (const model of ["Word Overlap", "text-embedding-3-small"]) {
+  const clusters = [
+    {repText: "(empty)", model, items: [
+      item("blank-zero", "", 0), item("unscored", "", 0, false),
+      item("needs-manual", "", 0, true, true), item("blank-positive", "", 1)
+    ]},
+    {repText: "answer", model, items: [item("zero-answer", "incorrect", 0)]},
+    {repText: "", model, items: [item("whitespace-zero", "  ", 0)]}
+  ];
+  const result = moveBlankZeroAnswersLast(clusters);
+  assert.deepStrictEqual(result.map(c => c.items.map(i => i.id)),
+    [["unscored", "needs-manual", "blank-positive"], ["zero-answer"],
+     ["blank-zero", "whitespace-zero"]]);
+  assert.strictEqual(result[2].blankZero, true);
+  assert.strictEqual(clusters[0].items.length, 4);
+}
+"""
+        subprocess.run([shutil.which("node"), "-e", script, str(editor)], check=True, capture_output=True, text=True)
+
+
 def prepare_scan_marker_fixture(test, config, config_dir):
     from handwriting_grader.scan_markers import marker_root, marker_snapshot
 
@@ -848,6 +881,37 @@ class GradingTests(unittest.TestCase):
         _, _, _, _, _, marks = load_state(server)
         self.assertEqual(marks[(1, "1")]["answer"], "")
 
+    def test_embedding_preview_uses_separate_config_and_requires_current_revision(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        root = self.run_grading()
+        embedding_config = self.root / "embedding.yaml"
+        embedding_config.write_text(yaml.safe_dump({
+            "azure_openai": {"endpoint": "https://test.openai.azure.com", "api_version": "v1"},
+            "models": {"embedding": "text-embedding-3-small"},
+        }))
+        output = io.StringIO()
+        args = ["cluster-answers", "--exam", str(self.exam), "--model-config", str(embedding_config)]
+        with patch("handwriting_grader.azure_ai.AzureClient", side_effect=AssertionError("No Azure calls")), \
+                redirect_stdout(output):
+            self.assertEqual(main(args + ["--preview-embedding"]), 0)
+            self.assertEqual(main(args), 0)
+            self.assertEqual(main(args + ["--confirm-cost", "--revision", "stale"]), 1)
+        self.assertIn("model=text-embedding-3-small", output.getvalue())
+        self.assertIn("Review and grading revision:", output.getvalue())
+        self.assertFalse((root / "clusters.json").exists())
+        revision = output.getvalue().split("Review and grading revision: ", 1)[1].splitlines()[0]
+        fake = Mock()
+        fake.embed_content.return_value = SimpleNamespace(embeddings=[SimpleNamespace(values=[1.0, 0.0])])
+        with patch.object(ScoreServer, "get_embedding_client", return_value=(fake, "text-embedding-3-small")):
+            self.assertEqual(main(args + ["--confirm-cost", "--revision", revision]), 0)
+        fake.embed_content.assert_called_once()
+        saved = json.loads((root / "clusters.json").read_text())
+        self.assertEqual(saved["Q1"]["method"], "embedding")
+        self.assertTrue(saved["Q1"]["answer_hash"])
+        self.assertFalse((root / ".embedding_cache.json").exists())
+
     def test_batch_recovery_does_not_overwrite_concurrent_review(self):
         from handwriting_grader.batch_recovery import inspect_batch_recovery, recover_question_batches
         from handwriting_grader.grading import QuestionBatchGradeResponse, StudentBatchGradeItem
@@ -1602,7 +1666,7 @@ class GradingTests(unittest.TestCase):
             traces = [json.loads(line) for line in (output / "telemetry" / "azure_usage.jsonl").read_text().splitlines()]
             self.assertEqual(len(traces), 4)
             self.assertTrue(all(trace["cost_known"] and trace["cost_usd"] == 0.000056 for trace in traces))
-            self.assertEqual(json.loads((output / "cost_summary.json").read_text())["total_cost_usd"], 0.00022)
+            self.assertAlmostEqual(json.loads((output / "cost_summary.json").read_text())["total_cost_usd"], 0.000224)
         finally:
             service.shutdown()
             thread.join(timeout=5)

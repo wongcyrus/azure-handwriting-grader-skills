@@ -57,7 +57,8 @@ execute a notebook as a workaround, or claim a human approval occurred.
   checks do not verify actual capabilities or quality. No public OpenAI fallback.
 - `discover-models --endpoint https://RESOURCE.openai.azure.com --api-version v1
   --write-config /private/config.yaml` is offline template generation, not discovery,
-  pricing or quota probing, and refuses overwrite. Inspect actual deployments separately.
+  pricing or quota probing, and refuses overwrite. For live read-only account,
+  deployment and retail discovery, use `discover-foundry` as described below.
 - Calls use Azure SDK Responses with `store=False`; verify Azure retention and region
   policies independently. Credentials stay in environment/identity, never files:
   optional `AZURE_OPENAI_API_KEY`, otherwise `DefaultAzureCredential`; production
@@ -80,37 +81,35 @@ execute a notebook as a workaround, or claim a human approval occurred.
 
 1. Establish whether the user is starting or resuming, what stage they need,
    and which local paths they intend to use. Do not copy or overwrite data.
-   Before preflight, `suggest-scan-markers`, `check-scans`, or any other stage,
-   collect the complete Azure profile in one explicit setup step:
-   - **Text/vision resource:** HTTPS resource root, API version, deployment
-     aliases and underlying models for annotation, OCR, rubric extraction,
-     grading, moderation, analytics and student feedback.
-   - **Embedding resource:** endpoint, API version and deployment, or an
-     explicit decision to keep semantic clustering disabled.
-   - **Image-generation resource:** endpoint, API version and
-     `models.analytics_image` deployment, or an explicit decision to keep
-     infographic generation disabled. Ask about this even if the current stage
-     only needs text/vision.
-   - **Commercial/access details:** resource ARM region, deployment/billing type,
-     retail meter region/profile, independently reviewed rates, authentication
-     method, intended caching, and any separate/private configuration file paths.
-     A resource location is not necessarily the Azure retail meter `armRegionName`.
-     For Global Standard GPT-6 deployments, first query the supplied profile. If it
-     is entirely `UNPRICED`, inspect existing priced configurations and offer the
-     current verified meter-profile region (commonly `eastus`) as an explicit
-     user-reviewed alternative. Refresh it rather than trusting historical rates;
-     never silently substitute a region, rewrite approved configuration, or treat
-     a successful lookup as inference/data-transfer consent.
-   Present the detected values and ask for every missing or ambiguous value.
-   Do not infer shared endpoints, deployment names, regions or billing types.
-   Generate and verify the private text/vision and image configurations before
-   continuing; later stage-specific `--confirm-cost` consent is still required.
+   First inspect existing exam and model configurations, approvals and available
+   session context. Reuse verified values and existing stage selections; do not
+   ask the user to repeat them or reconfirm them just because another stage starts.
+   Offline preparation and review do not require a complete Azure profile. When
+   live discovery is needed and the account is not already known, ask for the
+   Foundry account name or account/project ARM resource ID. With the user's
+   Azure sign-in, run read-only `discover-foundry --resource NAME`
+   to retrieve the endpoint, resource region, deployed aliases, model versions,
+   SKUs and supported retail prices. Ask only for unresolved choices needed for
+   the requested stage, such as selecting between text deployments or an
+   ambiguous retail profile. Propose the existing valid deployment for the stage
+   instead of asking the user to choose again. Defer optional embeddings and
+   image generation until requested; an image deployment may use a different
+   Foundry resource and region, so discover that resource when needed. A project's
+   name alone is not an account name;
+   use its full ARM resource ID. If access or discovery fails, explain the error
+   and offer manual configuration instead of repeatedly asking for every field.
+   Review results and explicitly select any alternate retail meter region; do not
+   infer it from the resource region or silently substitute it. Save only to a new
+   private configuration, never rewrite an approved configuration. Discovery
+   does not verify deployment capabilities, quota, quality, invoice prices, or
+   permission to send data; every paid stage still requires its own preview and
+   `--confirm-cost`.
    When resuming an existing workspace or `output_dir`, inspect existing files
    and artifacts to orient immediately (do not rely on prior conversation history):
 
    | Latest Artifact Present | Completed Stage | Next Command / Action |
    |---|---|---|
-   | No `exam.yaml` / `config.yaml` | Not configured | `discover-models` (for `config.yaml`) -> configure `exam.yaml` -> `preflight` -> `check-scans` |
+   | No `exam.yaml` / `config.yaml` | Not configured | `discover-foundry` -> configure `exam.yaml` -> `preflight` -> `check-scans` |
    | `exam.yaml` exists (no `rubric/` or `attendance/`) | Configured | `preflight` -> `check-scans` -> `prepare-attendance` (if configured) or `extract-rubric`/`import-rubric` |
    | No `scan-markers/approval.json` | Printed scan markers not approved | Preview `suggest-scan-markers` with explicit cost/data consent before paid calls -> teacher reviews markers and first-script order -> `approve-scan-markers` -> paid Azure `check-scans` before region setup or grading |
    | `attendance/review.xlsx` (no `attendance/approval.json`) | Attendance extracted | Teacher reviews `attendance/review.xlsx` -> `approve-attendance` |
@@ -130,13 +129,14 @@ execute a notebook as a workaround, or claim a human approval occurred.
    | `runs/<child>/` directory | Targeted single-question regrade | Inspect artifacts inside `runs/<child>/` and pass `--run <child>` to commands |
 
 2. Read `references/configuration.md` and examine existing settings. Present
-   detected values and ask for missing or ambiguous decisions. Keep actual
+   relevant detected values; ask only for missing or ambiguous decisions needed
+   for the current stage, grouping related choices when practical. Keep actual
    configuration outside version control:
    a. Exam settings (`exam.yaml`): define roster, scans, layout, attendance, and reporting.
-   b. AI model configuration (`config.yaml`): inspect all existing Azure
-      configurations rather than overwriting them. Otherwise, only after the
-      up-front profile is complete, generate separate text/vision/embedding and
-      optional image-generation templates with
+   b. AI model configuration (`config.yaml`): inspect existing configurations
+      rather than overwriting them. Prefer `discover-foundry` to generate a new
+      configuration after reviewing its deployment and price results. For manual
+      setup, generate separate templates with
       `discover-models --endpoint https://RESOURCE.openai.azure.com --api-version v1
       --write-config /private/config.yaml`, then set actual deployment aliases and
       verified rates. This does not confirm availability, quota or capabilities.
@@ -207,9 +207,9 @@ execute a notebook as a workaround, or claim a human approval occurred.
       commands (`retry-grading --align-images ...`) in `references/regions.md`.
 8. For grading, reporting and AI analysis read `references/grading.md`.
    Obtain the specified human confirmations; never infer approval.
-   - For current Azure prices, read `references/pricing.md`. Obtain the resource
-     location, retail meter region/profile and Standard deployment type before
-     `fetch-pricing`; never infer them from an endpoint. Preview public retail rates
+   - For current Azure prices, read `references/pricing.md`. Use discovered resource
+     location and deployment type where available; identify the retail meter
+     region/profile explicitly and never infer it from an endpoint. Preview public retail rates
      without inference or credentials. If the first Global Standard query has no
      effective meters, present a refreshed alternative meter profile for user
      confirmation instead of stopping without checking known priced configurations.
@@ -251,12 +251,17 @@ execute a notebook as a workaround, or claim a human approval occurred.
    **Semantic Answer Clustering (Optional, Before Review)**:
    - `cluster-answers --exam /private/exam.yaml [--threshold 0.82]` and
      `review-grading` default to cached/local lexical grouping without eager paid calls.
-     `--confirm-cost` explicitly permits Azure embeddings; configuration comes from
-     `exam.model_config` or an adjacent `config.yaml`, with a working-directory
-     fallback if the selected file is missing; inspect the actual file using
+     For paid clustering, use `--model-config /private/embedding.yaml` if the
+     embedding deployment is configured separately. Run `--preview-embedding`,
+     present the target, text, request bound, cache policy and verified price,
+     then obtain explicit data/cost consent and pass `--confirm-cost --revision`
+     with the exact preview revision. Existing `clusters.json` is not overwritten.
+     Without an override, configuration comes from `exam.model_config` or an
+     adjacent `config.yaml`, with a working-directory fallback if missing; inspect
+     the actual file using
      [configuration resolution](references/configuration.md#embedding-configuration-resolution).
-     Endpoint-namespaced embedding
-     caches remain private student data (details in `references/grading.md`).
+     Caching is disabled unless explicitly enabled; shared caches additionally
+     require an explicit shared directory. Caches contain private student data.
    - In `review-grading`: use `Alt+S` for the All Questions Status dashboard, `📌 Grouped` to toggle answer grouping, `Ctrl+Enter` to confirm questions in batch, and `Alt+A` to approve only after 100% human review is complete (or use "Reset Review" to rollback if needed).
 
    **Post-Approval Reporting & Analytics Menu (Proactively Present to User)**:

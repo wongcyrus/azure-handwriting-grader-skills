@@ -98,8 +98,11 @@
 3b. **Optional grouping before review**:
     `cluster-answers --exam /private/exam.yaml [--threshold 0.82]` and `review-grading`
     default to cached/local lexical grouping with no eager paid network calls.
-    `--confirm-cost` explicitly permits Azure embedding requests; settings resolve
-    from `exam.model_config` or an adjacent `config.yaml`, with a working-directory
+    For paid embeddings, use `--preview-embedding` and optionally a separate
+    `--model-config`, then obtain explicit data/cost consent and rerun with
+    `--confirm-cost --revision` using the exact preview revision. Existing
+    `clusters.json` is not overwritten. Without an override, settings resolve from
+    `exam.model_config` or an adjacent `config.yaml`, with a working-directory
     fallback when the selected file is missing; see
     [configuration resolution](configuration.md#embedding-configuration-resolution).
     Inspect the deployment and
@@ -107,10 +110,10 @@
     Paid semantic grouping uses threshold cosine similarity, not a fixed cluster
     count. Higher thresholds yield tighter groups. Local word-overlap grouping stays
     available. Metadata identities are excluded from answer grouping.
-    Shared embeddings are endpoint/deployment-namespaced under
-    `~/.cache/azure-handwriting-grader/embeddings/` or configured `caching.directory`,
-    with a local `.embedding_cache.json` mirror. They are sensitive and can become
-    stale if an unchanged deployment alias is updated; manage retention explicitly.
+    Caching is disabled by default. When enabled, run-local embeddings use
+    `.embedding_cache.json`; shared reuse also requires `caching.scope: shared`
+    and an explicit `caching.directory`. Caches are sensitive and can become stale
+    if an unchanged deployment alias is updated; manage retention explicitly.
 4. Ask the teacher to run `review-grading --exam /path/to/exam.yaml` and open
    the full printed local URL. The score editor presents a one-page blind
    marksheet per question (hiding student IDs during question review), groups
@@ -120,7 +123,9 @@
    (`Needs Mark ⚠`), expand bounding boxes (`Expand Box`), resize or zoom/pan
    handwriting crops (`+Context` / `Full Page`), toggle columns, and edit marks,
    answers, and reasoning inline (display, grouping, filter, and sort preferences
-   persist across questions).
+   persist across questions). In grouped view, blank answers with a valid zero mark
+   appear last; unscored answers and those needing manual marks remain elsewhere.
+   Blank answers still require human review.
    - **All Questions Status Modal (`Alt+S`)**: A live overview dialog showing
      review completion for all questions and identity matching, filtering by
      "Incomplete Questions Only", and allowing instant keyboard (`Enter`) or mouse

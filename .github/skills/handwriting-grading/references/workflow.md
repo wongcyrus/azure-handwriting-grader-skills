@@ -6,13 +6,16 @@ are implemented. Formatting and cache coverage differ from the notebooks.
 
 1. **Answer sheets:** optionally generate from a roster and DOCX before scans;
    ask the teacher to verify identities and pagination before printing.
-2. **Azure profile and preflight:** before preflight or `check-scans`, ask for
-   and confirm separate text/vision, embedding and image-generation settings:
-   endpoint, API version, deployments/underlying models, ARM region, billing
-   type, rates, auth and private config paths. Image generation must be
-   configured or explicitly opted out even when it is needed only for optional
-   infographics. Then verify inputs and obtain confirmation of scan order,
-   page layout and output location. Configuration approval never substitutes
+2. **Azure profile and preflight:** inspect existing configurations and approvals
+   first. Use known valid stage selections and read-only `discover-foundry` when
+   deployment or pricing metadata is needed. Ask only for unresolved decisions
+   required by the current stage; defer optional embedding and image settings.
+   Image generation may use a separate Foundry resource in another region; discover
+   it when requested rather than assuming it shares the grading resource.
+   Preflight is offline and does not require the full Azure profile. Verify inputs;
+   obtain confirmation of scan order, page layout and output location when not
+   already established by valid, unchanged approvals.
+   Configuration approval never substitutes
    for stage-specific paid consent. When attendance is configured, review and approve the
    complete list separately; see `attendance.md`.
    Before region setup, preview `suggest-scan-markers`, obtain cost/data consent,
@@ -44,12 +47,12 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    retries may handle transient failures; disclose exhausted errors and obtain fresh
    consent for targeted retry or offer manual marking.
 6. **Optional grouping:** `cluster-answers --exam /private/exam.yaml` and
-   `review-grading` default to cached/local lexical grouping, with no eager paid calls.
-   `--confirm-cost` permits paid Azure embeddings; inspect `exam.model_config` or
-   adjacent `config.yaml`, including the missing-file working-directory fallback
-   described in [configuration resolution](configuration.md#embedding-configuration-resolution).
-   Shared embeddings use endpoint/deployment namespaces,
-   retain sensitive answer data and do not guarantee conceptually identical groups.
+   `review-grading` default to offline grouping. For embeddings, preview with
+   `--preview-embedding` and an optional separate `--model-config`; after explicit
+   data/cost consent pass `--confirm-cost --revision` using the preview revision.
+   Existing clusters are not overwritten. Caching is opt-in; explicitly configured
+   shared caches retain sensitive answer data. See
+   [configuration resolution](configuration.md#embedding-configuration-resolution).
 7. **Score Review:** A teacher reviews IDs, OCR, exceptions, moderation flags and
    mark overrides in `review-grading`.
 8. **Reports:** reconcile the complete present roster and marks, validate ranges and

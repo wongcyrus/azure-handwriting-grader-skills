@@ -350,8 +350,13 @@ class AzureAuxiliaryTests(unittest.TestCase):
         server.allow_ai = allow_ai
         server._azure_client = None
         server._embedding_model = None
+        server.embedding_tracker = None
+        server.expected_revision = None
         server.embedding_model_name = "none"
         server.embedding_namespace = ""
+        server.embedding_model_config = self.root / "models.yaml"
+        server.embedding_cache_enabled = False
+        server.shared_cache_path = None
         server.embedding_cache = {}
         server.embedding_lock = threading.Lock()
         server.lock = threading.Lock()
@@ -374,6 +379,35 @@ class AzureAuxiliaryTests(unittest.TestCase):
         self.assertEqual(len(result["clusters"]), 2)
         self.assertEqual(len(result["clusters"][0]["scripts"]), 2)
         self.assertEqual(result["model"], "none")
+        self.assertEqual(result["method"], "exact")
+
+    def test_offline_cluster_file_does_not_enable_embedding_label(self):
+        (self.root / "clusters.json").write_text(json.dumps({
+            "Q1": {"model": "none", "method": "exact", "answer_hash": "hash"}
+        }))
+        config = {"exam": {}, "layout": {"pages_per_student": 1}}
+        with patch.object(score_editor, "verify_grading_run", return_value=(self.root, {}, {}, [])), \
+                patch.object(score_editor, "approved_inputs", return_value=(None, None, None, {})), \
+                patch.object(score_editor, "present_roster", return_value=[]), \
+                patch.object(score_editor, "load_state"), \
+                patch.object(score_editor.ThreadingHTTPServer, "__init__", return_value=None):
+            server = score_editor.ScoreServer(config, self.root)
+        self.assertFalse(server.has_clusters)
+
+    def test_shared_embedding_cache_requires_explicit_opt_in(self):
+        from handwriting_grader.cache import shared_embedding_cache_path
+
+        model_config = self.root / "models.yaml"
+        for content in ("{}", "caching:\n  enabled: true\n  scope: run\n",
+                        "caching:\n  enabled: false\n  scope: shared\n  directory: private\n"):
+            model_config.write_text(content)
+            self.assertIsNone(shared_embedding_cache_path(model_config, "model", namespace=ENDPOINT))
+        model_config.write_text("caching:\n  enabled: true\n  scope: shared\n  directory: private\n")
+        self.assertEqual(shared_embedding_cache_path(model_config, "model", namespace=ENDPOINT).parent,
+                         self.root / "private" / "embeddings")
+        model_config.write_text("caching:\n  enabled: true\n  scope: shared\n")
+        with self.assertRaisesRegex(ValueError, "caching.directory"):
+            shared_embedding_cache_path(model_config, "model", namespace=ENDPOINT)
 
     def test_saved_clusters_do_not_override_consent_threshold_or_answers(self):
         server = self._editor()
@@ -402,6 +436,27 @@ class AzureAuxiliaryTests(unittest.TestCase):
             marks[(1, key)]["answer"] = ""
             clusters = server.cluster_question(0)["clusters"]
         self.assertTrue(any(cluster["rep_text"] == "(empty)" for cluster in clusters))
+        self.assertEqual(fake.embed_content.call_count, 2)
+
+    def test_semantic_results_survive_without_cache_but_not_answer_changes(self):
+        server = self._editor(allow_ai=True)
+        key = score_editor.question_key("Q1")
+        marks = {(0, key): {"answer": "First"}, (1, key): {"answer": "Second"}}
+        state = (self.root, "revision", [], [{"question_number": "Q1"}], {0: {}, 1: {}}, marks)
+        fake = Mock()
+        fake.embed_content.return_value = SimpleNamespace(embeddings=[SimpleNamespace(values=[1, 0])])
+        with patch.object(score_editor, "load_state", return_value=state), \
+                patch.object(server, "get_embedding_client", return_value=(fake, "embedding-alias")):
+            paid = server.cluster_question(0)
+        self.assertEqual(paid["method"], "embedding")
+        self.assertFalse((self.root / ".embedding_cache.json").exists())
+        server.allow_ai = False
+        server.embedding_cache.clear()
+        server.precomputed_clusters = {"Q1": paid}
+        with patch.object(score_editor, "load_state", return_value=state):
+            self.assertEqual(server.cluster_question(0), paid)
+            marks[(1, key)]["answer"] = "Changed"
+            self.assertEqual(server.cluster_question(0)["method"], "exact")
         self.assertEqual(fake.embed_content.call_count, 2)
 
     def test_embedding_client_requires_consent_and_namespaces_endpoint_and_deployment(self):
@@ -444,6 +499,7 @@ class AzureAuxiliaryTests(unittest.TestCase):
         server.allow_ai = True
         server.embedding_cache = {}
         server.embedding_namespace = ENDPOINT
+        server.embedding_cache_enabled = True
         server.shared_cache_path = self.root / "shared.json"
         fake = Mock()
         fake.embed_content.return_value = SimpleNamespace(

@@ -53,27 +53,27 @@ def cache_directory(model_config_path, run_root):
 
 
 def shared_embedding_cache_path(model_config_path=None, model_name="text-embedding-3-small", *, namespace=""):
-    """Returns cross-assignment shared embedding cache path, partitioned by embedding model."""
+    """Return a shared embedding cache path only when explicitly enabled."""
     import re
+    if model_config_path is None:
+        return None
+    p = Path(model_config_path)
+    if not p.is_file():
+        return None
+    with p.open(encoding="utf-8") as file:
+        settings = yaml.safe_load(file) or {}
+    cache = settings.get("caching", {})
+    if not isinstance(cache, dict) or type(cache.get("enabled", False)) is not bool:
+        raise ValueError("caching must be a mapping with a boolean enabled setting")
+    if not cache.get("enabled", False) or cache.get("scope", "run") == "run":
+        return None
+    if cache.get("scope") != "shared" or not isinstance(cache.get("directory"), str) or not cache["directory"].strip():
+        raise ValueError("For shared caching set caching.scope: shared and caching.directory")
     safe_model = re.sub(r"[^\w\-.]", "_", model_name or "text-embedding-3-small")
     if namespace:
         safe_model += "-" + hashlib.sha256(namespace.encode()).hexdigest()[:16]
-    if model_config_path is not None:
-        try:
-            p = Path(model_config_path)
-            if p.is_file():
-                with p.open(encoding="utf-8") as file:
-                    settings = yaml.safe_load(file)
-                cache = settings.get("caching", {})
-                if isinstance(cache, dict):
-                    c_dir = cache.get("directory")
-                    if isinstance(c_dir, str) and c_dir.strip():
-                        base = (p.resolve().parent / Path(c_dir).expanduser()).resolve()
-                        return base / "embeddings" / f"{safe_model}.json"
-        except Exception:
-            pass
-    base = Path.home() / ".cache" / "azure-handwriting-grader" / "embeddings"
-    return base / f"{safe_model}.json"
+    base = (p.resolve().parent / Path(cache["directory"]).expanduser()).resolve()
+    return base / "embeddings" / f"{safe_model}.json"
 
 
 class CachedGrader:

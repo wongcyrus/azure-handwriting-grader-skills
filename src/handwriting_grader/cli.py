@@ -307,10 +307,14 @@ def main(argv=None):
     cluster_cmd.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     cluster_cmd.add_argument("--threshold", type=float, default=0.82, help="Cosine similarity threshold (default: 0.82)")
     cluster_cmd.add_argument("--run", help="Optional run ID (default: current run)")
+    cluster_cmd.add_argument("--model-config", type=Path, help="Separate embedding model configuration")
+    cluster_cmd.add_argument("--preview-embedding", action="store_true", help="Preview embedding target and request limit without calling Azure")
+    cluster_cmd.add_argument("--revision", help="Exact review revision from the embedding preview")
     cluster_cmd.add_argument("--confirm-cost", action="store_true", help="Allow paid Azure embeddings; otherwise use offline grouping")
     grade_review = commands.add_parser("review-grading", help="Start a local browser-based grading editor")
     grade_review.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     grade_review.add_argument("--port", type=int, default=0, help="Local port (default: automatically selected)")
+    grade_review.add_argument("--model-config", type=Path, help="Separate embedding model configuration")
     grade_review.add_argument("--confirm-cost", action="store_true", help="Allow paid Azure embedding requests in the editor")
     grade_check = commands.add_parser("check-grading-review", help="Diagnose review discrepancies without approval")
     grade_check.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
@@ -371,6 +375,14 @@ def main(argv=None):
     discover_models.add_argument("--endpoint", required=True, help="Explicit Azure OpenAI endpoint")
     discover_models.add_argument("--api-version", default="v1", help="Azure OpenAI API version (default: v1)")
     discover_models.add_argument("--write-config", type=Path, help="Create model configuration YAML at this path (refuses overwrite)")
+    discover_foundry = commands.add_parser(
+        "discover-foundry", help="Read Foundry account deployments and public retail pricing (no inference)")
+    discover_foundry.add_argument("--resource", required=True, help="Foundry account name or account/project ARM resource ID")
+    discover_foundry.add_argument("--text-deployment", help="Select a deployed text/vision alias when multiple are available")
+    discover_foundry.add_argument("--embedding-deployment", help="Select an embedding alias when multiple are available")
+    discover_foundry.add_argument("--image-deployment", help="Select an optional image-generation alias")
+    discover_foundry.add_argument("--meter-region", help="Explicit retail meter region when different from the resource region")
+    discover_foundry.add_argument("--write-config", type=Path, help="Create a new private configuration; never overwrite")
     fetch_pricing = commands.add_parser("fetch-pricing", help="Opt in to Microsoft public retail pricing lookup (no inference)")
     fetch_pricing.add_argument("--region", required=True, help="Exact Azure ARM region, such as eastus")
     fetch_pricing.add_argument("--deployment-type", required=True, choices=("global-standard", "data-zone-standard"))
@@ -391,6 +403,19 @@ def main(argv=None):
                 raise ValueError("Azure API version must be nonempty and contain no whitespace")
         except ValueError as exc:
             print(f"Invalid Azure target: {exc}", file=sys.stderr)
+            return 1
+    if args.command == "discover-foundry":
+        from azure.core.exceptions import AzureError
+
+        from .foundry_discovery import report_foundry
+        try:
+            report_foundry(args.resource, text_deployment=args.text_deployment,
+                           embedding_deployment=args.embedding_deployment,
+                           image_deployment=args.image_deployment,
+                           meter_region=args.meter_region, write_config=args.write_config)
+            return 0
+        except (AzureError, OSError, TypeError, ValueError) as exc:
+            print(f"Foundry discovery failed: {exc}", file=sys.stderr)
             return 1
     if args.command == "fetch-pricing":
         from .pricing import fetch_and_report
@@ -738,10 +763,45 @@ def main(argv=None):
             _report_failed_marks(output)
         return 0
     if args.command == "cluster-answers":
-        from .score_editor import ScoreServer
+        from .regions import atomic_json
+        from .score_editor import ScoreServer, load_state, writer_lock
 
         try:
-            server = ScoreServer(config, path.parent, 0, path, run_id=args.run, allow_ai=args.confirm_cost)
+            if not 0 <= args.threshold <= 1:
+                raise ValueError("Clustering threshold must be between 0 and 1")
+            if args.preview_embedding and args.confirm_cost:
+                raise ValueError("Embedding preview cannot be combined with --confirm-cost")
+            server = ScoreServer(config, path.parent, 0, path, run_id=args.run, allow_ai=args.confirm_cost,
+                                 embedding_model_config=args.model_config)
+            if args.preview_embedding:
+                from .azure_ai import validate_endpoint
+                from .suggestions import load_model_settings
+
+                with server.embedding_model_config.open(encoding="utf-8") as file:
+                    model_config = yaml.safe_load(file)
+                model_name = load_model_settings(server.embedding_model_config, "embedding")
+                azure = model_config["azure_openai"]
+                endpoint = validate_endpoint(azure.get("endpoint"))
+                _, revision, _, _, _, marks = load_state(server)
+                unique = {" ".join(str(item["answer"]).lower().split())
+                          for item in marks.values() if item.get("answer") and str(item["answer"]).strip()}
+                print(f"Embedding target: endpoint={endpoint}, api_version={azure.get('api_version', 'v1')}, "
+                      f"model={model_name}.")
+                print(f"Up to {len(unique)} application requests, excluding SDK retries; "
+                      "transcribed non-empty student answers are sent, not images.")
+                print(f"Review and grading revision: {revision}")
+                print("No request sent. Verify current pricing and obtain data and cost approval.")
+                return 0
+            if not args.confirm_cost:
+                print("Word-overlap grouping is available in review-grading; no embeddings or output created.")
+                return 0
+            _, revision, _, _, _, _ = load_state(server)
+            if args.revision != revision:
+                raise ValueError("Embedding preview revision is missing or changed; no request sent")
+            clusters_path = server.root / "clusters.json"
+            if clusters_path.exists():
+                raise ValueError("clusters.json already exists; preserve it before starting a new clustering run")
+            server.expected_revision = revision
             _, model_name = server.get_embedding_client()
             total_q = len(server.questions)
             print(f"Pre-computing semantic clusters using {model_name} (threshold={args.threshold})...")
@@ -753,9 +813,12 @@ def main(argv=None):
                 c_count = len(res.get("clusters", []))
                 cached_all[q_num] = res
                 print(f"[{q_idx + 1}/{total_q}] Question {q_num}: {c_count} semantic clusters ready")
-            clusters_path = server.root / "clusters.json"
-            with clusters_path.open("w", encoding="utf-8") as f:
-                json.dump(cached_all, f, indent=2, ensure_ascii=False)
+            with writer_lock(server):
+                if load_state(server)[1] != revision:
+                    raise ValueError("Grading or review changed; clustering results were not saved")
+                if clusters_path.exists():
+                    raise ValueError("clusters.json appeared during clustering; it was not overwritten")
+                atomic_json(clusters_path, cached_all)
             print(f"Semantic clustering complete! Saved to {clusters_path} for review-grading.")
             return 0
         except Exception as exc:
@@ -771,7 +834,8 @@ def main(argv=None):
             print("Port must be between 0 and 65535", file=sys.stderr)
             return 1
         try:
-            server = ScoreServer(config, path.parent, args.port, path, run_id=args.run, allow_ai=args.confirm_cost)
+            server = ScoreServer(config, path.parent, args.port, path, run_id=args.run, allow_ai=args.confirm_cost,
+                                 embedding_model_config=args.model_config)
         except (OSError, ValueError, KeyError) as exc:
             print(f"Cannot start grading editor: {exc}", file=sys.stderr)
             return 1

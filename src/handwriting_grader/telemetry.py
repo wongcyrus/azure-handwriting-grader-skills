@@ -164,7 +164,7 @@ class TelemetryTracker:
                 if not valid_rate(rates.get(key)):
                     return None
                 cost += count * float(rates[key]) / (1 if key == "image" else 1_000_000)
-        return round(cost, 6) if math.isfinite(cost) else None
+        return cost if math.isfinite(cost) else None
 
     def record_call(
         self,
@@ -248,13 +248,13 @@ class TelemetryTracker:
                 by_phase[t.phase] = {"calls": 0, "total_tokens": 0, "cost_usd": 0.0}
             by_phase[t.phase]["calls"] += 1
             by_phase[t.phase]["total_tokens"] += t.total_tokens
-            by_phase[t.phase]["cost_usd"] = round(by_phase[t.phase]["cost_usd"] + t.cost_usd, 5)
+            by_phase[t.phase]["cost_usd"] += t.cost_usd
 
             if t.model not in by_model:
                 by_model[t.model] = {"calls": 0, "total_tokens": 0, "cost_usd": 0.0}
             by_model[t.model]["calls"] += 1
             by_model[t.model]["total_tokens"] += t.total_tokens
-            by_model[t.model]["cost_usd"] = round(by_model[t.model]["cost_usd"] + t.cost_usd, 5)
+            by_model[t.model]["cost_usd"] += t.cost_usd
 
         for phase, data in by_phase.items():
             if any(not t.cost_known for t in self.traces if t.phase == phase):
@@ -273,7 +273,7 @@ class TelemetryTracker:
                 else sum(t.cache_write_tokens for t in self.traces)
             ),
             "total_images": total_imgs,
-            "total_cost_usd": None if unpriced else round(total_cost, 5),
+            "total_cost_usd": None if unpriced else total_cost,
             "unpriced_calls": unpriced,
             "by_phase": by_phase,
             "by_model": by_model,
@@ -350,7 +350,7 @@ class TelemetryTracker:
                 data["c"],
                 data["cached"],
                 data["img"],
-                round(data["cost"], 5) if all(t.cost_known for t in self.traces if t.phase == p_name) else "UNPRICED",
+                data["cost"] if all(t.cost_known for t in self.traces if t.phase == p_name) else "UNPRICED",
             ])
 
         total_cost = sum(t.cost_usd for t in self.traces)
@@ -359,7 +359,7 @@ class TelemetryTracker:
         total_cached = sum(t.cached_tokens for t in self.traces)
         total_imgs = sum(t.images_count for t in self.traces)
         known = all(t.cost_known for t in self.traces)
-        ws_sum.append(["TOTAL", len(self.traces), total_p, total_c, total_cached, total_imgs, round(total_cost, 5) if known else "UNPRICED"])
+        ws_sum.append(["TOTAL", len(self.traces), total_p, total_c, total_cached, total_imgs, total_cost if known else "UNPRICED"])
         total_row = ws_sum[ws_sum.max_row]
         for cell in total_row:
             cell.font = Font(bold=True)
@@ -387,7 +387,7 @@ class TelemetryTracker:
                 t.thoughts_tokens,
                 t.images_count,
                 round(t.latency_ms / 1000.0, 2),
-                round(t.cost_usd, 5) if t.cost_known else "UNPRICED",
+                t.cost_usd if t.cost_known else "UNPRICED",
                 "YES" if t.cached_call else "NO",
                 t.cache_write_tokens if t.cache_write_tokens is not None else "UNKNOWN",
                 t.cache_write_ttl,
@@ -414,7 +414,7 @@ class TelemetryTracker:
             "total_cached_tokens": total_cached,
             "total_cache_write_tokens": self.get_summary()["total_cache_write_tokens"],
             "total_images": total_imgs,
-            "total_cost_usd": round(total_cost, 5) if known else None,
+            "total_cost_usd": total_cost if known else None,
             "unpriced_calls": sum(not t.cost_known for t in self.traces),
             "phases": phases,
         }

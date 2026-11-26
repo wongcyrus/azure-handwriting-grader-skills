@@ -1,8 +1,11 @@
 # Azure pricing before the first paid request
 
 Standalone pricing lookup is online and separate from paid model inference.
-`discover-models`, preflight, review and cost reports remain offline. Obtain the user's resource ARM region, the retail meter profile region, and the
-deployment type; never infer them from an endpoint alias. These locations can
+`discover-models`, preflight, review and cost reports remain offline.
+`discover-foundry` reads account and deployment metadata from Azure and looks up
+supported public retail prices without sending student data or calling a model.
+It obtains the resource region and deployment SKU from Azure, and initially searches
+that region's meters. The resource and retail meter profile locations can
 differ for Global Standard billing. The resource location describes where the
 Azure resource was created; `pricing_lookup.region` selects the Retail Prices API's
 `armRegionName` meters. Supported lookup types are Global Standard and Data Zone
@@ -31,7 +34,9 @@ public OpenAI prices. Microsoft documents the same context thresholds as OpenAI.
 Exact matching excludes other regions, currencies, models and billing modes.
 Missing, ambiguous, future-only or unsupported meters remain **UNPRICED**.
 Network/service errors fail the command; incomplete pagination is not accepted.
-Other model families, embeddings and image generation need separately verified
+Global Standard `text-embedding-3-small` and `text-embedding-3-large` use exact
+public embedding meters and are refreshed by the paid-request verifier. Other
+model families, embedding types and image generation need separately verified
 manual rates. Do not substitute older-model prices or calculate discounts.
 
 If the initial Global Standard resource-region query is entirely `UNPRICED`, check
@@ -85,8 +90,8 @@ editor/clustering session after reviewing updated manual embedding evidence.
 
 ## Manual evidence for unsupported families and tools
 
-The retail adapter cannot independently refresh embeddings, image generation,
-other model families or hosted search fees. Until the user manually verifies
+The retail adapter cannot independently refresh unsupported embedding SKUs,
+image generation, other model families or hosted search fees. Until the user manually verifies
 their current prices, these paid operations are blocked. Manual evidence must
 be dated **today in UTC**, not in the future, and bind the declared family,
 resource, region, billing mode, currency and units to an official Microsoft
