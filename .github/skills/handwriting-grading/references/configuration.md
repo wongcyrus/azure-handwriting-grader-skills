@@ -36,6 +36,25 @@ must be supplied together, and canonical question labels must be unique.
 
 ## Azure deployments, credentials and consent
 
+### Required initial Azure profile
+
+Collect this profile before preflight or scan processing, not stage by stage.
+Present existing detected values and ask the user to confirm or replace them.
+
+| Scope | Required settings |
+|---|---|
+| Text/vision | HTTPS resource root, API version, stage aliases, underlying model for custom aliases, ARM region, deployment/billing type, reviewed rates, auth |
+| Embeddings | Endpoint/API version/deployment and reviewed rates, or explicit opt-out from paid semantic grouping |
+| Image generation | HTTPS resource root, API version, `models.analytics_image` deployment and manually reviewed image rates, or explicit opt-out from infographics |
+| Privacy/caching | Data-transfer scope, cache opt-in, run/shared scope and private cache path |
+
+Do not assume that an image deployment shares the text endpoint, that an
+embedding alias exists on either resource, or that endpoint names reveal the
+underlying model, region or billing type. Ask separately for text/vision,
+embeddings and image generation even when the user expects only offline or
+manual review later. An initial configuration decision is not cost consent:
+every paid stage still needs its own preview and `--confirm-cost`.
+
 The canonical text/vision and embeddings template is the repository-root
 [model-config.yaml.template](../../../../model-config.yaml.template), including for
 exams under `example/`. Copy it to a new private file or use `discover-models`;

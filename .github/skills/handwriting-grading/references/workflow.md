@@ -6,16 +6,23 @@ are implemented. Formatting and cache coverage differ from the notebooks.
 
 1. **Answer sheets:** optionally generate from a roster and DOCX before scans;
    ask the teacher to verify identities and pagination before printing.
-2. **Preflight and attendance:** verify inputs and configuration, then obtain
-   confirmation of scan order, page layout, output location and intended
-   Azure endpoint/API version/deployments. When attendance is configured, review and approve the
+2. **Azure profile and preflight:** before preflight or `check-scans`, ask for
+   and confirm separate text/vision, embedding and image-generation settings:
+   endpoint, API version, deployments/underlying models, ARM region, billing
+   type, rates, auth and private config paths. Image generation must be
+   configured or explicitly opted out even when it is needed only for optional
+   infographics. Then verify inputs and obtain confirmation of scan order,
+   page layout and output location. Configuration approval never substitutes
+   for stage-specific paid consent. When attendance is configured, review and approve the
    complete list separately; see `attendance.md`.
    Before region setup, preview `suggest-scan-markers`, obtain cost/data consent,
    and use Azure to propose printed markers from the first script through the
    Microsoft Agent Framework workflow. Review the markers and that script's
    order, then `approve-scan-markers --confirm-reviewed`. Install local
-   Tesseract/language data and run offline `check-scans`; unreadable, ambiguous,
-   rotated or wrong-page markers block grading. Source corrections require a
+   Tesseract/language data and preview `check-scans` with every reviewed marker
+   crop, endpoint, model and request count. Obtain separate cost/data consent,
+   then send all crops together in one Azure request. Unreadable, ambiguous
+   or wrong-page markers block grading. Source corrections require a
    fresh output directory and marker review.
 3. **Rubric:** extract the scheme and have a teacher approve questions,
    answers and maximum marks.

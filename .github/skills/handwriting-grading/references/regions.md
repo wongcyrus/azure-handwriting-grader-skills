@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Successful offline preflight AND `check-scans --exam /path/to/exam.yaml` passing
+- Successful offline preflight AND Azure-confirmed `check-scans` passing
   (run `check-scans` **before** `prepare-regions` so an upside-down or misordered
   first script cannot corrupt the template layout and bounding boxes for all scripts).
 - **Approved rubric (`output_dir/rubric/rubric.xlsx` + `approval.json`)**: Always extract/import
@@ -46,7 +46,7 @@
 
 Scanners commonly introduce vertical/horizontal shifts, slight skew, upside-down feeds, or out-of-order pages:
 - **Orientation & sequence validation (`check-scans`)**:
-  First preview `suggest-scan-markers` with an explicit model configuration, Azure endpoint and API version; obtain cost/data consent before `--confirm-cost`. Review the proposed printed marker text and boxes against the saved first-script images, verify that script's page order, then run `approve-scan-markers --exam /path/to/exam.yaml --confirm-reviewed`. Run `handwriting-grader check-scans --exam /path/to/exam.yaml` (offline, 0 AI cost) **before** `prepare-regions`; `grade` also checks markers before inference. Local Tesseract OCR matches at least two reviewed, page-unique printed phrases in their boxes, not handwriting or whole-page ink. Missing, unreadable, ambiguous, rotated and wrong-page matches block grading. Install Tesseract and the configured language data on Windows, Linux or macOS. **Never auto-flip or auto-reorder pages** — instruct the user to correct the source scan/PDF and re-run the check. Changing the source or reviewed markers invalidates approval; preserve the old output and prepare a new run.
+  First preview `suggest-scan-markers` with an explicit model configuration, Azure endpoint and API version; obtain cost/data consent before `--confirm-cost`. Review the proposed printed marker text and boxes against the saved first-script images, verify that script's page order, then run `approve-scan-markers --exam /path/to/exam.yaml --confirm-reviewed`. Preview `handwriting-grader check-scans --exam /path/to/exam.yaml --model-config /private/config.yaml --endpoint ... --api-version v1`, then obtain separate cost/data consent before `--confirm-cost`. One Azure request sends all reviewed marker crops from the complete PDF; the structured result is saved as `azure_confirmation-v2.json` and bound to the PDF and marker approval. `grade` refuses absent or stale confirmation. Each page needs at least one unique multi-word phrase. Missing, unreadable, ambiguous and wrong-page matches block grading. Tesseract may assist first-script human review, but no local character substitutions are allowed. **Never auto-flip or auto-reorder pages** — instruct the user to correct the source scan/PDF and re-run the check. Changing the source or reviewed markers invalidates approval; preserve the old output and prepare a new run.
 - **Automatic alignment during `grade`**: Every rendered page is automatically aligned (rigid translation + small rotation via 4-quadrant phase correlation with outlier-quadrant rejection) to `output_dir/regions/images/` before cropping.
 - **Recovering an existing unaligned run**:
   `--align-images` rebuilds pages from the original PDF instead of transforming

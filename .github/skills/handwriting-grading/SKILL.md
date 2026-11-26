@@ -79,6 +79,24 @@ execute a notebook as a workaround, or claim a human approval occurred.
 
 1. Establish whether the user is starting or resuming, what stage they need,
    and which local paths they intend to use. Do not copy or overwrite data.
+   Before preflight, `suggest-scan-markers`, `check-scans`, or any other stage,
+   collect the complete Azure profile in one explicit setup step:
+   - **Text/vision resource:** HTTPS resource root, API version, deployment
+     aliases and underlying models for annotation, OCR, rubric extraction,
+     grading, moderation, analytics and student feedback.
+   - **Embedding resource:** endpoint, API version and deployment, or an
+     explicit decision to keep semantic clustering disabled.
+   - **Image-generation resource:** endpoint, API version and
+     `models.analytics_image` deployment, or an explicit decision to keep
+     infographic generation disabled. Ask about this even if the current stage
+     only needs text/vision.
+   - **Commercial/access details:** ARM region, deployment/billing type,
+     independently reviewed rates, authentication method, intended caching,
+     and any separate/private configuration file paths.
+   Present the detected values and ask for every missing or ambiguous value.
+   Do not infer shared endpoints, deployment names, regions or billing types.
+   Generate and verify the private text/vision and image configurations before
+   continuing; later stage-specific `--confirm-cost` consent is still required.
    When resuming an existing workspace or `output_dir`, inspect existing files
    and artifacts to orient immediately (do not rely on prior conversation history):
 
@@ -86,7 +104,7 @@ execute a notebook as a workaround, or claim a human approval occurred.
    |---|---|---|
    | No `exam.yaml` / `config.yaml` | Not configured | `discover-models` (for `config.yaml`) -> configure `exam.yaml` -> `preflight` -> `check-scans` |
    | `exam.yaml` exists (no `rubric/` or `attendance/`) | Configured | `preflight` -> `check-scans` -> `prepare-attendance` (if configured) or `extract-rubric`/`import-rubric` |
-   | No `scan-markers/approval.json` | Printed scan markers not approved | Preview `suggest-scan-markers` with explicit cost/data consent before paid calls -> teacher reviews markers and first-script order -> `approve-scan-markers` -> offline `check-scans` before region setup or grading |
+   | No `scan-markers/approval.json` | Printed scan markers not approved | Preview `suggest-scan-markers` with explicit cost/data consent before paid calls -> teacher reviews markers and first-script order -> `approve-scan-markers` -> paid Azure `check-scans` before region setup or grading |
    | `attendance/review.xlsx` (no `attendance/approval.json`) | Attendance extracted | Teacher reviews `attendance/review.xlsx` -> `approve-attendance` |
    | `rubric/rubric.xlsx` (no `rubric/approval.json`) | Rubric extracted/imported | Teacher reviews `rubric/rubric.xlsx` -> `approve-rubric` |
    | `rubric/approval.json` (no `regions/images/`) | Rubric approved | `prepare-regions` -> optional paid `suggest-regions` -> `review-regions` |
@@ -106,8 +124,10 @@ execute a notebook as a workaround, or claim a human approval occurred.
    detected values and ask for missing or ambiguous decisions. Keep actual
    configuration outside version control:
    a. Exam settings (`exam.yaml`): define roster, scans, layout, attendance, and reporting.
-   b. AI model configuration (`config.yaml`): inspect an existing Azure configuration
-      rather than overwriting it. Otherwise generate an offline template with
+   b. AI model configuration (`config.yaml`): inspect all existing Azure
+      configurations rather than overwriting them. Otherwise, only after the
+      up-front profile is complete, generate separate text/vision/embedding and
+      optional image-generation templates with
       `discover-models --endpoint https://RESOURCE.openai.azure.com --api-version v1
       --write-config /private/config.yaml`, then set actual deployment aliases and
       verified rates. This does not confirm availability, quota or capabilities.
@@ -130,10 +150,15 @@ execute a notebook as a workaround, or claim a human approval occurred.
    script's order and `output_dir/scan-markers/markers.json` against the saved images,
    then explicitly run `approve-scan-markers --exam /path/to/exam.yaml --confirm-reviewed`.
    Tesseract and the selected language pack must be installed locally.
-   `handwriting-grader check-scans --exam /path/to/exam.yaml`
-   (offline, zero AI cost). It OCRs reviewed printed marker boxes rather than
-   comparing handwriting across whole pages. Missing, unreadable or ambiguous
-   markers block grading, as do wrong-page and orientation matches. The first
+   `handwriting-grader check-scans --exam /path/to/exam.yaml
+   --model-config /private/config.yaml --endpoint https://RESOURCE.openai.azure.com
+   --api-version v1`.
+   Preview the crop count and obtain explicit data/cost consent, then add
+   `--confirm-cost`. One Azure request sends every reviewed printed marker crop
+   from the complete PDF so the model confirms all expected text and page order
+   together. Do not send whole answer pages or use handwritten OCR substitutions.
+   The hash-bound `azure_confirmation-v2.json` is required by grading. Missing,
+   unreadable or ambiguous markers block grading, as do wrong-page matches. The first
    script is a human-confirmed reference, not independent proof of correct order.
    If any page is flagged, **do not
    silently flip or reorder pages in code** — report the exact PDF page numbers and
