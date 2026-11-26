@@ -243,11 +243,9 @@ is an alias; `--orchestrator python` uses the same grading engine directly.
 Neither execution path grants human approval or sends email.
 
 **Grading modes:** `--mode batch` groups answer crops in synchronous Responses API
-requests; it is **not** Azure's asynchronous Batch API. Grouping follows the Gemini
-implementation: up to 50 scripts per question request and 35 scripts per metadata
-request (105 images with three fields). Each group is sent together without
-Azure-specific image-count or payload micro-batching. This assumes the deployment
-can accept the group; Azure GPT-6.1 image-count and payload ceilings are unverified.
+requests; it is **not** Azure's asynchronous Batch API. Requests contain at most
+50 images: up to 50 scripts per question and 16 metadata scripts with three fields.
+There is no payload-size micro-batching and deployment-specific limits can be lower.
 Deployment limits, context, output-token budgets and quota can still cause failures.
 Comparison within a group does not guarantee consistency across all groups.
 `--mode item` grades individual crops and performs question-level text moderation.

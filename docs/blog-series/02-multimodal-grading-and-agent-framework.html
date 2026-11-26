@@ -59,8 +59,8 @@ a{color:#0067b8}em{color:#4b6175}
 <p><img alt="Selected saved grading manifest and result counts: batch mode, four scripts and twenty marks." src="media/14-grading-evidence.png" /></p>
 <p><em>Figure 2. Saved <code>grading/manifest.json</code> and <code>results.json</code> summary.</em></p>
 <p>Under the hood:
-- <strong>Phase A (Metadata OCR)</strong> sends up to <strong>35 scripts</strong> (<code>105</code> field images) per request with roster candidates, falling back to individual fields on error.
-- <strong>Phase B (<code>--mode batch</code>, default)</strong> groups up to <strong>50 scripts</strong> per question into a synchronous <code>responses.create()</code> call (<code>QuestionBatchGradeResponse</code>, <code>16,384</code>-token output cap). There is no Azure-specific micro-batching; comparisons happen <em>within</em> each group, not across an entire 500-student cohort.
+- <strong>Phase A (Metadata OCR)</strong> sends up to <strong>16 scripts</strong> (48 images for three fields) per request with roster candidates; batch errors stop the run.
+- <strong>Phase B (<code>--mode batch</code>, default)</strong> groups up to <strong>50 scripts</strong> per question into a synchronous <code>responses.create()</code> call (<code>QuestionBatchGradeResponse</code>, <code>16,384</code>-token output cap). There is no payload-size micro-batching; comparisons happen <em>within</em> each group, not across an entire 500-student cohort.
 - <strong>Phase B (<code>--mode item</code>)</strong> grades each crop individually (<code>GradeResponse</code>, <code>8,192</code>-token cap), then runs a separate text-only <code>ModerationResponse</code> pass per question. Because text moderation cannot re-inspect diagrams, human image review remains essential.</p>
 <h2>3. Production prompts, <code>strict_schema()</code>, and adversarial safety</h2>
 <p>Python never forwards a teacher's chat message to the grading model. Instead, <code>grading.grade_question_batch()</code> constructs this <strong>complete batch prompt template</strong> from the approved rubric:</p>

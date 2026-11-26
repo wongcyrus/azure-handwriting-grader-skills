@@ -68,9 +68,8 @@ Similarity suggestions save unreviewed drafts, not approvals. Local editors are
 single-user tools; keep bearer-token URLs private and stop them after review.
 
 There is no global cohort consistency, exact OCR match, fixed cost saving or
-latency guarantee. Like Gemini, question/metadata requests send up to 50/35 scripts
-together without image-count or payload micro-batching. Azure GPT-6.1 image capacity
-is assumed, not verified; deployment limits can reject requests. Text moderation
+latency guarantee. Requests contain at most 50 images, including up to 16 metadata
+scripts with three fields. Payload and deployment limits can reject requests. Text moderation
 cannot re-inspect diagrams.
 `store=False` is not a guarantee about every Azure retention policy. Verify resource
 policy and deployment behavior before separately authorized live use.

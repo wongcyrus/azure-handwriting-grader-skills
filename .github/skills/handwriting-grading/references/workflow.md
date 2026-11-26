@@ -21,7 +21,8 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    order, then `approve-scan-markers --confirm-reviewed`. Install local
    Tesseract/language data and preview `check-scans` with every reviewed marker
    crop, endpoint, model and request count. Obtain separate cost/data consent,
-   then send all crops together in one Azure request. Unreadable, ambiguous
+   then combine markers into one image per student script and send synchronous requests
+   of at most 50 script images. Unreadable, ambiguous
    or wrong-page markers block grading. Source corrections require a
    fresh output directory and marker review.
 3. **Rubric:** extract the scheme and have a teacher approve questions,
@@ -34,9 +35,9 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    then obtain explicit `--confirm-cost`. Default framework Executors wrap validation,
    existing grading and the human-review boundary; `workflow-grade` forces this path,
    `--orchestrator python` is the direct fallback. `--mode batch` is synchronous
-   multi-image inference, not Azure asynchronous Batch. Gemini-style grouping sends
-   up to 50 question scripts or 35 metadata scripts together per request, without
-   image-count/payload micro-batching. Deployment capacity is assumed, not verified;
+   multi-image inference, not Azure asynchronous Batch. Requests contain at most
+   50 images: up to 50 question scripts or 16 metadata scripts with three fields.
+   Payload and deployment limits can still reject requests;
    comparisons are within groups, not guaranteed across a cohort. Item mode grades
    separate crops and moderates text; diagrams still need human image review.
    Roster-assisted OCR and blank filtering do not guarantee correctness. Bounded SDK

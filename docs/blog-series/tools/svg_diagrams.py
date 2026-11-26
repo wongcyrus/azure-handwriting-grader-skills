@@ -152,7 +152,7 @@ def build_all_diagrams(media_dir: Path):
           "review-regions (127.0.0.1 #TOKEN) -> approval"], "#0078d4", "GATE 3 · SHA-256"),
         (942, 315, 410, 155, "4. Resumable Grading Engine",
          ["grade --confirm-cost (Agent Framework)",
-          "Phase A: Metadata OCR (35 scripts/req)",
+          "Phase A: Metadata OCR (16 scripts/req, 3 fields)",
           "Phase B: Blank filter + Batch/Item grading"], "#b45309", "--confirm-cost"),
         (495, 315, 410, 155, "5. Blind HIL Review & Diagnostics",
          ["review-grading: blind marksheet + snapshots",
@@ -232,10 +232,10 @@ def build_all_diagrams(media_dir: Path):
     body += _card(
         48, 300, 635, 175,
         "Phase A: Roster-Constrained Metadata OCR",
-        ["Sends ID, CLASS, NAME crops (up to 35 scripts = 105 images/request)",
+        ["Sends ID, CLASS, NAME crops (up to 16 scripts = 48 images/request)",
          "Injects Official Enrolled Roster JSON to resolve cursive/smudged IDs",
-         "Falls back to per-field OCR on error; never authenticates identity"],
-        accent="#0f766e", badge="35 SCRIPTS / REQ",
+         "Stops on batch errors; never authenticates identity"],
+        accent="#0f766e", badge="16 SCRIPTS / REQ",
     )
     body += _card(
         717, 300, 635, 175,

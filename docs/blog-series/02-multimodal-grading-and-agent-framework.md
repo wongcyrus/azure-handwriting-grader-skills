@@ -46,8 +46,8 @@ In our saved VTC example, `grading/manifest.json` records `grading_mode: "batch"
 *Figure 2. Saved `grading/manifest.json` and `results.json` summary.*
 
 Under the hood:
-- **Phase A (Metadata OCR)** sends up to **35 scripts** (`105` field images) per request with roster candidates, falling back to individual fields on error.
-- **Phase B (`--mode batch`, default)** groups up to **50 scripts** per question into a synchronous `responses.create()` call (`QuestionBatchGradeResponse`, `16,384`-token output cap). There is no Azure-specific micro-batching; comparisons happen *within* each group, not across an entire 500-student cohort.
+- **Phase A (Metadata OCR)** sends up to **16 scripts** (48 images for three fields) per request with roster candidates; batch errors stop the run.
+- **Phase B (`--mode batch`, default)** groups up to **50 scripts** per question into a synchronous `responses.create()` call (`QuestionBatchGradeResponse`, `16,384`-token output cap). There is no payload-size micro-batching; comparisons happen *within* each group, not across an entire 500-student cohort.
 - **Phase B (`--mode item`)** grades each crop individually (`GradeResponse`, `8,192`-token cap), then runs a separate text-only `ModerationResponse` pass per question. Because text moderation cannot re-inspect diagrams, human image review remains essential.
 
 ## 3. Production prompts, `strict_schema()`, and adversarial safety

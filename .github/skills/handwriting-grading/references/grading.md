@@ -40,19 +40,56 @@
    and question threads, not shared cross-thread framework clients.
 
    - **Batch (default)**: synchronous multi-image inference, not Azure asynchronous
-     Batch. Like Gemini, up to 50 question scripts are sent together per request,
-     without image-count or payload micro-batching. Comparisons occur within groups;
+     Batch. Up to 50 question scripts are sent together per request, without
+     payload-size micro-batching. Comparisons occur within groups;
      no whole-cohort consistency or fixed savings/runtime guarantee.
    - **Item**: individual crops then whole-question text moderation. Transport limits
      still apply. Moderation cannot re-inspect diagrams: teachers must review images.
    - Both retain `results.json`, `review.xlsx`, and `azure_usage.jsonl`. Pillow blank
      filtering saves calls only for clearly blank crops; confirm them during review.
    - Roster candidates assist ID/CLASS/NAME OCR but do not guarantee correct matching.
-     Up to 35 metadata scripts are sent together per request (105 images with three
-     fields). Azure GPT-6.1 image capacity is assumed, not verified; deployment,
-     context, output-token budgets and quota can still cause failures.
+     Metadata requests contain at most 50 images and 35 scripts (16 with three
+     fields). A batch failure stops the run instead of issuing paid fallback calls.
+     Deployment, payload, context, output-token budgets and quota can still cause failures.
 
    Run `cost-report --exam /private/exam.yaml` for offline usage and priced estimates.
+   Question-batch failures stop further questions by default and retain the error
+   detail in the partial checkpoint. Concurrent requests already in flight may finish.
+   For original batch runs, adding `--continue-on-image-policy-block` to `grade`
+   or `resume-grading` opts in to continuing after the specific Azure image-policy
+   rejection. Preview and obtain explicit approval of data transfer and costs for the
+   remaining calls first. No blocked batch is retried and Azure filtering is not
+   bypassed. All nonblank answers in that failed question batch, including any
+   previously successful chunks of the same question, are left unscored and
+   flagged for mandatory human review. Other failures still stop the run.
+   Resuming does not automatically regrade previously failed marks.
+   For an incomplete batch run without a review workbook, preview
+   `retry-failed-batches --exam /private/exam.yaml`, obtain separate cost and data
+   consent, then add `--confirm-cost --checkpoint-sha256 <preview-hash>`. It retries failed crops question by question
+   in rubric order, preserves the original checkpoint in `grading/retry-history/`,
+   and stops on the first failure. Successful rows and the incomplete status are
+   preserved. Use `--exclude-question <id>` in both preview and execution to leave
+   a blocked question unchanged; excluded failures still need human attention.
+   Preview and separately authorize `resume-grading` to process questions
+   that had not yet run.
+   For an incomplete batch run, `export-failed-review --exam /private/exam.yaml
+   --output /private/new-directory` creates a separate offline worksheet and crops,
+   grouped by question. It does not import marks, resume grading, or record approval;
+   the worksheet and crops contain private student data.
+   For a completed original batch run with unreviewed failed answers, preview
+   `bisect-failed-batch --exam /private/exam.yaml --question Q21 --max-requests 39`.
+   After reviewing the question, target, request limit, data transfer and current
+   pricing, obtain explicit consent and rerun with the previewed `--revision` and
+   `--confirm-cost`. The command splits only confirmed content-filter failures,
+   keeps successful grades, and leaves filtered singleton answers unscored for
+   manual review. Other errors stop the retry. This does not bypass filtering and
+   a singleton failure does not prove its image caused the filter. Review edits
+   and approvals are protected by a revision check and writer lock. Use a freshly
+   started score editor after recovery: the workbook itself is not updated with
+   recovered answers or reasoning. Previously reviewed or edited rows are excluded.
+   The private retry history retains attempt details and any grades recovered
+   before an interruption or review conflict, but there is no automatic import
+   or resume for those staged grades.
    Bounded Azure SDK retries may handle transient failures; after exhaustion report
    failed counts/questions/error codes. Offer manual marking, quota investigation or
    user-approved `retry-grading`; never add blind retry loops. Retry is previewed and
@@ -203,7 +240,7 @@ When API operations exhaust their built-in retry attempts:
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml`: Retries failed marks and completes unmoderated questions.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --align-images`: Aligns all scanned page images to the approved reference layout (offline, 0 AI cost). Can be combined with `--re-ocr-id`, `--re-ocr-metadata`, or `--question`.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-id`: Re-runs student ID OCR for all scripts using the approved bounding box.
-  - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-metadata`: Re-runs student ID, class, and name OCR using Gemini-style groups of up to 35 scripts per request (105 images with three fields), without image-count or payload micro-batching. Deployment capacity is assumed, not verified; every identity still needs human verification.
+  - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-metadata`: Re-runs student ID, class, and name OCR in groups of up to 16 scripts (48 images); payload limits still apply and every identity needs human verification.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --question <Q_NUM>`: Re-grades and re-moderates a specific question using its approved box.
   Always preview the action plan without `--confirm-cost`, obtain explicit user cost confirmation, and rerun with `--confirm-cost`. The command updates `results.json`, syncs manifest hashes to current region approvals, and updates `review.xlsx` while preserving existing manual reviews.
 

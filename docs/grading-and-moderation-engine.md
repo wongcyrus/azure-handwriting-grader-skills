@@ -29,12 +29,10 @@ See [deployment configuration](model-configuration-and-caching.md).
 Approved region crops supply ID, CLASS and NAME. Roster candidates help resolve
 ambiguous handwriting but do **not** guarantee exact matching or prevent false
 matches. Teachers must check every identity, leading zero and script association.
-Batch extraction can fall back to individual fields on errors.
-
-Metadata grouping follows Gemini: up to 35 scripts are sent in one request, with
-all available field crops (105 images for three fields). No Azure-specific image
-count or payload micro-batching is applied. Deployment capacity is assumed, not
-verified. No runtime or exact-match percentage is guaranteed.
+Batch extraction stops on errors rather than issuing unapproved fallback calls.
+Individual OCR is used when a provider does not support batch extraction.
+Metadata requests contain at most 50 images and 35 scripts (16 with three fields).
+No payload-size micro-batching is applied. No runtime or exact-match percentage is guaranteed.
 
 ## Grading modes and request limits
 
@@ -45,7 +43,7 @@ instructions; local validation checks mark ranges, not pedagogical correctness.
 
 | Mode | Behavior | Important limits |
 |---|---|---|
-| `--mode batch` (default) | Synchronous multi-image inference per question, with structured `QuestionBatchGradeResponse`; comparisons occur within each image group. | Not Azure asynchronous Batch. Like Gemini, up to 50 scripts are sent together per question request, without image-count or payload micro-batching. No whole-cohort consistency guarantee. |
+| `--mode batch` (default) | Synchronous multi-image inference per question, with structured `QuestionBatchGradeResponse`; comparisons occur within each image group. | Not Azure asynchronous Batch. Up to 50 images per question request, without payload-size micro-batching. No whole-cohort consistency guarantee. |
 | `--mode item` | Individual structured `GradeResponse`, then whole-question text moderation. | Still subject to image/payload/context limits. Moderation sees transcription, not original diagrams; teachers must inspect images. Request count and rates differ from batch mode. |
 
 The transport keeps MIME/nonempty-image validation but imposes no application

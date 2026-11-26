@@ -120,7 +120,8 @@ execute a notebook as a workaround, or claim a human approval occurred.
    | `regions/ai_suggestions.json` or `regions/draft.json` (no `regions/approval.json`) | Regions suggested/drafted | `review-regions` (adjust boxes & approve) or `approve-regions` |
    | `regions/approval.json` (no `grading/`) | Regions approved | `grade` (preview first, then `--confirm-cost`) |
    | `grading/checkpoint.json` (no `grading/manifest.json`) | Grading interrupted | `resume-grading` (preview first, then `--confirm-cost`) |
-   | `grading/manifest.json` (no `grading/approval.json`) | Grading done (or failed items) | `cluster-answers` (optional) -> `review-grading` (or `retry-grading` if failures) -> approve |
+   | `grading/manifest.json`, `results.json` with `completed: false` | Grading interrupted | `resume-grading` (preview first, then `--confirm-cost`) |
+   | `grading/manifest.json`, `results.json` with `completed: true` (no `grading/approval.json`) | Grading done (or failed items) | `cluster-answers` (optional) -> `review-grading` (or `retry-grading` if failures) -> approve |
    | `grading/approval.json` | Scores approved | Present Post-Approval Menu: `report`, `analytics`, `ai-analysis` (optional) |
    | `reports/manifest.json` or `analytics/manifest.json` | Reports / offline stats generated | Offer remaining options: `analytics`/`report` (if missing), `ai-analysis` -> `advanced-report`, `moodle-export` (LMS PDFs/ZIP/CSV), `preview-email` -> `send-email`, or `clean` |
    | `ai-analysis/review.xlsx` (no `ai-analysis/approval.json`) | AI analysis generated | Teacher reviews `ai-analysis/review.xlsx` -> `approve-analysis` |
@@ -162,9 +163,14 @@ execute a notebook as a workaround, or claim a human approval occurred.
    --model-config /private/config.yaml --endpoint https://RESOURCE.openai.azure.com
    --api-version v1`.
    Preview the crop count and obtain explicit data/cost consent, then add
-   `--confirm-cost`. One Azure request sends every reviewed printed marker crop
-   from the complete PDF so the model confirms all expected text and page order
-   together. Do not send whole answer pages or use handwritten OCR substitutions.
+   `--confirm-cost`. Locally combine all reviewed markers for each student's script
+   into one composite image. Azure requests send at most 50 script images each, so
+   a 58-student, two-page exam uses 58 script images—not 116 individual marker
+   images—and covers the complete PDF across the previewed request count. No
+   confirmation is committed until every batch succeeds. A clearly printed
+   standalone question label is valid when it uniquely identifies the page and the
+   teacher verifies its exact box. Do not send whole answer pages or use
+   handwritten OCR substitutions.
    The hash-bound `azure_confirmation-v2.json` is required by grading. Missing,
    unreadable or ambiguous markers block grading, as do wrong-page matches. The first
    script is a human-confirmed reference, not independent proof of correct order.
@@ -216,11 +222,18 @@ execute a notebook as a workaround, or claim a human approval occurred.
      Core transport remains synchronous with question threads; framework clients are
      not shared across OS threads.
    - `--mode batch` is synchronous multi-image inference, **not Azure asynchronous Batch**.
-     Like Gemini, requests send up to 50 question scripts or 35 metadata scripts
-     together (105 metadata images with three fields), without image-count or payload
-     micro-batching. Azure GPT-6.1 image capacity is assumed, not verified; deployment,
-     context, output and quota limits can reject requests. Comparisons occur within
+     Requests contain at most 50 images: up to 50 question scripts or 16 metadata
+     scripts with three fields. Metadata batch failures stop the run; do not
+     automatically fall back to paid single-field requests. Payload, deployment,
+     context, output and quota limits can still reject requests. Comparisons occur within
      groups, not guaranteed across the whole cohort.
+   - By default a question batch error stops grading. For original batch runs only,
+     `grade` or `resume-grading --continue-on-image-policy-block` opts in to continue
+     after the specific Azure image-policy block. Preview and obtain explicit data and
+     cost consent first: later questions still send images and incur charges. This does
+     not bypass Azure filtering or retry blocked images. Affected nonblank answers are
+     unscored and flagged for mandatory human review; other errors still stop the run.
+     With concurrent questions, already submitted requests can finish after an error.
    - `--mode item` grades individual crops, then moderates text. Image/payload limits
      still apply, and diagrams need image review. Both modes preserve artifact schemas.
      Choose by actual deployment behavior and preview; promise no fixed savings/runtime.
@@ -230,8 +243,9 @@ execute a notebook as a workaround, or claim a human approval occurred.
    **Failure Diagnostics, Quota Protection, and User-Decision Gating**:
    - The engine uses bounded Azure SDK retries. **Never write ad-hoc Python retry loops.**
    - If grading finishes with failed marks (`grading_failed=True`) or moderation errors, **notify the user immediately** with the failed count, affected question numbers, and error types (`429`, `504`, `5xx`), and ask them to choose:
-     - **Option A (Targeted Retry)**: Preview `handwriting-grader retry-grading --exam /path/to/exam.yaml`, obtain cost consent, and rerun with `--confirm-cost`.
-     - **Option B (Manual Review)**: Grade failed items manually in `review-grading` / `review.xlsx` with no further API calls.
+     - **Option A (Targeted Retry)**: For incomplete batch runs without review workbooks, preview `handwriting-grader retry-failed-batches --exam /path/to/exam.yaml`; for other runs preview `retry-grading`. Obtain cost consent before `--confirm-cost`. The batch retry stops on the first failure and does not resume unprocessed questions.
+     - **Option A2 (Filtered Batch Recovery)**: For completed original batch runs, preview `bisect-failed-batch --exam /path/to/exam.yaml --question Q21 --max-requests 39`. After reviewing current prices and obtaining explicit data/cost consent, supply the previewed `--revision` and `--confirm-cost`. Only confirmed filter errors are bisected; filtered singletons remain unscored for human review, and other errors stop. The limit excludes SDK retries. User edits and approvals are protected; reload the updated editor after recovery. See `references/grading.md`.
+     - **Option B (Manual Review)**: After completion, grade failed items manually in `review-grading` / `review.xlsx` with no further API calls. For an incomplete run, `export-failed-review` creates a separate offline worksheet; its marks are not imported, and the web editor requires a completed run.
      - **Option C (Wait / Investigate)**: Wait for Azure quota reset before proceeding.
 
    **Semantic Answer Clustering (Optional, Before Review)**:
