@@ -75,6 +75,6 @@ cannot re-inspect diagrams.
 `store=False` is not a guarantee about every Azure retention policy. Verify resource
 policy and deployment behavior before separately authorized live use.
 
-Read the [detailed workflow](../skills/handwriting-grading/references/flow-and-parity.md),
+Read the [detailed workflow](../.github/skills/handwriting-grading/references/flow-and-parity.md),
 [score review](score-review-and-approval.md), [email](email-distribution-architecture.md),
 [retention](cleanup-and-retention-design.md) and [offline tests](testing-skills.md).

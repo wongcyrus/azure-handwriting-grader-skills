@@ -11,7 +11,7 @@ Grading handwritten student examinations is one of the most time-consuming and h
 In this 5-part Microsoft MVP technical series, we dissect the architecture of [Azure Handwriting Grader Skills](https://github.com/wongcyrus/azure-handwriting-grader-skills)—an open-source, enterprise-grade system designed to grade handwritten exams with human-in-the-loop oversight on Azure OpenAI. The hardest engineering problem in real-world AI is rarely the model call itself; it is **where the AI stops and deterministic software takes over**.
 
 In Part 1, we focus on the architectural foundation:
-- **The Four-Layer Architecture**: Decoupling teacher intent in a conversational assistant, reusable **Agent Skill** policy in `skills/handwriting-grading/SKILL.md`, deterministic Python command-line tooling, and **Microsoft Agent Framework** workflow orchestration.
+- **The Four-Layer Architecture**: Decoupling teacher intent in a conversational assistant, reusable **Agent Skill** policy in `.github/skills/handwriting-grading/SKILL.md`, deterministic Python command-line tooling, and **Microsoft Agent Framework** workflow orchestration.
 - **Fail-Fast Preflight Validation**: Path jailing, student roster reconciliation, and strict multi-page scan verification before touching a model or spending a token.
 - **Two-Pass Rubric Engineering**: Transforming unformatted teacher Word and Excel documents into structured JSON schemas with cross-criteria validation.
 - **Computer Vision Region Pipeline**: Sub-millimeter bounding-box extraction, image resolution normalization, and coordinate anchoring for handwriting crops.
@@ -39,7 +39,7 @@ Instead of stuffing 1,500 lines of CLI flags and edge-case rules into every chat
 2. **State-oriented router**: A table mapping workspace artifacts (`exam.yaml`, `rubric/approval.json`, `regions/approval.json`, `grading/manifest.json`) to the next valid action.
 3. **On-demand `references/*.md`**: Deep guides (`configuration.md`, `regions.md`, `grading.md`, `pricing.md`, `regrading.md`, `email.md`) read only when the user reaches that stage.
 
-This excerpt from [SKILL.md](../../skills/handwriting-grading/SKILL.md) defines how the assistant orients itself:
+This excerpt from [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) defines how the assistant orients itself:
 
 ```markdown
 Establish whether the user is starting or resuming, what stage they need,
@@ -140,7 +140,7 @@ Python then rejects missing text, duplicate normalized IDs, metadata labels (`NA
 
 ## 5. Region extraction, localhost review UI, and 4-quadrant FFT alignment
 
-A multimodal LLM cannot grade handwriting that never entered the crop. As [SKILL.md](../../skills/handwriting-grading/SKILL.md) makes clear, AI region suggestions are strictly optional—a local manual path is always available:
+A multimodal LLM cannot grade handwriting that never entered the crop. As [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) makes clear, AI region suggestions are strictly optional—a local manual path is always available:
 
 ```markdown
 Local manual region drawing remains available

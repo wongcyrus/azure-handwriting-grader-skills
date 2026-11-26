@@ -354,8 +354,8 @@ for target, (filename, start, end) in snippet_ranges.items():
 for name in ("snippets/banner-generate-source.py.txt", "snippets/offline-framework-smoke.py",
              "observed/offline-framework-smoke.txt"):
     record(ROOT / name)
-record(REPO / "skills/handwriting-grading/SKILL.md")
-record(REPO / "skills/handwriting-grading/references/workflow.md")
+record(REPO / ".github/skills/handwriting-grading/SKILL.md")
+record(REPO / ".github/skills/handwriting-grading/references/workflow.md")
 
 revision = "b6af53dd1cf4cf74b9a50591f0e775a3b1533133"
 (ROOT / "sources.json").write_text(json.dumps({

@@ -17,7 +17,7 @@ Use Python 3.11+ and the Azure checkout. Prefer `uv sync --frozen`, then
 `uv run handwriting-grader`; alternatively install with `python -m pip install -e .`
 in an activated environment. The package pins minimal Microsoft Agent Framework
 core/OpenAI packages, not the umbrella `agent-framework` package. See
-[dependency and Azure configuration details](../../docs/model-configuration-and-caching.md).
+[dependency and Azure configuration details](../../../docs/model-configuration-and-caching.md).
 Do not install Google ADK or provider SDKs for this port.
 
 ### Cross-platform support
@@ -110,6 +110,8 @@ execute a notebook as a workaround, or claim a human approval occurred.
       `discover-models --endpoint https://RESOURCE.openai.azure.com --api-version v1
       --write-config /private/config.yaml`, then set actual deployment aliases and
       verified rates. This does not confirm availability, quota or capabilities.
+      The canonical checked-in alternative is the root
+      [model template](../../../model-config.yaml.template), not an `example/` copy.
 3. If the user needs printable answer sheets before scans exist, read
    `references/answer-sheets.md` and run that independent stage first.
 4. Run preflight checks:
@@ -190,7 +192,10 @@ execute a notebook as a workaround, or claim a human approval occurred.
    - `cluster-answers --exam /private/exam.yaml [--threshold 0.82]` and
      `review-grading` default to cached/local lexical grouping without eager paid calls.
      `--confirm-cost` explicitly permits Azure embeddings; configuration comes from
-     `exam.model_config` or an adjacent `config.yaml`. Endpoint-namespaced embedding
+     `exam.model_config` or an adjacent `config.yaml`, with a working-directory
+     fallback if the selected file is missing; inspect the actual file using
+     [configuration resolution](references/configuration.md#embedding-configuration-resolution).
+     Endpoint-namespaced embedding
      caches remain private student data (details in `references/grading.md`).
    - In `review-grading`: use `Alt+S` for the All Questions Status dashboard, `📌 Grouped` to toggle answer grouping, `Ctrl+Enter` to confirm questions in batch, and `Alt+A` to approve only after 100% human review is complete (or use "Reset Review" to rollback if needed).
 
@@ -206,6 +211,11 @@ execute a notebook as a workaround, or claim a human approval occurred.
         [--image-model DEPLOYMENT]`. For a separate image resource, read the
         [image configuration guide](references/configuration.md#separate-image-generation-resource)
         and pass `--image-model-config /private/image.config.yaml`.
+        Copy the root [image template](../../../image-config.yaml.template) to a new
+        private file; it uses `models.analytics_image`. Without that flag, the
+        approved analysis manifest selects the configuration and Azure target.
+        The standalone `azure-image-generation` skill uses a separate package
+        and its own templates (`models.image`); do not conflate the workflows.
         Preserve prior reports with a fresh `--report-name reports-infographics`;
         do not edit the configuration bound to approved analysis. Preview first,
         then obtain separate data/cost consent and current manual image pricing.

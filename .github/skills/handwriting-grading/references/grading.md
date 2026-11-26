@@ -62,7 +62,10 @@
     `cluster-answers --exam /private/exam.yaml [--threshold 0.82]` and `review-grading`
     default to cached/local lexical grouping with no eager paid network calls.
     `--confirm-cost` explicitly permits Azure embedding requests; settings resolve
-    from `exam.model_config` or an adjacent `config.yaml`. Inspect the deployment and
+    from `exam.model_config` or an adjacent `config.yaml`, with a working-directory
+    fallback when the selected file is missing; see
+    [configuration resolution](configuration.md#embedding-configuration-resolution).
+    Inspect the deployment and
     rates before consent. Embedding dimensions depend on deployment.
     Paid semantic grouping uses threshold cosine similarity, not a fixed cluster
     count. Higher thresholds yield tighter groups. Local word-overlap grouping stays
@@ -162,9 +165,11 @@
    PPTX **offline by default**. Optional Azure infographics require a configured
    `models.analytics_image` deployment (e.g. an alias for `gpt-image-2.5-flare`) or override:
    `advanced-report --exam /private/exam.yaml --infographics --confirm-cost
-   [--image-model DEPLOYMENT]`. Inspect the adjacent/recorded model configuration.
+   [--image-model DEPLOYMENT]`. Inspect the configuration recorded in the approved
+   analysis manifest; adjacent image files are not auto-discovered.
    For a separate image resource, supply `--image-model-config /private/image.config.yaml`
-   with its endpoint, deployment and reviewed rates. Preserve an existing report
+   using the root [image template](../../../../image-config.yaml.template) with its
+   endpoint, `models.analytics_image` deployment and reviewed rates. Preserve an existing report
    with `--report-name reports-infographics`; do not edit the approved analysis
    configuration. Preview without `--confirm-cost` first.
    Image generation is single-attempt with cached PNG reuse and text-card fallback.

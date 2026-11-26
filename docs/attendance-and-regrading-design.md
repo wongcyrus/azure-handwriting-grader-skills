@@ -3,7 +3,7 @@
 **Status:** Reviewed attendance and targeted regrading are implemented in the
 current working tree. This design document is outside the agent skill and is
 not authorization to perform paid calls. See
-`skills/handwriting-grading/references/attendance.md` and `regrading.md` for
+`.github/skills/handwriting-grading/references/attendance.md` and `regrading.md` for
 the executable procedures, and `flow-and-parity.md` for current limitations.
 
 ## Decisions already made

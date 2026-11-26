@@ -33,7 +33,7 @@ Only explicit HTTPS Azure resource endpoints (`*.openai.azure.com` or `*.service
 
 ## 2. `--mode batch` vs. `--mode item`: synchronous multi-image, not Async Batch
 
-One of the most important clarifications in [SKILL.md](../../skills/handwriting-grading/SKILL.md) is what "batch" actually means:
+One of the most important clarifications in [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) is what "batch" actually means:
 
 ```markdown
 `--mode batch` is synchronous multi-image inference, **not Azure asynchronous Batch**.
@@ -167,7 +167,7 @@ Exhausted SDK retries (bounded at 2; no ad-hoc Python retry loops) record `gradi
 
 ## 4. Microsoft Agent Framework: Skill Policy vs. Graph Orchestration
 
-As [SKILL.md](../../skills/handwriting-grading/SKILL.md) summarizes:
+As [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) summarizes:
 
 ```markdown
 `grade` defaults to `--orchestrator agent-framework`: real Executor/WorkflowBuilder

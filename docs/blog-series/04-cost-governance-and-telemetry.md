@@ -14,7 +14,7 @@ In Part 4 of our technical series on [Azure Handwriting Grader Skills](https://g
 - **Token Accounting and Prompt Caching**: Measuring exact input, cached, output, and cache-write tokens to maximize Azure OpenAI prompt-caching cost reductions (up to 50–80%).
 - **Honest Partial Run Accounting**: Recording unpriced tools and free-tier resources with explicit `UNPRICED` markers rather than falsifying zero-dollar ledgers.
 
-As [SKILL.md](../../skills/handwriting-grading/SKILL.md) specifies:
+As [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) specifies:
 
 ```markdown
 **Cost governance**: Before every paid stage, preview target, transferred data and

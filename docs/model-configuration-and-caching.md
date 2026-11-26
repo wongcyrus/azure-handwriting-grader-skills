@@ -17,6 +17,12 @@ and advisories independently. No Google SDK, authentication or cache is used.
 
 ## Private model configuration
 
+Use the root [model-config.yaml.template](../model-config.yaml.template) as the
+canonical text/vision and embeddings template, including for exams in `example/`.
+Copy it to a new private `config.yaml`, or use `discover-models --write-config`
+below. Templates are not loaded automatically; paid stages select a private file
+with `--model-config`. Keep existing configurations unchanged.
+
 `models` values are **Azure deployment names**, not necessarily catalog model
 IDs. The following names are illustrative; create suitable deployments in your
 Azure resource and replace them with your aliases. Text/vision stages require
@@ -87,42 +93,12 @@ configuration bound to approved AI analysis. The filename is a convention, not
 automatic discovery: select it explicitly with `--image-model-config`.
 Files named `*.config.yaml` are Git-ignored; keep generated output private too.
 
-This example is deliberately **not ready for inference**. Replace the resource
+Copy the root [image-config.yaml.template](../image-config.yaml.template) to a
+new private `image.config.yaml`. It is deliberately **not ready for inference**.
+Replace the resource
 and deployment alias, verify the actual ARM region and deployment type, and fill
 every pricing placeholder only after reviewing applicable Microsoft prices.
 Never copy another resource's rates or fabricate a verification timestamp.
-
-```yaml
-azure_openai:
-  endpoint: https://IMAGE_RESOURCE.services.ai.azure.com
-  api_version: v1
-models:
-  analytics_image: school-image
-deployment_models:
-  school-image: gpt-image-2.5-sunburst
-pricing_lookup:
-  region: REPLACE_WITH_VERIFIED_ARM_REGION
-  deployment_type: global-standard
-pricing:
-  school-image:
-    input: REPLACE_WITH_VERIFIED_RATE
-    cached: REPLACE_WITH_VERIFIED_RATE
-    output: REPLACE_WITH_VERIFIED_RATE
-    image: REPLACE_WITH_VERIFIED_PER_IMAGE_FEE
-pricing_sources:
-  school-image:
-    verification: manual
-    verified_at: "REPLACE_WITH_TODAYS_UTC_TIMESTAMP"
-    model: gpt-image-2.5-sunburst
-    azure_endpoint: https://IMAGE_RESOURCE.services.ai.azure.com
-    region: REPLACE_WITH_VERIFIED_ARM_REGION
-    deployment_type: global-standard
-    currency: USD
-    unit: "USD per million tokens; image USD per generated image"
-    source: https://azure.microsoft.com/en-us/pricing/details/azure-openai/
-    image_size: "1536x1024"
-    image_quality: auto
-```
 
 `school-image` must be the exact Azure deployment name in every alias-keyed
 section. The endpoint is the HTTPS **resource root**, either
@@ -131,11 +107,24 @@ section. The endpoint is the HTTPS **resource root**, either
 `/api/projects/PROJECT`. The client appends the API path. Credentials never
 belong in this file. Verify the deployment family and access in Azure separately.
 
+Without `--image-model-config`, infographics use the model configuration and Azure
+target recorded in the approved analysis manifest, not an adjacent image file.
+`--image-model` overrides the deployment name only; the selected configuration
+must still define `models.analytics_image` and matching pricing for the deployment.
+The original analysis configuration must remain unchanged even when selecting a
+separate image configuration.
+
+The separately installed `azure-image-generation` skill is a different workflow:
+it uses its own repository/package and `models.image` (`analytics_image` is a
+legacy compatibility key there). This repository's template targets
+`handwriting-grader advanced-report`, not that standalone tool's full pricing
+or editing schema. Follow that skill's own templates for standalone image work.
+
 Image rates are USD per million tokens, except `image`, which is USD per generated
 image. Set `image: 0` only if reviewed token pricing covers the entire image fee.
 Manual evidence must be dated today in UTC, not in the future, and match the
 resource, model, region, deployment type, size and quality. Missing, incomplete or
-stale evidence blocks paid calls. See the [pricing reference](../skills/handwriting-grading/references/pricing.md).
+stale evidence blocks paid calls. See the [pricing reference](../.github/skills/handwriting-grading/references/pricing.md).
 
 After reviewing and approving AI analysis, preview a new report without inference:
 
@@ -204,7 +193,7 @@ and never calls inference. Exact meter matching and complete bounded pagination
 are required. Unknown components stay unpriced; a fresh copy does not fall back
 to stale prices for an unmatched alias. Existing manually verified flat rates
 remain supported. Fetched evidence is invalidated if its declared family or
-resource endpoint changes. Read the [pricing skill reference](../skills/handwriting-grading/references/pricing.md)
+resource endpoint changes. Read the [pricing skill reference](../.github/skills/handwriting-grading/references/pricing.md)
 before using the snapshot in a new run.
 
 The first paid request of each new run refreshes public prices and requires
@@ -249,7 +238,12 @@ A hit avoids the matching remote request but never counts as human review.
 `cluster-answers` and `review-grading` default to cached/local lexical grouping.
 They do not start eager paid network calls when the editor opens. Explicit
 `--confirm-cost` permits paid Azure embeddings. Configuration is resolved from
-`exam.model_config` or an adjacent `config.yaml`; inspect it before consenting.
+`exam.model_config` relative to the exam directory (absolute paths also work), or
+`config.yaml` beside the exam if that field is absent. If the selected file does
+not exist, the current implementation falls back to `config.yaml` in the process
+working directory, even when `exam.model_config` was explicitly set. Inspect the
+actual file before consenting; use an existing absolute `exam.model_config` path
+to avoid unintentionally selecting a different resource.
 
 Embedding cache identity includes endpoint namespace and deployment, not merely
 answer text. The shared store is under `~/.cache/azure-handwriting-grader/embeddings/`

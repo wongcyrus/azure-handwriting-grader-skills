@@ -140,6 +140,19 @@ class TestFirstUsePrices(unittest.TestCase):
                 operation()
         self.assertEqual(sdk.mock_calls, [])
 
+    def test_public_image_template_blocks_inference_until_pricing_is_reviewed(self):
+        template = Path(__file__).resolve().parents[1] / "image-config.yaml.template"
+        config = yaml.safe_load(template.read_text(encoding="utf-8"))
+        path = self.root / "image.config.yaml"
+        path.write_text(yaml.safe_dump(config))
+        verifier, fetch = self.verifier(path)
+        sdk = Mock()
+        client = AzureClient(config["azure_openai"]["endpoint"], client=sdk, pricing_verifier=verifier)
+        with self.assertRaises(PriceVerificationError):
+            client.generate_image(model=config["models"]["analytics_image"], prompt="Synthetic")
+        self.assertEqual(sdk.mock_calls, [])
+        fetch.assert_not_called()
+
     def test_missing_changed_ambiguous_and_unavailable_prices_block_without_inference(self):
         path, original = self.native_config()
         cases = ("missing", "changed", "ambiguous", "unavailable")

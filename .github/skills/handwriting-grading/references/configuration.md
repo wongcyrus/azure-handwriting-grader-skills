@@ -36,7 +36,12 @@ must be supplied together, and canonical question labels must be unique.
 
 ## Azure deployments, credentials and consent
 
-Use a private `config.yaml`; see [model configuration and caching](../../../docs/model-configuration-and-caching.md)
+The canonical text/vision and embeddings template is the repository-root
+[model-config.yaml.template](../../../../model-config.yaml.template), including for
+exams under `example/`. Copy it to a new private file or use `discover-models`;
+never overwrite an existing configuration. Templates are not auto-loaded.
+
+Use a private `config.yaml`; see [model configuration and caching](../../../../docs/model-configuration-and-caching.md)
 for the complete schema and pinned minimal framework dependencies. Set
 `azure_openai.endpoint: https://RESOURCE.openai.azure.com` and
 `azure_openai.api_version: v1`. `models` maps stages to Azure deployment names,
@@ -62,7 +67,7 @@ models and capabilities in Azure; declarations are not live verification.
   was checked 2026-11-23; exclude preview, legacy, deprecated, retired and older
   models from recommendations. Recheck current lifecycle/availability in Azure;
   no live lookup or quality benchmark is performed. See the
-  [model table](../../../README.md#current-model-recommendations).
+  [model table](../../../../README.md#current-model-recommendations).
 - Add `--api-version v1 --write-config /private/config.yaml` to create an offline
   template; overwrite is refused. Existing explicit GPT-5+ configurations remain
   compatible, not automatically recommended. Inspect existing configuration before reuse.
@@ -73,9 +78,15 @@ models and capabilities in Azure; declarations are not live verification.
   `DefaultAzureCredential`. For production use `AZURE_OPENAI_AUTH=managed_identity`.
   Never suggest public OpenAI keys, endpoints or fallback.
 
+### Embedding configuration resolution
+
 `review-grading` and `cluster-answers` default to cached/local lexical grouping;
-`--confirm-cost` permits paid embeddings. They resolve model settings from
-`exam.model_config` or an adjacent `config.yaml`. No eager paid network calls
+`--confirm-cost` permits paid embeddings. They first select `exam.model_config`
+relative to the exam directory (or an absolute path), defaulting to `config.yaml`
+beside the exam when the field is absent. If the selected file is missing, the
+implementation falls back to `config.yaml` in the process working directory,
+even for an explicit missing path. Inspect the actual file before consent and
+prefer an existing absolute `exam.model_config` path. No eager paid network calls
 occur merely by opening the editor.
 
 Caches are opt-in and default to one run. Shared reuse requires explicit
@@ -99,14 +110,21 @@ format survives import.
 For infographics on a different Azure resource, use a separate private
 `image.config.yaml` with `azure_openai.endpoint`, explicit `api_version`,
 `models.analytics_image`, and that resource's reviewed image pricing evidence.
-Use the [complete image YAML example](../../../docs/model-configuration-and-caching.md#separate-image-configuration-for-infographics),
-including `deployment_models`, `pricing_lookup`, `pricing` and `pricing_sources`.
+Copy the root [image-config.yaml.template](../../../../image-config.yaml.template)
+to a new private file, including `deployment_models`, `pricing_lookup`, `pricing`
+and `pricing_sources`. Follow the
+[image configuration guide](../../../../docs/model-configuration-and-caching.md#separate-image-configuration-for-infographics).
 All alias-keyed entries must match the actual image deployment name. Replace
 placeholders only after current manual pricing review; see [pricing](pricing.md).
 Keep credentials out of YAML and keep the real file private (`*.config.yaml` is ignored).
 
 Use the HTTPS resource root, without `/openai/v1` or `/api/projects/...`.
 The filename is not auto-discovered; select the configuration explicitly.
+Without `--image-model-config`, the configuration and target come from the
+approved analysis manifest, not an adjacent image file. `--image-model` only
+overrides the deployment; `models.analytics_image` and matching deployment pricing
+are still required. The separately installed `azure-image-generation` skill uses
+its own package, `models.image` and its own templates; it is not this report flow.
 After analysis approval, preview without inference:
 
 ```sh

@@ -14,7 +14,7 @@ In the final installment of our series on [Azure Handwriting Grader Skills](http
 - **Moodle LMS Export & Double-Gated Email**: Formatting sanitized grades for LMS ingestion and executing dry-run-validated, rate-limited email dispatches to students.
 - **Workspace Hygiene & Pilot Economics**: Generating compact audit archives and analyzing real-world pilot data comparing human grading hours against AI assistance.
 
-Once `grading/approval.json` is recorded, a teacher shouldn't have to memorize ten CLI subcommands—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why [SKILL.md](../../skills/handwriting-grading/SKILL.md) enforces a **Post-Approval Menu**:
+Once `grading/approval.json` is recorded, a teacher shouldn't have to memorize ten CLI subcommands—or accidentally trigger paid AI analysis when they only wanted offline statistics. That is why [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) enforces a **Post-Approval Menu**:
 
 ```markdown
 Immediately after `grading/approval.json` is recorded (or whenever the user finishes reviewing), **always proactively present all post-approval options** so a general user knows what is available:

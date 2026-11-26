@@ -17,6 +17,7 @@ models:
   student_feedback: gpt-6-luna
   embedding: text-embedding-3-small
   # Optional, only used after --infographics --confirm-cost:
+  # For a separate resource, use image-config.yaml.template instead.
   # analytics_image: gpt-image-2.5-flare
 # Custom text/vision aliases must declare their underlying GPT-5+ models.
 # deployment_models:

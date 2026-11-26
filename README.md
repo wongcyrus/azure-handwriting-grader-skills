@@ -31,6 +31,21 @@ On Windows, use `.venv\Scripts\handwriting-grader.exe`; on Unix, use
 `.venv/bin/handwriting-grader`. PDF rendering uses `pypdfium2`. Optional DOCX
 answer-sheet conversion requires LibreOffice.
 
+### VS Code and Copilot CLI workspace skill
+
+Open the repository root as the VS Code workspace. The skill and its references
+live directly in `.github/skills/handwriting-grading/`, with `SKILL.md` as the
+entry point. No symlink, custom skill location or personal installation is needed.
+This follows VS Code's [workspace skill layout](https://code.visualstudio.com/docs/agent-customization/agent-skills#_skill-locations).
+Copilot CLI also discovers `.github/skills/` directly. Check it with
+`copilot skill list`; use `/skills reload` in an existing CLI session after moving
+the skill.
+
+Start a fresh Copilot chat and look for `/handwriting-grading`, or inspect
+**Chat: Open Customizations** > **Skills**. Installing the Python package alone
+does not install the workspace skill. The separate `azure-image-generation`
+skill is not bundled here.
+
 ### Framework supply-chain pin
 
 The minimal framework packages are pinned to
@@ -51,6 +66,14 @@ OpenAI resource for text/vision stages. Embeddings and optional image generation
 use dedicated model families and are exempt from the GPT version floor.
 Values in `models` are **deployment names**, not automatically discovered model
 IDs. The template uses example names; replace them with your own deployments.
+
+The canonical templates are at the repository root: `model-config.yaml.template`
+for text/vision and embeddings, and `image-config.yaml.template` for optional
+report infographics on a separate resource. Copy templates to new private files;
+never overwrite an existing configuration. Real `config.yaml` and `*.config.yaml`
+files are intentionally Git-ignored. See the
+[configuration guide](docs/model-configuration-and-caching.md#separate-image-configuration-for-infographics)
+for image configuration, pricing and explicit selection.
 
 ```yaml
 azure_openai:
@@ -150,7 +173,7 @@ The source configuration is untouched and existing destinations cannot be
 overwritten. Review actual deployment model/version and billing mode, then use
 the copy for a fresh run. Public retail rates are estimates, not your negotiated
 invoice; token accounting excludes some tool fees and unlogged failures/retries.
-See [skill pricing guidance](skills/handwriting-grading/references/pricing.md).
+See [skill pricing guidance](.github/skills/handwriting-grading/references/pricing.md).
 
 ## Reviewed workflow
 
@@ -246,4 +269,4 @@ See [architecture](docs/design-logic-and-flow.md),
 [grading](docs/grading-and-moderation-engine.md),
 [model configuration](docs/model-configuration-and-caching.md),
 [testing](docs/testing-skills.md), and the
-[agent skill](skills/handwriting-grading/SKILL.md).
+[agent skill](.github/skills/handwriting-grading/SKILL.md).

@@ -85,7 +85,7 @@ expected_route = ast.dump(ast.Module(body=route.body[:4], type_ignores=[]), incl
 assert any(ast.dump(ast.parse(block), include_attributes=False) == expected_route
            for block in re.findall(r"```python\n(.*?)\n```", articles[2], flags=re.DOTALL))
 
-skill = (SOURCE.parents[1] / "skills/handwriting-grading/SKILL.md").read_text()
+skill = (SOURCE.parents[1] / ".github/skills/handwriting-grading/SKILL.md").read_text()
 
 
 def normalize(text):

@@ -139,7 +139,9 @@ not verified; deployment/context/output/quota limits can reject requests.
 Text moderation needs separate diagram image review.
 
 `review-grading` and `cluster-answers` start offline/cached; `--confirm-cost` opts
-into paid embeddings using `exam.model_config` or adjacent `config.yaml`.
+into paid embeddings using `exam.model_config` or adjacent `config.yaml`, with a
+working-directory fallback if the selected file is missing; see
+[configuration resolution](configuration.md#embedding-configuration-resolution).
 `advanced-report` is offline by default; images require `--infographics --confirm-cost`
 and a configured Azure image deployment, with retries disabled. Hosted `web_search`
 verification depends on deployment/API support and may fail; check parsed sources.

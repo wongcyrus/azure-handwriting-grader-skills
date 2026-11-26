@@ -180,10 +180,11 @@ class AzureAuxiliaryTests(unittest.TestCase):
         _, reviewed, rows = self._report_fixture()
         image_config = self.root / "image.config.yaml"
         image_endpoint = "https://images.services.ai.azure.com"
-        image_config.write_text(yaml.safe_dump({
-            "azure_openai": {"endpoint": image_endpoint, "api_version": "v1"},
-            "models": {"analytics_image": "gpt-image-2.5-sunburst"},
-        }))
+        template = Path(__file__).resolve().parents[1] / "image-config.yaml.template"
+        image_settings = yaml.safe_load(template.read_text(encoding="utf-8"))
+        image_settings["azure_openai"]["endpoint"] = image_endpoint
+        image_settings["deployment_models"]["school-image"] = "gpt-image-2.5-sunburst"
+        image_config.write_text(yaml.safe_dump(image_settings))
         original_hashes = {name: file_hash(self.root / name)
                            for name in ("models.yaml", "manifest.json", "review.xlsx", "approval.json")}
         previous_report = self.root / "reports"

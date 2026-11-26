@@ -27,9 +27,13 @@ conversion. No live credential or deployment is necessary for offline tests.
 
 ## Skill behavior checks
 
-Load `skills/handwriting-grading/` with its bundled references using your agent's
-current documented registration mechanism. Check the exact loaded path rather
-than assuming another checkout's copy is current. Ask:
+Open the repository root as a VS Code workspace. The real directory
+`.github/skills/handwriting-grading/` contains `SKILL.md` and its bundled
+references; no symlink or custom discovery setting is required. Start a fresh
+Copilot chat, check **Chat: Open Customizations** > **Skills**, and invoke
+`/handwriting-grading`. For other agents, use their documented registration
+mechanism. Check the exact loaded path rather than assuming another checkout's
+copy is current. Ask:
 
 > Use the handwriting-grading skill to explain a synthetic exam preflight and
 > human approval gates. Do not make Azure calls, send email, write outputs or delete data.

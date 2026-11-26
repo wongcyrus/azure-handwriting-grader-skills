@@ -39,7 +39,7 @@ source/effective dates, meter IDs, SKU names and units in `pricing_sources`.
 The source and existing destinations are never overwritten. Global Standard
 and Data Zone Standard are supported, not Flex, Priority, provisioned or Batch.
 No inference, credentials, student data or private aliases are sent. See
-[pricing guidance](../skills/handwriting-grading/references/pricing.md).
+[pricing guidance](../.github/skills/handwriting-grading/references/pricing.md).
 
 Before AI use in each new run, current public rates must match reviewed rates;
 missing, ambiguous, changed or unavailable prices block the request. Unsupported

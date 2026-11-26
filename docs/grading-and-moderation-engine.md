@@ -96,6 +96,6 @@ reviewed before explicit `approve-grading --confirm-reviewed`. Saving is not app
 Hash-bound records become stale after relevant changes and are local, not tamper-proof.
 
 For revised rubric/crops on one question, use a separately reviewed proposal and
-isolated child `regrade`; see [regrading](../skills/handwriting-grading/references/regrading.md).
+isolated child `regrade`; see [regrading](../.github/skills/handwriting-grading/references/regrading.md).
 Parent history is never overwritten. Reports, analytics and email retain their
 separate current-approval checks; no agent autonomously approves or emails scores.

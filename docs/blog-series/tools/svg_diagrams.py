@@ -112,7 +112,7 @@ def build_all_diagrams(media_dir: Path):
          ["Natural-language goal (e.g., inspect state, grade, review, export)",
           "Never sent verbatim as an Azure handwriting prompt"],
          "#5b21b6", "CONVERSATIONAL", "#ede9fe", "#5b21b6"),
-        (235, "LAYER 2 · AGENT SKILL POLICY (skills/handwriting-grading/)", "SKILL.md + Progressive-Disclosure references/*.md",
+        (235, "LAYER 2 · AGENT SKILL POLICY (.github/skills/handwriting-grading/)", "SKILL.md + Progressive-Disclosure references/*.md",
          ["Inspects workspace artifacts (manifest, approval.json) to orient state",
           "Enforces stop rules (check-scans), cost-preview consent, and HIL prompts"],
          "#0078d4", "INSTRUCTIONS ONLY", "#e0f2fe", "#0369a1"),

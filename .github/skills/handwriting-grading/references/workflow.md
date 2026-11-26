@@ -31,7 +31,9 @@ are implemented. Formatting and cache coverage differ from the notebooks.
 6. **Optional grouping:** `cluster-answers --exam /private/exam.yaml` and
    `review-grading` default to cached/local lexical grouping, with no eager paid calls.
    `--confirm-cost` permits paid Azure embeddings; inspect `exam.model_config` or
-   adjacent `config.yaml`. Shared embeddings use endpoint/deployment namespaces,
+   adjacent `config.yaml`, including the missing-file working-directory fallback
+   described in [configuration resolution](configuration.md#embedding-configuration-resolution).
+   Shared embeddings use endpoint/deployment namespaces,
    retain sensitive answer data and do not guarantee conceptually identical groups.
 7. **Score Review:** A teacher reviews IDs, OCR, exceptions, moderation flags and
    mark overrides in `review-grading`.

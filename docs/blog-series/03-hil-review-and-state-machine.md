@@ -14,7 +14,7 @@ In Part 3 of our series on [Azure Handwriting Grader Skills](https://github.com/
 - **Atomic Crash-Safe Checkpoints**: Persisting intermediate grading batches in keyed JSON files to survive network disruptions or container restarts without duplicating spend.
 - **Isolated Child Regrading**: Re-evaluating disputed questions or modified rubric criteria in isolated branch workspaces without overwriting historical audit trails.
 
-As [SKILL.md](../../skills/handwriting-grading/SKILL.md) states:
+As [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) states:
 
 ```markdown
 Never infer approval from a saved file, a passing test or a model response.

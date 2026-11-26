@@ -1,0 +1,34 @@
+# Handwriting-grader infographics only; copy to a NEW private image.config.yaml.
+# Select explicitly with --image-model-config; this filename is not auto-discovered.
+# No credentials here: use AZURE_OPENAI_API_KEY or Azure Identity.
+# Replace every placeholder after verifying the deployment and current prices.
+# This template is intentionally not ready for paid inference.
+azure_openai:
+  endpoint: https://YOUR-IMAGE-RESOURCE.openai.azure.com
+  api_version: v1
+models:
+  analytics_image: school-image
+deployment_models:
+  school-image: REPLACE_WITH_VERIFIED_IMAGE_MODEL
+pricing_lookup:
+  region: REPLACE_WITH_VERIFIED_ARM_REGION
+  deployment_type: REPLACE_WITH_VERIFIED_DEPLOYMENT_TYPE
+pricing:
+  school-image:
+    input: null
+    cached: null
+    output: null
+    image: null
+pricing_sources:
+  school-image:
+    verification: manual
+    verified_at: REPLACE_WITH_TODAYS_UTC_TIMESTAMP
+    model: REPLACE_WITH_VERIFIED_IMAGE_MODEL
+    azure_endpoint: https://YOUR-IMAGE-RESOURCE.openai.azure.com
+    region: REPLACE_WITH_VERIFIED_ARM_REGION
+    deployment_type: REPLACE_WITH_VERIFIED_DEPLOYMENT_TYPE
+    currency: USD
+    unit: "USD per million tokens; image USD per generated image"
+    source: https://azure.microsoft.com/en-us/pricing/details/azure-openai/
+    image_size: "1536x1024"
+    image_quality: auto
