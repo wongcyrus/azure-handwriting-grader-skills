@@ -43,14 +43,14 @@ Present existing detected values and ask the user to confirm or replace them.
 
 | Scope | Required settings |
 |---|---|
-| Text/vision | HTTPS resource root, API version, stage aliases, underlying model for custom aliases, ARM region, deployment/billing type, reviewed rates, auth |
+| Text/vision | HTTPS resource root, API version, stage aliases, underlying model for custom aliases, resource ARM region, retail meter profile, deployment/billing type, reviewed rates, auth |
 | Embeddings | Endpoint/API version/deployment and reviewed rates, or explicit opt-out from paid semantic grouping |
 | Image generation | HTTPS resource root, API version, `models.analytics_image` deployment and manually reviewed image rates, or explicit opt-out from infographics |
 | Privacy/caching | Data-transfer scope, cache opt-in, run/shared scope and private cache path |
 
 Do not assume that an image deployment shares the text endpoint, that an
 embedding alias exists on either resource, or that endpoint names reveal the
-underlying model, region or billing type. Ask separately for text/vision,
+underlying model, resource region, retail meter region or billing type. Ask separately for text/vision,
 embeddings and image generation even when the user expects only offline or
 manual review later. An initial configuration decision is not cost consent:
 every paid stage still needs its own preview and `--confirm-cost`.
@@ -81,6 +81,11 @@ models and capabilities in Azure; declarations are not live verification.
 - There is no live deployment capability, quality or availability verification.
   Explicit public retail-price lookup is available through `fetch-pricing`; see
   [pricing](pricing.md) for region/type selection, provenance and limitations.
+    If an explicitly supplied Global Standard resource region returns no effective
+    meters, do not conclude that pricing is unavailable after one query. Inspect any
+    nearby priced configuration, then offer a refreshed lookup for its meter region
+    as a separate user decision. Keep the resource location and retail meter profile
+    distinct in the resulting evidence; neither value is inferred or silently copied.
 - `discover-models --endpoint https://RESOURCE.openai.azure.com` lists curated
   GA candidates: GPT-6.1 Terra/Sol, GPT-6 Luna and GPT-6.2 Sol/Astra. The snapshot
   was checked 2026-11-23; exclude preview, legacy, deprecated, retired and older

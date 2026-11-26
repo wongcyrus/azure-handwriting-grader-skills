@@ -146,6 +146,18 @@ class TestRetailPricing(unittest.TestCase):
         fetch.assert_not_called()
         self.assertEqual(report["deployments"]["embed"]["status"], "UNPRICED")
 
+    def test_unpriced_global_standard_profile_suggests_refreshed_known_meter_region(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), \
+                patch("handwriting_grader.pricing._fetch_page",
+                      return_value={"Items": [], "NextPageLink": None}):
+            main([
+                "fetch-pricing", "--region", "eastasia",
+                "--deployment-type", "global-standard",
+            ])
+        self.assertIn("--region eastus", output.getvalue())
+        self.assertIn("no region was substituted", output.getvalue())
+
     def test_invalid_region_mode_and_malformed_pages_fail_before_any_snapshot(self):
         fetch = Mock()
         for region, mode in (("eastus' or true", "global-standard"), ("eastus", "batch")):

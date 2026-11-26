@@ -287,6 +287,16 @@ def fetch_and_report(region, deployment_type, model_config=None, write_config=No
         for issue in entry["issues"]:
             print(f"UNPRICED component for {deployment}: {issue}")
     print(f"Source: {report['source']}\nFetched: {report['fetched_at']}")
+    supported = [entry for entry in report["deployments"].values() if entry["tiers"]]
+    if (deployment_type == "global-standard" and region != "eastus" and supported
+            and all(entry["status"] == "UNPRICED" for entry in supported)):
+        print(
+            "No effective Global Standard GPT-6 meters were found for this meter profile. "
+            "Azure currently publishes these meters under candidate profile 'eastus' in "
+            "existing priced configurations. Refresh `fetch-pricing --region eastus "
+            "--deployment-type global-standard` and obtain user confirmation of that "
+            "retail meter profile; no region was substituted."
+        )
     print("Retail estimates only. Verify deployment model/version, billing mode and current prices; this is not your Azure invoice.")
     print("Full-request long-context rates apply above 272,000 input tokens. No inference, credentials or student data are used.")
     if write_config is not None:

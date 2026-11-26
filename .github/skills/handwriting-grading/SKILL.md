@@ -63,7 +63,8 @@ execute a notebook as a workaround, or claim a human approval occurred.
   optional `AZURE_OPENAI_API_KEY`, otherwise `DefaultAzureCredential`; production
   `AZURE_OPENAI_AUTH=managed_identity`.
 - **Cost governance**: Before every paid stage, preview target, transferred data and
-  estimated requests; independently verify current regional deployment rates and
+  estimated requests; independently verify rates for the selected deployment's
+  retail meter profile and
   obtain `--confirm-cost`. The first actual AI request of each run refreshes/checks
   pricing; missing, ambiguous, stale manual or changed rates block requests.
   Follow `references/pricing.md`; price verification never grants inference consent.
@@ -90,9 +91,16 @@ execute a notebook as a workaround, or claim a human approval occurred.
      `models.analytics_image` deployment, or an explicit decision to keep
      infographic generation disabled. Ask about this even if the current stage
      only needs text/vision.
-   - **Commercial/access details:** ARM region, deployment/billing type,
-     independently reviewed rates, authentication method, intended caching,
-     and any separate/private configuration file paths.
+   - **Commercial/access details:** resource ARM region, deployment/billing type,
+     retail meter region/profile, independently reviewed rates, authentication
+     method, intended caching, and any separate/private configuration file paths.
+     A resource location is not necessarily the Azure retail meter `armRegionName`.
+     For Global Standard GPT-6 deployments, first query the supplied profile. If it
+     is entirely `UNPRICED`, inspect existing priced configurations and offer the
+     current verified meter-profile region (commonly `eastus`) as an explicit
+     user-reviewed alternative. Refresh it rather than trusting historical rates;
+     never silently substitute a region, rewrite approved configuration, or treat
+     a successful lookup as inference/data-transfer consent.
    Present the detected values and ask for every missing or ambiguous value.
    Do not infer shared endpoints, deployment names, regions or billing types.
    Generate and verify the private text/vision and image configurations before
@@ -193,9 +201,12 @@ execute a notebook as a workaround, or claim a human approval occurred.
       commands (`retry-grading --align-images ...`) in `references/regions.md`.
 8. For grading, reporting and AI analysis read `references/grading.md`.
    Obtain the specified human confirmations; never infer approval.
-   - For current Azure prices, read `references/pricing.md`. Obtain the ARM region
-     and Standard deployment type before `fetch-pricing`; never infer them
-     from an endpoint. Preview public retail rates without inference or credentials.
+   - For current Azure prices, read `references/pricing.md`. Obtain the resource
+     location, retail meter region/profile and Standard deployment type before
+     `fetch-pricing`; never infer them from an endpoint. Preview public retail rates
+     without inference or credentials. If the first Global Standard query has no
+     effective meters, present a refreshed alternative meter profile for user
+     confirmation instead of stopping without checking known priced configurations.
      Save only when requested, using `--write-config` to a new private file; review
      meter provenance and keep missing/ambiguous prices UNPRICED. Discovery and
      preflight stay offline. A pricing lookup is not approval for paid grading.

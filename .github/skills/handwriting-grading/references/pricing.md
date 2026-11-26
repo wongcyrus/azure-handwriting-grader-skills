@@ -1,10 +1,12 @@
 # Azure pricing before the first paid request
 
 Standalone pricing lookup is online and separate from paid model inference.
-`discover-models`, preflight, review and cost reports remain offline. Obtain the
-user's Azure ARM region and deployment type; never infer either from an endpoint
-alias. Supported lookup types are Global Standard and Data Zone Standard, not
-Flex, Priority, provisioned throughput or asynchronous Batch.
+`discover-models`, preflight, review and cost reports remain offline. Obtain the user's resource ARM region, the retail meter profile region, and the
+deployment type; never infer them from an endpoint alias. These locations can
+differ for Global Standard billing. The resource location describes where the
+Azure resource was created; `pricing_lookup.region` selects the Retail Prices API's
+`armRegionName` meters. Supported lookup types are Global Standard and Data Zone
+Standard, not Flex, Priority, provisioned throughput or asynchronous Batch.
 
 ## Preview current rates
 
@@ -32,6 +34,17 @@ Network/service errors fail the command; incomplete pagination is not accepted.
 Other model families, embeddings and image generation need separately verified
 manual rates. Do not substitute older-model prices or calculate discounts.
 
+If the initial Global Standard resource-region query is entirely `UNPRICED`, check
+for an existing priced configuration in the exam/repository and inspect its
+`pricing_lookup.region`, meter IDs, source URLs and `fetched_at` evidence. The
+current GPT-6 Global Standard catalog is commonly published under `eastus`, even
+when the resource is in another location. Offer `fetch-pricing --region eastus`
+as an explicit refreshed candidate when supported by that evidence, and ask the
+user to confirm that meter profile. Do not silently substitute regions, copy
+historical rates, or save a priced configuration before confirmation. A PRICED
+result is still only public retail evidence: it does not verify the deployment's
+contract rate, availability, identity access, quota, or permission to run inference.
+
 ## Automatic check for every new run
 
 The final Responses, embeddings and image-generation boundaries all require a
@@ -51,8 +64,9 @@ Successful checks retain meter/manual provenance in
 `telemetry/azure_price_checks.jsonl`; historical usage is not repriced.
 No inference consent is implied by checking prices.
 
-Saved `pricing_sources` carries the explicit region and deployment type. An
-unsaved lookup profile can also be declared as:
+Saved `pricing_sources` carries the explicit retail meter region and deployment
+type; the resource's ARM location may be documented separately. An unsaved lookup
+profile can also be declared as:
 
 ```yaml
 pricing_lookup:
@@ -61,7 +75,7 @@ pricing_lookup:
 ```
 
 The profile alone is insufficient: current rates must match reviewed `pricing`.
-No region is inferred from a resource name. Constructors, offline discovery,
+No resource or retail meter region is inferred from a resource name. Constructors, offline discovery,
 preflight, review, reports and cache-only operations do not fetch pricing.
 Built-in Python grading/analysis entry points also share a verifier from the
 supplied model configuration. Low-level SDK callers must supply an active
