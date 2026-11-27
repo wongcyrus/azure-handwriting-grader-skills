@@ -171,6 +171,83 @@ class TestBatchGrading(unittest.TestCase):
                     self.images_dir, tracker=TelemetryTracker(),
                 )
 
+    def test_metadata_resume_does_not_repeat_completed_batches(self):
+        calls = []
+
+        class MetadataProvider(FakeItemOnlyProvider):
+            fail_last = True
+
+            def ocr_metadata_batch(self, items, **kwargs):
+                indices = [item["script_index"] for item in items]
+                calls.append(indices)
+                if self.fail_last and indices[0] == 16:
+                    raise ValueError("synthetic metadata failure")
+                return MetadataBatchResponse(students=[
+                    StudentMetadataItem(script_index=index, id_ocr=str(index), class_ocr="A", name_ocr="Name")
+                    for index in indices
+                ])
+
+        results = {"version": 1, "checkpoint_version": 1, "completed": False,
+                   "scripts": [], "marks": [], "moderated_questions": []}
+        atomic_json(self.root / "results.json", results)
+        provider = MetadataProvider({}, "endpoint", "v1")
+
+        def run(checkpoint):
+            continue_grading(
+                self.root, checkpoint, [], self.boxes, {"students": 18}, self.stride,
+                self.models, "endpoint", "v1", lambda *args: provider,
+                [], self.root / "cache", self.metadata_fields, lambda: None,
+            )
+
+        with patch("handwriting_grader.grading.crop_image", return_value=b"image"):
+            with self.assertRaisesRegex(RuntimeError, "synthetic metadata failure"):
+                run(results)
+            saved = json.loads((self.root / "results.json").read_text())
+            self.assertEqual([row["script_index"] for row in saved["scripts"]], list(range(16)))
+            provider.fail_last = False
+            run(saved)
+        self.assertEqual(calls, [list(range(16)), [16, 17], [16, 17]])
+        saved = json.loads((self.root / "results.json").read_text())
+        self.assertEqual([row["script_index"] for row in saved["scripts"]], list(range(18)))
+
+    def test_metadata_resume_preserves_completed_single_script_fallback(self):
+        class MetadataProvider(FakeItemOnlyProvider):
+            def __init__(self):
+                super().__init__({}, "endpoint", "v1")
+                self.ocr_calls = []
+
+            def ocr(self, image, field):
+                self.ocr_calls.append((image, field))
+                return field
+
+        provider = MetadataProvider()
+        results = {"version": 1, "checkpoint_version": 1, "completed": False,
+                   "scripts": [], "marks": [], "moderated_questions": []}
+        atomic_json(self.root / "results.json", results)
+        fail = [True]
+
+        def crop(path, box):
+            if path.name == "1.jpg" and fail[0]:
+                raise OSError("synthetic crop failure")
+            return path.name.encode()
+
+        def run(checkpoint):
+            continue_grading(
+                self.root, checkpoint, [], self.boxes, self.summary, self.stride,
+                self.models, "endpoint", "v1", lambda *args: provider,
+                [], self.root / "cache", self.metadata_fields, lambda: None,
+            )
+
+        with patch("handwriting_grader.grading.crop_image", side_effect=crop):
+            with self.assertRaisesRegex(OSError, "synthetic crop failure"):
+                run(results)
+            saved = json.loads((self.root / "results.json").read_text())
+            self.assertEqual([row["script_index"] for row in saved["scripts"]], [0])
+            fail[0] = False
+            run(saved)
+        self.assertEqual([image for image, _ in provider.ocr_calls],
+                         [b"0.jpg"] * 3 + [b"1.jpg"] * 3)
+
     def test_metadata_rejects_missing_or_duplicate_script_results(self):
         class IncompleteProvider:
             def ocr_metadata_batch(self, items, **kwargs):

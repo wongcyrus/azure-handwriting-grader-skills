@@ -115,6 +115,30 @@ class AttendanceTests(unittest.TestCase):
         self.assertNotEqual(approved_attendance(self.config, self.root, self.exam)[1], original_hash)
         self.assertEqual(len(list((self.root / "output" / "attendance" / "versions").iterdir())), 2)
 
+    def test_changed_review_workbook_blocks_approval_and_invalidates_current_review(self):
+        self.assertEqual(main(["prepare-attendance", "--exam", str(self.exam)]), 0)
+        pointer = json.loads((self.root / "output" / "attendance" / "current.json").read_text())
+        version = self.root / "output" / "attendance" / "versions" / pointer["review_id"]
+        workbook_path = version / "attendance_review.xlsx"
+        book = load_workbook(workbook_path)
+        book["Attendance"]["D3"] = "present"
+        book.save(workbook_path)
+        book.close()
+        self.assertEqual(main(["approve-attendance", "--exam", str(self.exam), "--confirm-reviewed"]), 1)
+        self.assertFalse((version / "approval.json").exists())
+
+        book = load_workbook(workbook_path)
+        book["Attendance"]["D3"] = "absent"
+        book.save(workbook_path)
+        book.close()
+        self.assertEqual(main(["approve-attendance", "--exam", str(self.exam), "--confirm-reviewed"]), 0)
+        book = load_workbook(workbook_path)
+        book["Attendance"]["D3"] = "present"
+        book.save(workbook_path)
+        book.close()
+        with self.assertRaisesRegex(ValueError, "workbook"):
+            approved_attendance(self.config, self.root, self.exam)
+
     def test_present_only_review_reports_and_email(self):
         self.prepare_approved_run()
         _, summary = check_exam(self.config, self.root)

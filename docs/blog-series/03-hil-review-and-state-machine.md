@@ -30,7 +30,7 @@ No stage trusts an earlier stage merely because a file exists on disk. Every HIL
 
 | Gate | Stage | Bound Artifacts (`SHA-256`) | What Invalidates It |
 |---|---|---|---|
-| **1. Attendance** | `approve-attendance` | Roster XLSX, attendance CSV, `exam.yaml`, `review.xlsx` | Editing attendance CSV or roster after approval |
+| **1. Attendance** | `approve-attendance` | Roster XLSX, attendance CSV, `exam.yaml`, versioned JSON review | Editing attendance CSV or roster, or changing the review workbook content after approval |
 | **2. Rubric** | `approve-rubric` | `rubric/rubric.xlsx` | Modifying any question text, criteria, or `marks` |
 | **3. Regions** | `approve-regions` | `annotations.json`, rendered template `images/*.jpg`, `exam.yaml` | Moving a box, changing page count, or altering PDF |
 | **4. Grading** | `approve-grading` | `review.xlsx`, `results.json`, `manifest.json`, `model_config`, `roster`, `rubric`, `regions/approval.json` | Any post-approval edit in Excel or upstream input change |

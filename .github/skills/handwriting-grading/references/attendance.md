@@ -22,7 +22,9 @@ Preflight checks the count, not the order or identity.
 2. Run `handwriting-grader prepare-attendance --exam /path/to/exam.yaml`.
    Ask the teacher to inspect every ID, name, class and status in the generated
    Excel workbook (`attendance_review.xlsx`, alongside `review.json`) and compare it
-   with the original list and roster.
+   with the original list and roster. It is a review copy, not an editable input.
+   To correct attendance, update the source CSV and prepare a new review version;
+   edits to the review workbook do not change attendance and block approval.
 3. Only after explicit review, run `handwriting-grader
    approve-attendance --exam /path/to/exam.yaml --confirm-reviewed`.
    The command without the flag records no approval.
@@ -38,7 +40,8 @@ later marked absent. Configuring attendance does not change this.
 ## Staleness and recovery
 
 The approval is bound to the exact configuration, roster, attendance CSV and
-review file. Changing any of them invalidates it and dependent grading.
+JSON review. The review workbook must also match those reviewed values when
+approving or using attendance; changing its content invalidates dependent use.
 Preparing a new review selects a new version and leaves previous reviews and
 approvals intact; it invalidates a grading run tied to an earlier approval,
 even if the list has the same contents. Do not overwrite or delete old runs,

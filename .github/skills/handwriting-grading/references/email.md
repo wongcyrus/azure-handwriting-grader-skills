@@ -50,3 +50,9 @@ handwriting-grader moodle-export --exam /path/to/exam.yaml \
 - **Per-Student Combined PDFs** (`output/moodle/student_pdfs/<ID>_<Name>.pdf`): Always generated. Merges an A4 personalized AI feedback & score cover page (if `ai-analysis` is approved) ahead of each student's marked exam script PDF.
 - **Email Recipients Helper** (`output/moodle/recipients.csv`): When `--participants` is passed, extracts matched `ID,EMAIL` pairs for `preview-email`.
 - **Moodle Assignment Bulk Upload** (`output/moodle/grading_worksheet_filled.csv` + `output/moodle/feedback_files.zip`): When `--worksheet` (exported from Moodle Assignment -> *Download grading worksheet*) is passed, fills `Grade` and `Feedback comments` and packages each student's combined PDF under Moodle's `<Full name>_<ParticipantID>_assignsubmission_file_/` naming format for *Upload grading worksheet* and *Upload multiple feedback files in a zip*.
+
+The worksheet must include `ID number`, `Identifier`, and `Grade`. Matched students
+must have distinct student and participant identifiers. Participants CSVs must have
+an ID and email column; duplicate matched IDs are rejected. Compare the worksheet
+match count in `moodle/manifest.json` and the recipients CSV with the intended
+students before distribution; unmatched rows are not filled.

@@ -238,7 +238,7 @@ def main(argv=None):
     resume.add_argument("--confirm-cost", action="store_true", help="Confirm resumed paid calls")
     resume.add_argument("--mode", choices=["batch", "item"], default=None,
                         help="Override grading mode (default: from manifest or batch)")
-    resume.add_argument("--concurrency", type=int, default=3, help="Concurrent questions for batch grading (default: 3)")
+    resume.add_argument("--concurrency", type=int, default=None, help="Concurrent questions for original batch grading (default: 3)")
     resume.add_argument("--continue-on-image-policy-block", action="store_true",
                         help="Flag image-policy-blocked batches for manual review and continue with other questions")
     batch_retry = commands.add_parser(
@@ -351,8 +351,9 @@ def main(argv=None):
     clean.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     clean.add_argument("--no-archive", action="store_true", help="Skip creating backup .zip archive before cleaning")
     clean.add_argument("--full-archive", action="store_true",
-                       help="Include bulky raw scanned JPEGs (grading/images/, regions/images/) in the backup .zip")
-    clean.add_argument("--purge-reports", action="store_true", help="Also delete final reports and analytics (default: preserved)")
+                       help="Include temporary grading directories and model-cache in the backup .zip")
+    clean.add_argument("--purge-reports", action="store_true",
+                       help="Delete all selected outputs, including reports and reviews (default: preserved)")
     clean.add_argument("--confirm-delete", action="store_true", help="Explicit human confirmation to delete files")
     email_preview = commands.add_parser("preview-email", help="Create a private recipient and attachment preview")
     email_preview.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
@@ -389,7 +390,7 @@ def main(argv=None):
     fetch_pricing.add_argument("--model-config", type=Path, help="Private configuration whose deployment aliases should be priced")
     fetch_pricing.add_argument("--write-config", type=Path, help="Create a new priced configuration; never overwrite the source")
     for selected in (resume, grade_review, grade_check, grade_approve, report, analytics, ai_analysis, analysis_approve,
-                     advanced_report, cost_report, clean, email_preview, email_approve, email_send):
+                     advanced_report, cost_report, clean, email_preview, email_approve, email_send, moodle_exp):
         selected.add_argument("--run", help="Child run ID (default: original run)")
     args = parser.parse_args(argv)
     if args.command == "workflow-grade":
@@ -655,10 +656,11 @@ def main(argv=None):
             return 1
         count = len(info["parent"][5])
         selected = next(q for q in info["questions"] if question_key(q["question_number"]) == info["question_key"])
+        requests = (count + 49) // 50
         print(f"Parent: {args.parent or 'original'}; child: {args.run}; question: {info['question_key']}; "
               f"rubric: {args.rubric_proposal or 'parent'}; crops: {args.crop_proposal or 'parent'}; students: {count}. "
               f"Azure OpenAI target: endpoint={args.endpoint}, api_version={args.api_version}, models={info['models']}. "
-              f"Up to {count + 1} requests send student work or answers and may incur charges. "
+              f"Up to {requests} batch request(s) send student work and may incur charges, excluding SDK retries. "
               f"Cache: {info['cache_agents'] or 'disabled'}; directory={info['cache_root'] or 'none'}.")
         if info["reuse_parent_cache"]:
             print("Parent cache reuse is enabled: matching model responses may be reused rather than regenerated.")
@@ -719,7 +721,7 @@ def main(argv=None):
             request_count = summary["students"] * 4 + len(questions) * summary["students"]
             print(f"Mode: BATCH (multimodal structured output, {concurrency} questions concurrent).")
         else:
-            request_count = summary["students"] * (3 + len(questions)) + len(questions)
+            request_count = summary["students"] * (3 + 2 * len(questions)) + len(questions)
             print("Mode: ITEM (sequential student-by-student grading + moderation).")
         print(f"Azure OpenAI target: endpoint={args.endpoint}, api_version={args.api_version}, models={models}. "
               f"Up to {request_count} requests will send student work or answers and incur charges "
@@ -893,6 +895,10 @@ def main(argv=None):
                 raise ValueError("A review or approval already exists; do not overwrite it")
             if (root / "processing.lock").exists():
                 raise ValueError("Another grading process or a stale lock exists")
+            if args.run is not None and (args.mode is not None or args.concurrency is not None):
+                raise ValueError("--mode and --concurrency are not supported for child runs")
+            if args.concurrency is not None and args.concurrency < 1:
+                raise ValueError("Concurrency must be a positive integer")
             if args.continue_on_image_policy_block and (args.run is not None
                     or (args.mode or manifest.get("grading_mode", "batch")) != "batch"):
                 raise ValueError("Continuing after an image policy block requires an original batch run")
@@ -906,19 +912,29 @@ def main(argv=None):
               f"models={manifest['models']}; run={args.run or 'original'}"
               f"{'; question=' + manifest['question_key'] if args.run else ''}. "
               "In-flight requests can be repeated and billed.")
-        if args.run is None and (args.mode or manifest.get("grading_mode", "batch")) == "batch":
+        if not results.get("completed"):
             from math import ceil
             from .rubric import question_key
 
             keys = {question_key(q["question_number"]) for q in questions}
             finished = set(results.get("moderated_questions", []))
             pairs = {(row["script_index"], question_key(row["question"])) for row in results["marks"]}
-            requests = sum(ceil(sum((si, key) not in pairs for si in range(summary["students"])) / 50)
-                           for key in keys - finished)
             missing = summary["students"] - len(results["scripts"])
             metadata_requests = ceil(max(0, missing) / min(35, 50 // len(fields)))
-            print(f"Remaining batch preview: up to {metadata_requests} metadata request(s) and "
-                  f"{requests} question request(s), excluding SDK retries. Previously failed answers are not retried.")
+            mode = "batch" if args.run is not None else (args.mode or manifest.get("grading_mode", "batch"))
+            pending = [sum((si, key) not in pairs for si in range(summary["students"]))
+                       for key in keys - finished]
+            if mode == "batch":
+                requests = sum(ceil(count / 50) for count in pending)
+                print(f"Remaining batch preview: up to {metadata_requests} metadata request(s) and "
+                      f"{requests} question request(s), excluding SDK retries. Previously failed answers are not retried.")
+            else:
+                requests = 2 * sum(pending) + len(pending)
+                print(f"Remaining item preview: up to {metadata_requests} metadata request(s) and "
+                      f"up to {requests} item-mode request(s), including possible answer OCR and moderation; "
+                      "excluding SDK retries. Previously failed answers are not retried.")
+        else:
+            print("The checkpoint is complete; finalizing the review requires no model requests.")
         if manifest.get("reuse_parent_cache"):
             print(f"Parent cache reuse remains enabled: {manifest['cache_root']}. "
                   "Matching responses may be reused rather than regenerated.")
@@ -934,7 +950,7 @@ def main(argv=None):
             if args.run is None:
                 options = {"continue_on_image_policy_block": True} if args.continue_on_image_policy_block else {}
                 output = resume_grading(config, path.parent, path, summary, mode=args.mode,
-                                        batch_concurrency=getattr(args, "concurrency", 3), **options)
+                                        batch_concurrency=args.concurrency if args.concurrency is not None else 3, **options)
             else:
                 from .regrading import resume_regrade
                 output = resume_regrade(config, path.parent, path, args.run)
@@ -1109,8 +1125,10 @@ def main(argv=None):
         print(f"Retry target: endpoint={manifest['endpoint']}, api_version={manifest['api_version']}, "
               f"models={manifest['models']}; run={args.run or 'original'}.\n"
               f"Action plan: {'; '.join(details)}.\n"
-              f"Estimated requests: up to {est_requests}. "
-              + ("In-flight requests will be billed." if est_requests > 0 else "No AI requests needed."))
+              f"Estimated application requests: up to {est_requests}, excluding SDK retries. "
+              + ("In-flight requests may incur charges." if est_requests > 0 else "No AI requests needed."))
+        print("Affected identities and marks require review again, even if retry is interrupted; "
+              "existing teacher edits are preserved.")
 
         if est_requests > 0 and not args.confirm_cost:
             print("No request sent. Obtain user approval and rerun with --confirm-cost.", file=sys.stderr)
@@ -1315,18 +1333,25 @@ def main(argv=None):
         from .cleanup import inspect_cleanup_targets, archive_and_clean
 
         try:
-            info = inspect_cleanup_targets(config, path.parent, run_id=args.run)
+            info = inspect_cleanup_targets(config, path.parent, run_id=args.run,
+                                           preserve_reports=not args.purge_reports)
             print(f"Target directory: {info['output_dir']} (run: {info['run_id']})")
-            if not info["items"]:
+            if not info["items"] and not info["deletion_targets"]:
                 print("Output directory is empty or does not exist. Nothing to clean.")
                 return 0
             print("Target contents:")
             for item in info["items"]:
                 print(f"  - {item['name']} ({item['type']}, {item['size']:,} bytes, {item['files']} files)")
             print(f"Total size: {info['total_bytes']:,} bytes")
+            targets = info["deletion_targets"]
+            print(f"Items to delete: {', '.join(targets) if targets else '(none)'}")
+            if args.run and args.purge_reports:
+                print("WARNING: '.' means the entire selected child run, including reviews and reports.")
+            if not args.purge_reports:
+                print("Grading and region images, reviews and reports will be preserved.")
             if not args.confirm_delete:
                 archive_note = "A cross-platform archive (.zip) will be created first." if not args.no_archive else "NO ARCHIVE will be created (--no-archive)."
-                preserve_note = "Final reports and analytics will be preserved." if not args.purge_reports else "ALL reports and analytics will be deleted."
+                preserve_note = "Final reports and analytics will be preserved." if not args.purge_reports else "ALL selected outputs, reviews and reports will be deleted."
                 print(f"\nSafety gate: {archive_note} {preserve_note}")
                 print("No files were deleted. Obtain explicit user confirmation and rerun with --confirm-delete.", file=sys.stderr)
                 return 1
@@ -1557,8 +1582,8 @@ def main(argv=None):
             print(f"Scan orientation/sequence issues found ({len(issues)}):", file=sys.stderr)
             for issue in issues:
                 print(f"- {issue}", file=sys.stderr)
-            print("Fix the flagged pages manually in the source PDF or physical scan and re-run check-scans.",
-                  file=sys.stderr)
+            print("Preserve this confirmation, fix the source scan, and prepare a new output directory "
+                  "with fresh marker review and scan confirmation.", file=sys.stderr)
             return 1
         print(f"Scan check passed: all {summary['pdf_pages']} pages ({summary['students']} scripts) "
               "match reviewed printed markers in the expected orientation and sequence.")

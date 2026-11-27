@@ -132,8 +132,8 @@ Built in `distribution.py` with three separate commands:
 ### Preview-First Archival (`clean` -> `--confirm-delete`)
 Implemented in `cleanup.py`:
 - Running `handwriting-grader clean --exam exam.yaml` without `--confirm-delete` is a dry-run preview listing target directories, file counts, and byte sizes.
-- Default root cleanup creates a cross-platform `ZIP_DEFLATED` **slim archive** (`grading_archive_slim_TIMESTAMP.zip`) and deletes only regenerable `grading/images/`, `regions/images/`, `.grading-*`, and `model-cache/`, preserving all HIL reviews, approvals, telemetry, delivery journals, `reports/`, `analytics/`, `ai-analysis/`, and `moodle/`.
-- Optional flags support `--full-archive` (includes raw JPEGs in the `.zip`), `--run CHILD_RUN` (removes an isolated child run while keeping the parent), and `--purge-reports --confirm-delete` (with full backup by default).
+- Default cleanup creates a cross-platform `ZIP_DEFLATED` **slim archive** and deletes only top-level `.grading-*` and `model-cache/`, preserving approval-bound images, reviews, approvals and reports.
+- Optional flags support `--full-archive` (also archives temporary/cache data), `--run CHILD_RUN` (selects a child run), and `--purge-reports --confirm-delete` (deletes all selected outputs, with full backup by default).
 
 ## 4. Measuring a school pilot (160-test offline baseline + holdout eval)
 

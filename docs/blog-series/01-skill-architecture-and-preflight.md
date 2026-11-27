@@ -76,7 +76,7 @@ return errors, summary
 *Figure 2. Real read-only preflight output. Four students × two pages = eight pages passes structural math, yet cannot prove page orientation.*
 
 ### Explicit attendance (`prepare-attendance` -> `approve-attendance`)
-Absences are **never** inferred from missing PDF pages or blank OCR. If `attendance` is configured, the teacher supplies an explicit `ID,STATUS` CSV (`present`/`absent` for every roster ID), reviews `attendance/review.xlsx`, and runs `approve-attendance --confirm-reviewed` to bind the present-student set with SHA-256 hashes.
+Absences are **never** inferred from missing PDF pages or blank OCR. If `attendance` is configured, the teacher supplies an explicit `ID,STATUS` CSV (`present`/`absent` for every roster ID), reviews the versioned `attendance_review.xlsx`, and runs `approve-attendance --confirm-reviewed` to bind the present-student set with SHA-256 hashes. Corrections belong in the source CSV, followed by a new review.
 
 ## 3. Why `check-scans` runs before region setup (4x FFT consensus)
 

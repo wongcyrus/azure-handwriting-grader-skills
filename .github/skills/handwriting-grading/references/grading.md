@@ -45,11 +45,16 @@
      no whole-cohort consistency or fixed savings/runtime guarantee.
    - **Item**: individual crops then whole-question text moderation. Transport limits
      still apply. Moderation cannot re-inspect diagrams: teachers must review images.
+     The request estimate includes a possible separate answer OCR call for each
+     graded crop; resume previews the remaining item-mode requests separately.
    - Both retain `results.json`, `review.xlsx`, and `azure_usage.jsonl`. Pillow blank
      filtering saves calls only for clearly blank crops; confirm them during review.
    - Roster candidates assist ID/CLASS/NAME OCR but do not guarantee correct matching.
      Metadata requests contain at most 50 images and 35 scripts (16 with three
      fields). A batch failure stops the run instead of issuing paid fallback calls.
+     Successful metadata batches are checkpointed before the next batch; resume
+     skips checkpointed scripts. A request interrupted before its response is saved
+     may still be repeated and billed.
      Deployment, payload, context, output-token budgets and quota can still cause failures.
 
    Run `cost-report --exam /private/exam.yaml` for offline usage and priced estimates.
@@ -263,7 +268,7 @@ When API operations exhaust their built-in retry attempts:
   1. Inspect/wait for Azure quota reset, then execute targeted `retry-grading --exam /path/to/exam.yaml [--confirm-cost]`.
   2. Grade the failed items manually in `review.xlsx` without additional API calls.
 - **Targeted retry and re-run commands**: When the user approves retrying or after scanner-shift alignment / bounding box adjustments (see `regions.md`):
-  - `handwriting-grader retry-grading --exam /path/to/exam.yaml`: Retries failed marks and completes unmoderated questions.
+  - `handwriting-grader retry-grading --exam /path/to/exam.yaml`: Retries failed marks and completes unmoderated questions. Teacher edits are preserved in the workbook and a previous copy is saved in `grading/review-history/`. Affected questions and identities must be reviewed again, even if retry is interrupted. Do not edit the workbook while retry is running; if it changes, retry stops rather than overwriting it.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --align-images`: Aligns all scanned page images to the approved reference layout (offline, 0 AI cost). Can be combined with `--re-ocr-id`, `--re-ocr-metadata`, or `--question`.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-id`: Re-runs student ID OCR for all scripts using the approved bounding box.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-metadata`: Re-runs student ID, class, and name OCR in groups of up to 16 scripts (48 images); payload limits still apply and every identity needs human verification.

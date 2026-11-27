@@ -95,9 +95,10 @@ Add `--parent PARENT_RUN` for a child parent. Add `--rubric-proposal rubric-v2`
 or `--crop-proposal crop-v2` only if the separately approved proposal matches
 this parent and question.
 The preview displays the selected rubric, model, target, cache and upper
-bound of `2 × present students + 1` requests: answer OCR and grading for each
-student, plus whole-question moderation. Cache hits or skipped moderation may
-reduce calls; retries and in-flight requests may incur additional charges.
+bound of `ceil(present students / 50)` synchronous batch requests for the
+selected question. Each batch transcribes and grades together; blank filtering
+or cache hits may reduce calls. SDK retries and in-flight requests may incur
+additional charges, and comparison is limited to each batch.
 After the user explicitly approves the target, data transfer and potential
 cost, repeat the same command with `--confirm-cost`.
 
@@ -153,7 +154,8 @@ handwriting-grader resume-grading --exam /private/exam.yaml --run revision-1
 Review the printed original target, then obtain fresh cost approval before
 repeating with `--confirm-cost`. Completed checkpointed answers are retained;
 an in-flight request can repeat. The original cache selection is preserved and
-shown on resume. The exclusive lock prevents concurrent
+shown on resume. Child resumes use batch mode; `--mode` and `--concurrency`
+overrides apply only to original runs and are rejected for children. The exclusive lock prevents concurrent
 resume; investigate a stale lock and never remove a live one. Partial runs
 and prior outputs are not automatically deleted.
 If creation was interrupted before the manifest and checkpoint were written,

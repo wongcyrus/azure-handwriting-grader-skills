@@ -3,6 +3,7 @@
 import io
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
@@ -10,7 +11,9 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 from .azure_ai import AzureClient, GenerationConfig, ImagePart
 from openpyxl import Workbook, load_workbook
@@ -472,27 +475,9 @@ def safe_append(sheet, values):
 
 
 def write_review(path, results, overwrite=False):
-    existing_manual = {}
-    existing_scripts_reviewed = {}
     path_obj = Path(path)
     if overwrite and path_obj.exists():
-        try:
-            old_wb = load_workbook(path_obj, data_only=True)
-            if "Marks" in old_wb.sheetnames:
-                for row in old_wb["Marks"].iter_rows(min_row=2, values_only=True):
-                    if len(row) >= 12:
-                        si, q, manual, reviewed = row[0], row[1], row[10], row[11]
-                        if manual is not None or reviewed is not None:
-                            existing_manual[(si, str(q))] = (manual, reviewed)
-            if "Scripts" in old_wb.sheetnames:
-                for row in old_wb["Scripts"].iter_rows(min_row=2, values_only=True):
-                    if len(row) >= 5:
-                        si, r_id, r_status = row[0], row[3], row[4]
-                        if r_id is not None or r_status is not None:
-                            existing_scripts_reviewed[si] = (r_id, r_status)
-            old_wb.close()
-        except Exception:
-            pass
+        raise ValueError("An existing review workbook cannot be regenerated")
 
     workbook = Workbook()
     scripts = workbook.active
@@ -500,30 +485,110 @@ def write_review(path, results, overwrite=False):
     scripts.append(["script_index", "id_ocr", "class_ocr", "reviewed_id", "reviewed", "name_ocr"])
     for script in results["scripts"]:
         si = script["script_index"]
-        r_id, r_status = existing_scripts_reviewed.get(si, ("", ""))
-        safe_append(scripts, [si, script["id_ocr"], script["class_ocr"], r_id or "", r_status or "",
+        safe_append(scripts, [si, script["id_ocr"], script["class_ocr"], "", "",
                               script.get("name_ocr")])
     marks = workbook.create_sheet("Marks")
     marks.append(["script_index", "question", "page_image", "answer", "raw_mark", "moderated_mark",
                   "reasoning", "moderator_flag", "moderator_note", "grading_failed", "manual_mark", "reviewed",
                   "similarity_score"])
     for result in results["marks"]:
-        si = result["script_index"]
-        q = str(result["question"])
-        manual, reviewed = existing_manual.get((si, q), ("", ""))
         safe_append(marks, [
             result["script_index"], result["question"], result["page_image"], result["answer"],
             result["raw_mark"], result["moderated_mark"], result["reasoning"],
             result["moderator_flag"], result["moderator_note"], result["grading_failed"],
-            manual or "", reviewed or "",
+            "", "",
             result.get("similarity_score"),
         ])
-    mode = "wb" if overwrite else "xb"
+    temp = None
     try:
-        with path_obj.open(mode) as file:
+        with tempfile.NamedTemporaryFile(dir=path_obj.parent, suffix=".xlsx", delete=False) as file:
+            temp = Path(file.name)
             workbook.save(file)
+            file.flush()
+            os.fsync(file.fileno())
+        os.link(temp, path_obj)
     finally:
         workbook.close()
+        if temp is not None:
+            temp.unlink(missing_ok=True)
+
+
+def _update_retry_review(path, previous, results, script_indices, question_keys, expected_hash, *, prepare=False):
+    from .grade_review import reviewed_rows
+    from .score_editor import _backup_review
+
+    before_scripts = {row["script_index"]: row for row in previous["scripts"]}
+    after_scripts = {row["script_index"]: row for row in results["scripts"]}
+    before_marks = {(row["script_index"], question_key(row["question"])): row for row in previous["marks"]}
+    after_marks = {(row["script_index"], question_key(row["question"])): row for row in results["marks"]}
+    if (len(before_scripts) != len(previous["scripts"]) or len(after_scripts) != len(results["scripts"])
+            or len(before_marks) != len(previous["marks"]) or len(after_marks) != len(results["marks"])
+            or set(before_scripts) != set(after_scripts) or set(before_marks) != set(after_marks)):
+        raise ValueError("Retry results contain missing or duplicate review rows")
+    if file_hash(path) != expected_hash:
+        raise ValueError("Review changed during retry; reload before continuing")
+    book = load_workbook(path, data_only=False)
+    temp = None
+    try:
+        for sheet_name, columns, before, after in (
+            ("Scripts", ("script_index", "reviewed_id", "reviewed"), before_scripts, after_scripts),
+            ("Marks", ("script_index", "question", "answer", "reasoning", "manual_mark", "reviewed"),
+             before_marks, after_marks),
+        ):
+            rows = list(reviewed_rows(book, sheet_name, columns))
+            sheet = book[sheet_name]
+            headers = [str(cell.value).strip().lower() if cell.value is not None else "" for cell in sheet[1]]
+            if any(headers.count(name) != 1 for name in columns):
+                raise ValueError(f"{sheet_name} review columns are invalid")
+            positions = {name: index + 1 for index, name in enumerate(headers) if name}
+            actual_rows = [row for row in sheet.iter_rows(min_row=2)
+                           if any(cell.value is not None for cell in row)]
+            seen = set()
+            for item, cells in zip(rows, actual_rows):
+                key = item["script_index"]
+                if type(key) is not int:
+                    raise ValueError(f"{sheet_name} review contains an invalid script index")
+                if sheet_name == "Marks":
+                    key = (key, question_key(item["question"]))
+                if key not in before or key in seen:
+                    raise ValueError(f"{sheet_name} review rows are missing or duplicated")
+                seen.add(key)
+                affected = key in script_indices if sheet_name == "Scripts" else key[1] in question_keys
+                if not affected:
+                    continue
+                if prepare:
+                    sheet.cell(cells[0].row, positions["reviewed"]).value = None
+                    continue
+                fields = (("id_ocr", "class_ocr", "name_ocr") if sheet_name == "Scripts" else
+                          ("page_image", "answer", "raw_mark", "moderated_mark", "reasoning",
+                           "moderator_flag", "moderator_note", "grading_failed", "similarity_score"))
+                for field in fields:
+                    if field not in positions:
+                        continue
+                    cell = sheet.cell(cells[0].row, positions[field])
+                    if field in ("answer", "reasoning") and (cell.value or "") != (before[key].get(field) or ""):
+                        continue
+                    value = after[key].get(field)
+                    if isinstance(value, str) and len(value) > 32767:
+                        raise ValueError("Text exceeds Excel's 32,767-character cell limit")
+                    cell.value = value
+                    if isinstance(value, str):
+                        cell.data_type = "s"
+            if seen != set(before):
+                raise ValueError(f"{sheet_name} review rows are missing or duplicated")
+        if prepare:
+            _backup_review(path.parent, expected_hash)
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".xlsx", delete=False) as file:
+            temp = Path(file.name)
+        book.save(temp)
+        if file_hash(path) != expected_hash:
+            raise ValueError("Review changed during retry; reload before continuing")
+        os.replace(temp, path)
+        return file_hash(path)
+    finally:
+        book.close()
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
 def load_metadata_candidates(config, config_dir, config_path=None):
@@ -580,13 +645,13 @@ def load_metadata_roster(config, config_dir, config_path=None):
 
 def batch_extract_metadata(provider, script_indices, fields, boxes, stride, image_dir,
                            roster_list=None, metadata_candidates=None, guard=None,
-                           tracker=None, chunk_size=35):
+                           tracker=None, chunk_size=35, on_chunk=None):
     """Extract metadata fields for script indices using batch multimodal OCR when available.
 
     Returns a dict mapping script_index -> {'id_ocr': ..., 'class_ocr': ..., 'name_ocr': ..., 'errors': [...]}.
     Uses individual OCR only when the provider does not support batch extraction.
     """
-    from .cache import CachedGrader
+    from .cache import CachedGrader, invoke_ocr
 
     results_by_si = {}
     active_fields = [f for f in fields if f in boxes]
@@ -634,6 +699,8 @@ def batch_extract_metadata(provider, script_indices, fields, boxes, stride, imag
                 if "NAME" in active_fields:
                     res["name_ocr"] = item.name_ocr
                 results_by_si[item.script_index] = res
+            if on_chunk:
+                on_chunk({si: results_by_si[si] for si in chunk})
             done_scripts += len(chunk)
             if tracker:
                 tracker.show_progress(
@@ -658,10 +725,7 @@ def batch_extract_metadata(provider, script_indices, fields, boxes, stride, imag
             crop = crop_image(image_dir / f"{si * stride + page}.jpg", box)
             candidates = (metadata_candidates or {}).get(field.upper())
             try:
-                try:
-                    res[field.lower() + "_ocr"] = provider.ocr(crop, field, candidates=candidates)
-                except TypeError:
-                    res[field.lower() + "_ocr"] = provider.ocr(crop, field)
+                res[field.lower() + "_ocr"] = invoke_ocr(provider, crop, field, candidates)
             except Exception as exc:
                 res["errors"].append({"field": field, "type": type(exc).__name__})
             ocr_done += 1
@@ -674,6 +738,8 @@ def batch_extract_metadata(provider, script_indices, fields, boxes, stride, imag
                 )
             else:
                 print(f"[Metadata {ocr_done}/{total_ocr}] Script #{si + 1} {field}", flush=True)
+        if on_chunk:
+            on_chunk({si: res})
     return results_by_si
 
 
@@ -706,6 +772,21 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
         provider = CachedGrader(underlying, cache_root, cache_agents, models, endpoint, api_version)
         missing_scripts = [si for si in range(summary["students"]) if si not in scripts]
         if missing_scripts:
+            def checkpoint_metadata(extracted_map):
+                attendance_guard()
+                for script_index, extracted in extracted_map.items():
+                    metadata = {
+                        "script_index": script_index,
+                        "id_ocr": extracted.get("id_ocr", ""),
+                        "class_ocr": extracted.get("class_ocr", ""),
+                        "errors": extracted.get("errors", []),
+                    }
+                    if "NAME" in metadata_fields:
+                        metadata["name_ocr"] = extracted.get("name_ocr", "")
+                    scripts[script_index] = metadata
+                    results["scripts"].append(metadata)
+                atomic_json(target / "results.json", results)
+
             extracted_map = batch_extract_metadata(
                 provider=provider,
                 script_indices=missing_scripts,
@@ -718,19 +799,11 @@ def continue_grading(target, results, questions, boxes, summary, stride, models,
                 guard=attendance_guard,
                 tracker=tracker,
                 chunk_size=35,
+                on_chunk=checkpoint_metadata,
             )
-            for script_index in missing_scripts:
-                extracted = extracted_map.get(script_index, {})
-                metadata = {
-                    "script_index": script_index,
-                    "id_ocr": extracted.get("id_ocr", ""),
-                    "class_ocr": extracted.get("class_ocr", ""),
-                    "errors": extracted.get("errors", []),
-                }
-                if "NAME" in metadata_fields:
-                    metadata["name_ocr"] = extracted.get("name_ocr", "")
-                results["scripts"].append(metadata)
-            atomic_json(target / "results.json", results)
+            remaining = {si: extracted_map.get(si, {}) for si in missing_scripts if si not in scripts}
+            if remaining:
+                checkpoint_metadata(remaining)
         total_q = len(questions)
         if mode == "batch" and hasattr(underlying, "grade_question_batch"):
             import threading
@@ -1330,11 +1403,11 @@ def inspect_retry_grading(config, config_dir, config_path, run_id=None,
             unmoderated_questions.append(q_num)
 
     num_scripts = len(results.get("scripts", []))
-    estimated_requests = len(failed_marks) + len(unmoderated_questions)
+    estimated_requests = 2 * len(failed_marks) + len(unmoderated_questions)
     if valid_re_ocr_fields:
         estimated_requests += math.ceil(num_scripts / min(35, MAX_IMAGES_PER_REQUEST // len(valid_re_ocr_fields)))
     if target_question:
-        estimated_requests += num_scripts + 1
+        estimated_requests += 2 * num_scripts + 1
 
     return {
         "target": target,
@@ -1359,6 +1432,7 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
                   align_images=False):
     from .cache import CachedGrader
     from .local_filter import is_blank_cell
+    from .score_editor import writer_lock
 
     info = inspect_retry_grading(config, config_dir, config_path, run_id=run_id,
                                  re_ocr_fields=re_ocr_fields, question=question,
@@ -1385,7 +1459,48 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
     image_dir = target / "images"
     needs_ai = bool(valid_re_ocr_fields or target_question or failed_marks or unmoderated_questions)
 
-    with grading_lock(target):
+    server = SimpleNamespace(config=config, config_dir=config_dir, run_id=run_id)
+    with grading_lock(target), writer_lock(server):
+        if (target / "approval.json").exists():
+            raise ValueError("Grading run has already been approved; cannot retry an approved run")
+        with (target / "results.json").open(encoding="utf-8") as file:
+            if json.load(file) != results:
+                raise ValueError("Grading results changed before retry; preview again")
+        with (target / "manifest.json").open(encoding="utf-8") as file:
+            if json.load(file) != manifest:
+                raise ValueError("Grading manifest changed before retry; preview again")
+        previous = deepcopy(results)
+        review_path = target / "review.xlsx"
+        review_hash = file_hash(review_path) if review_path.exists() else None
+        original_review_hash = review_hash
+        result_hash = file_hash(target / "results.json")
+        manifest_hash = file_hash(target / "manifest.json")
+        all_affected = regions_updated or align_images
+        script_indices = ({row["script_index"] for row in results["scripts"]}
+                          if all_affected or valid_re_ocr_fields else set())
+        question_keys = ({question_key(row["question"]) for row in results["marks"]} if all_affected
+                         else {question_key(row["question"]) for row in failed_marks}
+                         | {question_key(q) for q in unmoderated_questions}
+                         | ({target_q_key} if target_q_key else set()))
+
+        def check_retry_state():
+            current_review = file_hash(review_path) if review_path.exists() else None
+            if (current_review != review_hash or file_hash(target / "results.json") != result_hash
+                    or file_hash(target / "manifest.json") != manifest_hash
+                    or (target / "approval.json").exists()):
+                raise ValueError("Grading or review changed during retry; preserve the current files and reload")
+
+        def save_retry_results():
+            nonlocal result_hash
+            check_retry_state()
+            atomic_json(target / "results.json", results)
+            result_hash = file_hash(target / "results.json")
+
+        if review_hash is not None:
+            review_hash = _update_retry_review(
+                review_path, previous, results, script_indices, question_keys, review_hash, prepare=True,
+            )
+        check_retry_state()
         if align_images:
             from .alignment import align_page_file, prepare_reference_maps
             ref_maps = prepare_reference_maps(regions_root, stride)
@@ -1410,14 +1525,18 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
                 backup = Path(tempfile.mkdtemp(prefix="recovery-", dir=history))
                 for name in ("manifest.json", "results.json", "review.xlsx"):
                     source = target / name
+                    if name == "review.xlsx" and original_review_hash is not None:
+                        source = target / "review-history" / f"{original_review_hash}.xlsx"
                     if source.is_file():
                         shutil.copy2(source, backup / name)
+                check_retry_state()
                 image_dir.rename(backup / "images")
                 try:
                     aligned_dir.rename(image_dir)
                     manifest["image_sha256"] = new_hashes
                     manifest["aligned_to_regions"] = True
                     atomic_json(target / "manifest.json", manifest)
+                    manifest_hash = file_hash(target / "manifest.json")
                 except Exception:
                     if image_dir.exists():
                         image_dir.rename(staging / "failed-images")
@@ -1468,7 +1587,7 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
                         if "errors" not in script:
                             script["errors"] = []
                         script["errors"].extend(extracted["errors"])
-            atomic_json(target / "results.json", results)
+            save_retry_results()
 
         # 2. Re-grade and re-moderate specific question if requested
         if target_question:
@@ -1518,7 +1637,7 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
                             total=len(q_marks),
                             item_label=f"Regraded Q{q_num} ({done_count}/{len(q_marks)})",
                         )
-                    atomic_json(target / "results.json", results)
+                    save_retry_results()
 
             # Re-moderate target question
             entries = [
@@ -1546,7 +1665,7 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
                 moderated_set = set(results.get("moderated_questions", []))
                 moderated_set.add(target_q_key)
                 results["moderated_questions"] = sorted(list(moderated_set))
-                atomic_json(target / "results.json", results)
+                save_retry_results()
 
         # 3. Retry failed marks (skipping target_question if already processed)
         if failed_marks:
@@ -1582,7 +1701,7 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
                         moderator_note="",
                         moderator_flag=False,
                     )
-                atomic_json(target / "results.json", results)
+                save_retry_results()
                 if tracker:
                     tracker.show_progress(
                         phase="retry_grading",
@@ -1628,19 +1747,25 @@ def retry_grading(config, config_dir, config_path, summary, run_id=None,
                     m["moderator_note"] = f"moderation_error:{type(exc).__name__}"
 
             results["moderated_questions"] = sorted(list(moderated_set))
-            atomic_json(target / "results.json", results)
+            save_retry_results()
 
         # 5. Sync manifest with current region approval hashes
         manifest["regions_approval_sha256"] = file_hash(regions_root / "approval.json")
         manifest["annotations_sha256"] = file_hash(regions_root / "annotations.json")
+        check_retry_state()
         atomic_json(target / "manifest.json", manifest)
+        manifest_hash = file_hash(target / "manifest.json")
 
         # 6. Finalize review.xlsx
         all_failed = [m for m in results["marks"] if m.get("grading_failed") or m.get("raw_mark") is None]
         if not all_failed:
             results["completed"] = True
-        atomic_json(target / "results.json", results)
-        write_review(target / "review.xlsx", results, overwrite=True)
+        save_retry_results()
+        check_retry_state()
+        if review_hash is None:
+            write_review(review_path, results)
+        else:
+            _update_retry_review(review_path, previous, results, script_indices, question_keys, review_hash)
         if tracker:
             tracker.write_cost_report(target)
 

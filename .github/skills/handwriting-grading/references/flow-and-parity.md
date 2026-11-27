@@ -43,7 +43,7 @@ it is a guide, not an approval or a CLI-generated completion marker.
 |---|---|---|
 | Optional answer sheets | Roster and DOCX template; `answer-sheets --exam EXAM` | Numbered PDFs, roster mapping, `combined.pdf` and completion manifest in `answer-sheets/`. Personalized DOCX files are temporary. Check identity, order and pagination before printing. |
 | Preflight | Exam YAML, roster, scan and rubric; `preflight --exam EXAM` | Read-only check of paths, roster columns, page count and shared layout. The teacher must still confirm scan order and layout. |
-| Scan markers and OCR confirmation | `suggest-scan-markers` with explicit Azure target (preview, then cost consent); `approve-scan-markers --confirm-reviewed`; Azure `check-scans` with one all-crops request after separate preview and consent | Microsoft Agent Framework proposes printed page markers from the first script. Teacher verifies marker text/boxes and first-script order. One structured Azure request confirms every reviewed marker crop across the complete PDF; unreadable, ambiguous or wrong-page matches block grading. No whole-page handwriting correlation, local character substitution, or automatic source correction. |
+| Scan markers and OCR confirmation | `suggest-scan-markers` with explicit Azure target (preview, then cost consent); `approve-scan-markers --confirm-reviewed`; Azure `check-scans` after separate preview and consent | Microsoft Agent Framework proposes printed page markers from the first script. Teacher verifies marker text/boxes and first-script order. Azure confirms locally combined marker crops in batches of at most 50 script images per request; unreadable, ambiguous or wrong-page matches block grading. No whole-page handwriting correlation, local character substitution, or automatic source correction. |
 | Optional attendance | Complete `ID,STATUS` CSV; `prepare-attendance`, then `approve-attendance --confirm-reviewed` | Private versioned review and approval. The teacher checks every status; absences are never inferred. Only present students proceed to grading. |
 | Rubric | Structured XLSX via `import-rubric`, or DOCX via `extract-rubric` with model config, endpoint and API version | `rubric/rubric.xlsx` and manifest. DOCX extraction requires a preview and separate `--confirm-cost`. Compare every question, marking criterion and maximum to the source. |
 | Optional rubric fact check | Imported/extracted rubric; `verify-rubric` with model target | Search-grounded `rubric/verification/verification.xlsx` and `verification.docx` with sources. Separate cost/data consent is required; check actual sources. It does not approve or change the rubric. |
@@ -52,7 +52,7 @@ it is a guide, not an approval or a CLI-generated completion marker.
 | Region suggestions | Prepared pages + extracted rubric (`rubric.xlsx`); `suggest-regions` with an Azure image-input deployment (`models.annotation`) | Separate AI proposals using the rubric's exact question IDs, not approved annotations. Preview first; paid call requires `--confirm-cost`. |
 | Region review | `review-regions --exam EXAM` | Local browser draws/edits labels and boxes. Verify every page and save it reviewed; approve only after review. ID must be on the first page. Grading additionally checks labels against the approved rubric. |
 | OCR, grading and moderation | Current rubric and region approvals; `grade` with model target | `grading/images/`, `results.json`, manifest and `review.xlsx`. Supports `--mode batch` (default: synchronous image groups with structured output and local blank pre-filtering; no whole-cohort consistency guarantee) and `--mode item` (per-student Azure evaluation followed by text moderation). Preview maximum requests and get explicit consent before `--confirm-cost`. AI can fail or be wrong; failure is not a zero mark. |
-| Targeted failure retry | Completed grading run with failed marks or moderation errors; `retry-grading` | Isolates failed crops, re-evaluates local blank filter, re-grades failed items using bounded Azure SDK retries, re-moderates affected questions, and refreshes review.xlsx preserving existing manual marks. Preview and cost consent required before `--confirm-cost`. |
+| Targeted failure retry | Completed grading run with failed marks or moderation errors; `retry-grading` | Isolates failed crops, re-evaluates local blank filter, re-grades failed items using bounded Azure SDK retries, and re-moderates affected questions. Preserves teacher edits and requires affected work to be reviewed again, including after interruption. Preview and cost consent required before `--confirm-cost`. |
 | Resume interrupted grading | Supported partial checkpoint; `resume-grading --exam EXAM` | Preview target, then obtain fresh cost consent for `--confirm-cost`. Already checkpointed work is retained; an in-flight call may be repeated and billed. Existing review workbooks cannot be resumed. |
 | Targeted regrading | Approved parent; optional separately approved replacement rubric; `regrade` | One question is rerun for every present student in an isolated child. Preview and obtain cost consent; all identities and scores need fresh review. Use `--run CHILD` for child review and subsequent stages. |
 | Identity and mark review | Completed run; `review-grading --exam EXAM`, or edit `grading/review.xlsx` | Compare every identity and answer with its crop or full page. Select distinct roster IDs and explicitly review each identity and mark. Correct answers and reasoning; failed, flagged or corrected answers require a manual mark. No saved edit is an approval. |
@@ -75,6 +75,32 @@ Corrected answers cannot use the original similarity. Older runs without a
 saved similarity show it as unavailable.
 
 ## State, safety and recovery
+
+Use these transitions to orient a resumed session; verify current inputs with
+the stage's validation rather than deciding from filenames alone:
+
+1. Exam configuration, roster, scans and optional attendance determine the
+   expected scripts. Attendance review and approval are separate versioned
+   records; changing the roster or attendance makes them stale.
+2. Reviewed scan-marker approval and the Azure scan confirmation are checked
+   before a new grading run. Rubric and region approvals bind their respective
+   inputs and reviewed artifacts; grading also checks rubric/region labels.
+3. Original grading saves its input manifest and `results.json` checkpoint
+   under `grading/`. A completed results checkpoint can exist before
+   `review.xlsx` is published. If review publication failed, a supported
+   resume can finish it without another model call. Earlier failures may have
+   incurred charges, and in-flight work may be repeated.
+4. Score edits and row confirmations in `review.xlsx` are not approval.
+   Grading approval binds the reviewed workbook and validated run. Retry
+   changes invalidate affected confirmations and downstream approval; inspect
+   review history and re-review affected work after errors.
+5. A child regrade binds the approved parent and any approved proposals. It
+   has its own checkpoint, workbook, approval and downstream outputs. Changes
+   to bound parent state can invalidate the child without deleting its files.
+6. Reports and analytics depend on current score approval. AI analysis has a
+   separate reviewed approval; advanced reports and email feedback depend on
+   it. Email additionally binds the preview, recipients and PDF attachments;
+   its delivery journal must be reconciled after an ambiguous attempt.
 
 - Approval records bind to specific inputs and review hashes. Changes can
   invalidate downstream approvals; existing generated files do not disappear
@@ -120,11 +146,9 @@ and student/example datasets are not bundled into this Azure checkout.
 
 ## Verification status
 
-The current suite passed 160/160 tests, including existing browser tests with
-restored optional browser-test dependencies. It uses synthetic data (including a
-generated PDF replacing the sample-PDF fixture), browser automation, LibreOffice
-conversion, and local fake Azure and SMTP services; no student/sample documents
-were copied. These checks
+The automated suite uses synthetic data, optional browser automation and
+LibreOffice conversion, and local fake Azure and SMTP services. Available tools
+and skipped tests vary by environment; inspect the current test results. These checks
 do not establish live Azure model availability, quality, cost, real SMTP
 delivery, performance on large exams, or exact visual and scoring parity
 with the notebooks. Run the tests on the current working tree after changes;

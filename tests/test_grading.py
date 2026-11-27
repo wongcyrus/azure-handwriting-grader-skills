@@ -395,6 +395,235 @@ class GradingTests(unittest.TestCase):
         self.assertEqual(restored_manifest["image_sha256"][0], pristine_hash)
         self.assertTrue(restored_manifest["aligned_to_regions"])
 
+    def test_write_review_never_regenerates_an_existing_workbook(self):
+        from handwriting_grader.grading import write_review
+
+        root = self.run_grading()
+        results = json.loads((root / "results.json").read_text())
+        book = load_workbook(root / "review.xlsx")
+        try:
+            book["Marks"]["K2"] = 0
+            book.save(root / "review.xlsx")
+        finally:
+            book.close()
+        original = (root / "review.xlsx").read_bytes()
+        with self.assertRaisesRegex(ValueError, "cannot be regenerated"):
+            write_review(root / "review.xlsx", results, overwrite=True)
+        self.assertEqual((root / "review.xlsx").read_bytes(), original)
+        invalid = root / "invalid.xlsx"
+        invalid.write_bytes(b"not a workbook")
+        with self.assertRaisesRegex(ValueError, "cannot be regenerated"):
+            write_review(invalid, results, overwrite=True)
+        self.assertEqual(invalid.read_bytes(), b"not a workbook")
+
+    def test_failed_review_creation_can_resume_without_more_model_calls(self):
+        root = self.run_grading()
+        (root / "review.xlsx").unlink()
+
+        def partial_save(book, destination):
+            destination.write(b"partial workbook")
+            raise OSError("synthetic workbook write failure")
+
+        with patch("openpyxl.workbook.workbook.Workbook.save", autospec=True, side_effect=partial_save):
+            with self.assertRaisesRegex(OSError, "synthetic workbook write failure"):
+                resume_grading(self.config, self.root, self.exam, self.summary, provider_factory=FakeGrader)
+        self.assertFalse((root / "review.xlsx").exists())
+        with patch("handwriting_grader.grading.continue_grading",
+                   side_effect=AssertionError("Completed grading must not call a model")):
+            resume_grading(self.config, self.root, self.exam, self.summary, provider_factory=FakeGrader)
+        self.assertTrue((root / "review.xlsx").is_file())
+
+    def test_retry_preserves_teacher_edits_and_reopens_changed_question(self):
+        class RetryProvider(FakeGrader):
+            def grade(self, question, answer="", image=None):
+                return {"answer": "New answer", "mark": 2, "similarity_score": 0.9,
+                        "reasoning": "New reasoning"}
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        book = load_workbook(root / "review.xlsx")
+        try:
+            book["Marks"]["D2"] = "Teacher correction"
+            book["Marks"]["G2"] = "Teacher explanation"
+            book["Marks"]["K2"] = 0
+            book["Marks"]["N1"] = "teacher note"
+            book["Marks"]["N2"] = "Keep this"
+            book.save(root / "review.xlsx")
+        finally:
+            book.close()
+        old_hash = file_hash(root / "review.xlsx")
+        with patch("handwriting_grader.local_filter.is_blank_cell", return_value=False):
+            retry_grading(self.config, self.root, self.exam, self.summary,
+                          provider_factory=RetryProvider, question="Q1")
+        book = load_workbook(root / "review.xlsx")
+        try:
+            self.assertEqual(book["Marks"]["D2"].value, "Teacher correction")
+            self.assertEqual(book["Marks"]["G2"].value, "Teacher explanation")
+            self.assertEqual(book["Marks"]["K2"].value, 0)
+            self.assertEqual(book["Marks"]["N2"].value, "Keep this")
+            self.assertEqual(book["Marks"]["D3"].value, "New answer")
+            self.assertEqual(book["Marks"]["G3"].value, "New reasoning")
+            self.assertIsNone(book["Marks"]["L2"].value)
+            self.assertIsNone(book["Marks"]["L3"].value)
+            self.assertEqual(book["Scripts"]["E2"].value, "yes")
+        finally:
+            book.close()
+        self.assertEqual(file_hash(root / "review-history" / f"{old_hash}.xlsx"), old_hash)
+        with self.assertRaisesRegex(ValueError, "Every mark needs explicit human review"):
+            validate_review(self.config, self.root, self.exam)
+
+    def test_interrupted_retry_keeps_edits_but_invalidates_affected_review(self):
+        class FailingProvider(FakeGrader):
+            def grade(self, question, answer="", image=None):
+                raise RuntimeError("synthetic provider failure")
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        book = load_workbook(root / "review.xlsx")
+        try:
+            book["Marks"]["D2"] = "Teacher correction"
+            book.save(root / "review.xlsx")
+        finally:
+            book.close()
+        with patch("handwriting_grader.local_filter.is_blank_cell", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "synthetic provider failure"):
+                retry_grading(self.config, self.root, self.exam, self.summary,
+                              provider_factory=FailingProvider, question="Q1")
+        book = load_workbook(root / "review.xlsx")
+        try:
+            self.assertEqual(book["Marks"]["D2"].value, "Teacher correction")
+            self.assertIsNone(book["Marks"]["L2"].value)
+            self.assertIsNone(book["Marks"]["L3"].value)
+        finally:
+            book.close()
+
+    def test_partial_retry_checkpoint_cannot_reuse_old_review(self):
+        class PartiallyFailingProvider(FakeGrader):
+            def __init__(self, *args):
+                super().__init__(*args)
+                self.calls = 0
+
+            def grade(self, question, answer="", image=None):
+                self.calls += 1
+                if self.calls == 2:
+                    raise RuntimeError("synthetic second request failure")
+                return {"answer": "Recovered answer", "mark": 1, "similarity_score": 0.8,
+                        "reasoning": "Recovered reasoning"}
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        results = json.loads((root / "results.json").read_text())
+        for mark in results["marks"]:
+            mark.update(raw_mark=None, moderated_mark=None, grading_failed=True)
+        atomic_json(root / "results.json", results)
+        with patch("handwriting_grader.local_filter.is_blank_cell", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "second request failure"):
+                retry_grading(self.config, self.root, self.exam, self.summary,
+                              provider_factory=PartiallyFailingProvider)
+        persisted = json.loads((root / "results.json").read_text())
+        self.assertEqual(persisted["marks"][0]["answer"], "Recovered answer")
+        self.assertTrue(persisted["marks"][1]["grading_failed"])
+        book = load_workbook(root / "review.xlsx")
+        try:
+            self.assertIsNone(book["Marks"]["L2"].value)
+            self.assertIsNone(book["Marks"]["L3"].value)
+        finally:
+            book.close()
+        with self.assertRaisesRegex(ValueError, "Every mark needs explicit human review"):
+            validate_review(self.config, self.root, self.exam)
+
+    def test_retry_reopens_only_identities_for_metadata_ocr(self):
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        retry_grading(self.config, self.root, self.exam, self.summary,
+                      provider_factory=FakeGrader, re_ocr_fields=["ID"])
+        book = load_workbook(root / "review.xlsx")
+        try:
+            self.assertEqual(book["Scripts"]["D2"].value, "001")
+            self.assertIsNone(book["Scripts"]["E2"].value)
+            self.assertIsNone(book["Scripts"]["E3"].value)
+            self.assertEqual(book["Marks"]["L2"].value, "yes")
+            self.assertEqual(book["Marks"]["L3"].value, "yes")
+        finally:
+            book.close()
+
+    def test_retry_keeps_unaffected_questions_reviewed(self):
+        from handwriting_grader.grading import _update_retry_review
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        results = json.loads((root / "results.json").read_text())
+        book = load_workbook(root / "review.xlsx")
+        try:
+            for row in list(book["Marks"].iter_rows(min_row=2, values_only=True)):
+                new_row = list(row)
+                new_row[1] = "Q2"
+                book["Marks"].append(new_row)
+            book.save(root / "review.xlsx")
+        finally:
+            book.close()
+        results["marks"].extend([{**row, "question": "Q2"} for row in results["marks"]])
+        _update_retry_review(root / "review.xlsx", results, results, set(), {"1"},
+                             file_hash(root / "review.xlsx"), prepare=True)
+        book = load_workbook(root / "review.xlsx")
+        try:
+            self.assertIsNone(book["Marks"]["L2"].value)
+            self.assertIsNone(book["Marks"]["L3"].value)
+            self.assertEqual(book["Marks"]["L4"].value, "yes")
+            self.assertEqual(book["Marks"]["L5"].value, "yes")
+        finally:
+            book.close()
+
+    def test_retry_stops_if_workbook_changes_during_provider_call(self):
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+
+        class ConcurrentEditProvider(FakeGrader):
+            def moderate(self, question, entries):
+                book = load_workbook(root / "review.xlsx")
+                try:
+                    book["Marks"]["D2"] = "Concurrent edit"
+                    book.save(root / "review.xlsx")
+                finally:
+                    book.close()
+                return super().moderate(question, entries)
+
+        with patch("handwriting_grader.local_filter.is_blank_cell", return_value=False):
+            with self.assertRaisesRegex(ValueError, "changed during retry"):
+                retry_grading(self.config, self.root, self.exam, self.summary,
+                              provider_factory=ConcurrentEditProvider, question="Q1")
+        book = load_workbook(root / "review.xlsx")
+        try:
+            self.assertEqual(book["Marks"]["D2"].value, "Concurrent edit")
+            self.assertIsNone(book["Marks"]["L2"].value)
+        finally:
+            book.close()
+
+    def test_retry_preview_includes_possible_answer_ocr_calls(self):
+        from handwriting_grader.grading import inspect_retry_grading
+
+        self.run_grading()
+        info = inspect_retry_grading(self.config, self.root, self.exam, question="Q1")
+        self.assertEqual(info["estimated_requests"], 5)
+
+    def test_retry_rejects_malformed_review_before_provider(self):
+        from unittest.mock import Mock
+
+        root = self.run_grading()
+        book = load_workbook(root / "review.xlsx")
+        try:
+            book["Marks"]["K2"] = "=1+1"
+            book.save(root / "review.xlsx")
+        finally:
+            book.close()
+        original = (root / "review.xlsx").read_bytes()
+        provider = Mock()
+        with self.assertRaisesRegex(ValueError, "cannot contain formulas"):
+            retry_grading(self.config, self.root, self.exam, self.summary,
+                          provider_factory=provider, question="Q1")
+        provider.assert_not_called()
+        self.assertEqual((root / "review.xlsx").read_bytes(), original)
+
     def test_score_editor_security_concurrency_and_review_invalidation(self):
         root = self.run_grading()
         self.fill_review(root / "review.xlsx")
@@ -499,6 +728,34 @@ class GradingTests(unittest.TestCase):
         fresh = json.loads(self.score_request("/api/state")[1])
         self.assertTrue(all(not s["reviewed"] for s in fresh["scripts"]))
         self.assertTrue(all(not fresh["marks"][s["script_index"]][0]["reviewed"] for s in fresh["scripts"]))
+
+    def test_score_editor_reset_does_not_overwrite_concurrent_review(self):
+        from handwriting_grader.grading import write_review
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        approve_grading(self.config, self.root, self.exam)
+        self.start_score_editor()
+        state = json.loads(self.score_request("/api/state")[1])
+
+        def change_during_reset(*args, **kwargs):
+            write_review(*args, **kwargs)
+            book = load_workbook(root / "review.xlsx")
+            try:
+                book["Marks"]["D2"] = "Concurrent teacher edit"
+                book.save(root / "review.xlsx")
+            finally:
+                book.close()
+
+        with patch("handwriting_grader.grading.write_review", side_effect=change_during_reset):
+            status, body = self.score_request("/api/reset", {"revision": state["revision"], "confirmed": True})
+        self.assertEqual(status, 409, body)
+        self.assertTrue((root / "approval.json").exists())
+        book = load_workbook(root / "review.xlsx")
+        try:
+            self.assertEqual(book["Marks"]["D2"].value, "Concurrent teacher edit")
+        finally:
+            book.close()
 
     def test_score_editor_cli_starts_and_serves_review(self):
         self.run_grading()
@@ -859,6 +1116,11 @@ class GradingTests(unittest.TestCase):
         self.assertIn("Cache: disabled; directory=none", output.getvalue())
         self.assertIn("Up to 10 requests", output.getvalue())
         self.assertFalse((self.root / "output" / "grading").exists())
+        output = io.StringIO()
+        with patch("handwriting_grader.grading.grade_exam") as run, redirect_stdout(output):
+            self.assertEqual(main(arguments + ["--mode", "item"]), 1)
+            run.assert_not_called()
+        self.assertIn("Up to 11 requests", output.getvalue())
 
     def test_review_diagnostics_reports_multiple_issues_without_approval(self):
         root = self.run_grading()
@@ -949,6 +1211,17 @@ class GradingTests(unittest.TestCase):
         self.models.write_text("changed")
         with self.assertRaisesRegex(ValueError, "inputs or approvals changed"):
             read_approved_grading(self.config, self.root, self.exam)
+
+    def test_approved_grading_remains_valid_after_default_cleanup(self):
+        from handwriting_grader.cleanup import archive_and_clean
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        approve_grading(self.config, self.root, self.exam)
+        archive_and_clean(self.config, self.root)
+        self.assertTrue((root / "images").is_dir())
+        self.assertTrue((root.parent / "regions" / "images").is_dir())
+        self.assertEqual(read_approved_grading(self.config, self.root, self.exam)[6][(0, "1")], 1)
 
     def test_corrected_answers_require_manual_marks_and_flow_into_reports_and_analysis(self):
         root = self.run_grading()
@@ -1261,6 +1534,11 @@ class GradingTests(unittest.TestCase):
             resume.assert_not_called()
         self.assertIn("0 metadata request(s) and 1 question request(s)", preview.getvalue())
         self.assertIn("flagged for manual review", preview.getvalue())
+        preview = io.StringIO()
+        with patch("handwriting_grader.grading.resume_grading") as resume, redirect_stdout(preview):
+            self.assertEqual(main(["resume-grading", "--exam", str(self.exam), "--mode", "item"]), 1)
+            resume.assert_not_called()
+        self.assertIn("0 metadata request(s) and up to 3 item-mode", preview.getvalue())
 
         def fail_after_recording_usage(*args, **kwargs):
             self.assertTrue(kwargs["continue_on_image_policy_block"])
@@ -1390,6 +1668,105 @@ class GradingTests(unittest.TestCase):
             (reports / "pdfs" / "001_One_script-00001.pdf").read_bytes(),
         )
         self.assertEqual(main(arguments), 1)
+
+    def test_moodle_uses_approved_rubric_and_never_overwrites_export(self):
+        from handwriting_grader.moodle import export_moodle, _render_feedback_cover_pdf
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        approve_grading(self.config, self.root, self.exam)
+        self.assertEqual(main(["report", "--exam", str(self.exam)]), 0)
+        analysis = root.parent / "ai-analysis"
+        analysis.mkdir()
+        (analysis / "approval.json").write_text("{}")
+        with patch("handwriting_grader.advanced.read_approved_analysis",
+                   return_value=(None, None, {0: "Reviewed feedback"}, None, None, None)), \
+             patch("handwriting_grader.moodle._render_feedback_cover_pdf",
+                   wraps=_render_feedback_cover_pdf) as cover:
+            output = export_moodle(self.config, self.root, self.exam)
+        self.assertEqual(cover.call_args.args[5], 2)
+        existing = (output / "student_pdfs" / "001_One.pdf").read_bytes()
+        with patch("handwriting_grader.advanced.read_approved_analysis",
+                   return_value=(None, None, {0: "Reviewed feedback"}, None, None, None)):
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                export_moodle(self.config, self.root, self.exam)
+        self.assertEqual((output / "student_pdfs" / "001_One.pdf").read_bytes(), existing)
+
+    def test_moodle_rejects_stale_feedback_and_supports_child_selection(self):
+        from handwriting_grader.moodle import export_moodle
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        approve_grading(self.config, self.root, self.exam)
+        self.assertEqual(main(["report", "--exam", str(self.exam)]), 0)
+        analysis = root.parent / "ai-analysis"
+        analysis.mkdir()
+        (analysis / "approval.json").write_text("{}")
+        with patch("handwriting_grader.advanced.read_approved_analysis",
+                   side_effect=ValueError("stale analysis")):
+            with self.assertRaisesRegex(ValueError, "stale analysis"):
+                export_moodle(self.config, self.root, self.exam)
+        self.assertFalse((root.parent / "moodle").exists())
+        with patch("handwriting_grader.moodle.export_moodle", return_value=root / "child-moodle") as export:
+            self.assertEqual(main(["moodle-export", "--exam", str(self.exam), "--run", "revision-1"]), 0)
+        self.assertEqual(export.call_args.kwargs["run_id"], "revision-1")
+
+    def test_moodle_safe_names_and_fractional_worksheet_grades(self):
+        import csv
+        import zipfile
+        from handwriting_grader.distribution import approved_report
+        from handwriting_grader.moodle import export_moodle
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx", flagged_override=0.125)
+        approve_grading(self.config, self.root, self.exam)
+        self.assertEqual(main(["report", "--exam", str(self.exam)]), 0)
+        validated, rows, reports = approved_report(self.config, self.root, self.exam)
+        collision_rows = [{**rows[0], "id": "0/01"}, {**rows[1], "id": "0\\01", "name": rows[0]["name"]}]
+        with patch("handwriting_grader.moodle.approved_report", return_value=(validated, collision_rows, reports)):
+            with self.assertRaisesRegex(ValueError, "duplicate Moodle filenames"):
+                export_moodle(self.config, self.root, self.exam)
+        self.assertFalse((root.parent / "moodle").exists())
+
+        worksheet = self.root / "worksheet.csv"
+        unsafe_rows = [{**rows[0], "id": "../001"}, rows[1]]
+        worksheet.write_text("ID number,Identifier,Full name,Grade\n../001,Participant 1,../../One,\n",
+                             encoding="utf-8")
+        with patch("handwriting_grader.moodle.approved_report", return_value=(validated, unsafe_rows, reports)):
+            output = export_moodle(self.config, self.root, self.exam, worksheet=worksheet)
+        with (output / "grading_worksheet_filled.csv").open(encoding="utf-8-sig", newline="") as stream:
+            self.assertEqual(next(csv.DictReader(stream))["Grade"], "0.125")
+        with zipfile.ZipFile(output / "feedback_files.zip") as archive:
+            self.assertTrue(all(".." not in name.split("/") for name in archive.namelist()))
+        self.assertEqual(len(list((output / "student_pdfs").glob("*.pdf"))), 2)
+
+    def test_moodle_rejects_ambiguous_or_incomplete_input_before_export(self):
+        from handwriting_grader.moodle import export_moodle
+
+        root = self.run_grading()
+        self.fill_review(root / "review.xlsx")
+        approve_grading(self.config, self.root, self.exam)
+        self.assertEqual(main(["report", "--exam", str(self.exam)]), 0)
+        worksheet = self.root / "worksheet.csv"
+        participants = self.root / "participants.csv"
+        for contents, error in (
+            ("ID number,Identifier\n001,Participant 1\n", "Grade"),
+            ("ID number,Identifier,Grade\n001,,\n", "no participant identifier"),
+            ("ID number,Identifier,Grade\n001,Participant 1,\n002,Participant 1,\n", "duplicate"),
+            ("ID number,Identifier,Grade\n001,Participant 1,\n001,Participant 2,\n", "duplicate"),
+        ):
+            worksheet.write_text(contents, encoding="utf-8")
+            with self.subTest(contents=contents), self.assertRaisesRegex(ValueError, error):
+                export_moodle(self.config, self.root, self.exam, worksheet=worksheet)
+            self.assertFalse((root.parent / "moodle").exists())
+        for contents, error in (
+            ("Name,Email address\nOne,one@example.com\n", "ID and email"),
+            ("ID,EMAIL\n001,one@example.com\n001,other@example.com\n", "duplicate"),
+        ):
+            participants.write_text(contents, encoding="utf-8")
+            with self.subTest(contents=contents), self.assertRaisesRegex(ValueError, error):
+                export_moodle(self.config, self.root, self.exam, participants=participants)
+            self.assertFalse((root.parent / "moodle").exists())
 
     def test_report_paths_include_safe_unicode_identity_and_remain_unique(self):
         from handwriting_grader.rubric import question_key

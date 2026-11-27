@@ -1,6 +1,7 @@
 """Private cache for explicitly enabled model calls."""
 
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,14 @@ from pathlib import Path
 import yaml
 
 from .regions import atomic_json, file_hash
+
+
+def invoke_ocr(provider, image, field, candidates=None):
+    try:
+        inspect.signature(provider.ocr).bind(image, field, candidates=candidates)
+    except TypeError:
+        return provider.ocr(image, field)
+    return provider.ocr(image, field, candidates=candidates)
 
 
 def enabled_agents(model_config_path):
@@ -119,15 +128,11 @@ class CachedGrader:
         if candidates is not None:
             payload["candidates_sha256"] = hashlib.sha256(json.dumps(candidates, sort_keys=True).encode("utf-8")).hexdigest()
         def do_ocr():
-            try:
-                return self.provider.ocr(image, field, candidates=candidates)
-            except TypeError:
-                return self.provider.ocr(image, field)
+            return invoke_ocr(self.provider, image, field, candidates)
         return self.call("ocr", payload, do_ocr, validate)
 
     def grade(self, question, answer="", image=None):
         from .grading import GradeResponse
-        import inspect
         import math
 
         payload = {"question": question}
@@ -148,15 +153,13 @@ class CachedGrader:
         def compute():
             try:
                 sig = inspect.signature(self.provider.grade)
-                params = sig.parameters
-                if "image" in params and "answer" in params:
-                    return self.provider.grade(question, answer=answer, image=image)
-                elif "image" in params:
-                    return self.provider.grade(question, image=image)
-                elif "answer" in params:
-                    return self.provider.grade(question, answer or "")
             except (ValueError, TypeError):
-                pass
+                return self.provider.grade(question, answer or "")
+            params = sig.parameters
+            if "image" in params and "answer" in params:
+                return self.provider.grade(question, answer=answer, image=image)
+            if "image" in params:
+                return self.provider.grade(question, image=image)
             return self.provider.grade(question, answer or "")
 
         return self.call("grading", payload, compute, validate)

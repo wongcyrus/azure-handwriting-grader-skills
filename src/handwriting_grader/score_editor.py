@@ -260,6 +260,10 @@ def reset_review(server, data):
             temp = Path(file.name)
         temp.unlink(missing_ok=True)
         write_review(temp, results, overwrite=False)
+        verify_grading_run(server.config, server.config_dir, server.config_path, run_id=server.run_id)
+        if (file_hash(root / "review.xlsx") != review_hash or file_hash(root / "results.json") != result_hash
+                or file_hash(root / "manifest.json") != manifest_hash):
+            raise RuntimeError("Grading or review changed during reset; reload before resetting")
         os.replace(temp, root / "review.xlsx")
     finally:
         if temp is not None:

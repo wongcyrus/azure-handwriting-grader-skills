@@ -189,7 +189,9 @@ Relative paths resolve from that file's directory.
   --model-config config.yaml --endpoint https://RESOURCE.openai.azure.com --api-version v1
 # Review scan-markers/markers.json and images under output_dir, then:
 .venv/bin/handwriting-grader approve-scan-markers --exam exam.yaml --confirm-reviewed
-.venv/bin/handwriting-grader check-scans --exam exam.yaml
+# Preview scan confirmation, then repeat with --confirm-cost only after separate consent:
+.venv/bin/handwriting-grader check-scans --exam exam.yaml \
+  --model-config config.yaml --endpoint https://RESOURCE.openai.azure.com --api-version v1
 .venv/bin/handwriting-grader import-rubric --exam exam.yaml
 # Review the rubric workbook before approving:
 .venv/bin/handwriting-grader approve-rubric --exam exam.yaml --confirm-reviewed
@@ -208,17 +210,17 @@ Agent Framework validation -> discovery -> human-review workflow. One Azure
 request sends the first student's complete script; pricing verification and
 telemetry use the same Azure Responses boundary as grading. The first script
 cannot validate its own order: the teacher must verify it and each proposed
-marker/box before approval. At least two distinct printed phrases are required
+marker/box before approval. At least one distinct printed phrase is required
 per page, unique across the script. Edit proposals if necessary.
 
-`check-scans` and the pre-inference grading gate use local Tesseract OCR on
-those marker boxes. Text matching ignores case, punctuation and whitespace,
-but retains words and numbers. Wrong-page matches, rotated pages, unreadable
-markers and ambiguous matches block grading; never automatically reorder or
-rotate source scans. If the form has no unique readable printed phrases, this
-checker cannot safely validate it. Approval is bound to the exam, PDF, marker
-file and first-script review images. Changes require a new output directory;
-existing artifacts and approvals are not overwritten.
+`approve-scan-markers` uses local Tesseract on the first script.
+`check-scans` sends composite images of reviewed marker crops to Azure, up to
+50 scripts per request; the grading gate verifies that confirmation. Wrong-page
+matches, unreadable or ambiguous markers block grading; never automatically
+reorder or rotate source scans. If the form has no unique readable printed
+phrases, this checker cannot safely validate it. Approval is bound to the exam,
+PDF, marker file and first-script review images. Changes require a new output
+directory; existing artifacts and approvals are not overwritten.
 
 Install Tesseract and the selected language data separately on each machine:
 Windows installer plus `tesseract` on PATH, Ubuntu/Debian
@@ -226,7 +228,7 @@ Windows installer plus `tesseract` on PATH, Ubuntu/Debian
 `brew install tesseract`. English (`eng`) is the default; select installed
 language packs with `suggest-scan-markers --ocr-language LANGUAGE`.
 No Python OCR package or Windows-specific executable path is required.
-The scan checker remains offline after marker approval. Installations on Linux
+Azure scan confirmation requires separate cost and data consent. Installations on Linux
 and macOS should be validated locally; these platforms are not certified by
 a Windows-only test run.
 

@@ -152,14 +152,21 @@ output links directly; do not hide stage failures.
    When resuming an existing workspace or `output_dir`, inspect existing files
    and artifacts to orient immediately (do not rely on prior conversation history):
 
-   | Latest Artifact Present | Completed Stage | Next Command / Action |
+   Treat this table as orientation, not proof of completion. Validate approvals
+   and their bound inputs before choosing a next stage; artifact presence alone
+   is insufficient. If an approval exists but `regions/images/` or
+   `grading/images/` is missing, stop and explain that validation may fail.
+   Ask before restoring the exact files from a verified backup; do not silently
+   regenerate, replace, or reapprove them.
+
+   | Artifact / Status | Possible Stage | Next Command / Action |
    |---|---|---|
-   | No `exam.yaml` / `config.yaml` | Not configured | `discover-foundry` -> configure `exam.yaml` -> `preflight` -> `check-scans` |
-   | `exam.yaml` exists (no `rubric/` or `attendance/`) | Configured | `preflight` -> `check-scans` -> `prepare-attendance` (if configured) or `extract-rubric`/`import-rubric` |
+   | No `exam.yaml` / `config.yaml` | Not configured | Configure `exam.yaml` and, when needed, `discover-foundry` -> `preflight` -> prepare and approve scan markers -> `check-scans` |
+   | `exam.yaml` exists (no `rubric/` or `attendance/`) | Configured | `preflight` -> prepare and approve scan markers -> `check-scans` -> `prepare-attendance` (if configured) or `extract-rubric`/`import-rubric` |
    | No `scan-markers/approval.json` | Printed scan markers not approved | Preview `suggest-scan-markers` with explicit cost/data consent before paid calls -> teacher reviews markers and first-script order -> `approve-scan-markers` -> paid Azure `check-scans` before region setup or grading |
-   | `attendance/review.xlsx` (no `attendance/approval.json`) | Attendance extracted | Teacher reviews `attendance/review.xlsx` -> `approve-attendance` |
+   | `attendance/current.json` points to a version without `approval.json` | Attendance prepared | Teacher reviews `attendance/versions/<review_id>/attendance_review.xlsx` -> `approve-attendance` |
    | `rubric/rubric.xlsx` (no `rubric/approval.json`) | Rubric extracted/imported | Teacher reviews `rubric/rubric.xlsx` -> `approve-rubric` |
-   | `rubric/approval.json` (no `regions/images/`) | Rubric approved | `prepare-regions` -> optional paid `suggest-regions` -> `review-regions` |
+   | `rubric/approval.json` (no `regions/approval.json` or `regions/images/`) | Rubric approved; region setup not completed | `prepare-regions` -> optional paid `suggest-regions` -> `review-regions`; if an existing region or grading approval references missing images, use the recovery guidance above instead |
    | `regions/images/` (no `regions/ai_suggestions.json`, no `regions/approval.json`) | Region pages rendered | Optional `suggest-regions` (preview and consent first), or local manual `review-regions` |
    | `regions/ai_suggestions.json` or `regions/draft.json` (no `regions/approval.json`) | Regions suggested/drafted | `review-regions` (adjust boxes & approve) or `approve-regions` |
    | `regions/approval.json` (no `grading/`) | Regions approved | `grade` (preview first, then `--confirm-cost`) |
@@ -221,8 +228,10 @@ output links directly; do not hide stage failures.
    script is a human-confirmed reference, not independent proof of correct order.
    If any page is flagged, **do not
    silently flip or reorder pages in code** — report the exact PDF page numbers and
-   script numbers to the user so they fix the physical scan or source PDF manually
-   and re-run `check-scans`.
+   script numbers. A completed confirmation is retained even when it reports
+   issues, and source changes invalidate marker approval. Preserve the existing
+   output, correct the physical scan or source PDF, and prepare a new output
+   directory with fresh marker review and separately consented scan checking.
    If attendance is configured, read `references/attendance.md` and obtain
    explicit review and approval before grading.
 6. For rubric setup (MUST run BEFORE region suggestion so exact question IDs are known), read `references/grading.md`:
@@ -288,7 +297,7 @@ output links directly; do not hide stage failures.
    **Failure Diagnostics, Quota Protection, and User-Decision Gating**:
    - The engine uses bounded Azure SDK retries. **Never write ad-hoc Python retry loops.**
    - If grading finishes with failed marks (`grading_failed=True`) or moderation errors, **notify the user immediately** with the failed count, affected question numbers, and error types (`429`, `504`, `5xx`), and ask them to choose:
-     - **Option A (Targeted Retry)**: For incomplete batch runs without review workbooks, preview `handwriting-grader retry-failed-batches --exam /path/to/exam.yaml`; for other runs preview `retry-grading`. Obtain cost consent before `--confirm-cost`. The batch retry stops on the first failure and does not resume unprocessed questions.
+     - **Option A (Targeted Retry)**: For incomplete batch runs without review workbooks, preview `handwriting-grader retry-failed-batches --exam /path/to/exam.yaml`; for other runs preview `retry-grading`. Existing teacher edits are preserved; affected identities and marks require fresh review even if retry is interrupted. Do not edit the workbook while retry is running. Obtain cost consent before `--confirm-cost`. The batch retry stops on the first failure and does not resume unprocessed questions.
      - **Option A2 (Filtered Batch Recovery)**: For completed original batch runs, preview `bisect-failed-batch --exam /path/to/exam.yaml --question Q21 --max-requests 39`. After reviewing current prices and obtaining explicit data/cost consent, supply the previewed `--revision` and `--confirm-cost`. Only confirmed filter errors are bisected; filtered singletons remain unscored for human review, and other errors stop. The limit excludes SDK retries. User edits and approvals are protected; reload the updated editor after recovery. See `references/grading.md`.
      - **Option B (Manual Review)**: After completion, grade failed items manually in `review-grading` / `review.xlsx` with no further API calls. For an incomplete run, `export-failed-review` creates a separate offline worksheet; its marks are not imported, and the web editor requires a completed run.
      - **Option C (Wait / Investigate)**: Wait for Azure quota reset before proceeding.
@@ -349,10 +358,12 @@ output links directly; do not hide stage failures.
    and review history have been preserved, and ask if they would like to clean
    or archive intermediate output using:
    `handwriting-grader clean --exam /path/to/exam.yaml`
-   (creates a slim `.zip` backup by default, preserves HIL reviews, AI outputs, and final
-   deliverables `reports/`, `analytics/`, `ai-analysis/`, `moodle/` while removing only
-   bulky raw JPEGs and temp folders; pass `--full-archive` to include raw JPEGs in the `.zip`,
-   and requires explicit `--confirm-delete`).
+   (creates a slim `.zip` backup by default, preserving grading and region images,
+   reviews, approvals, and reports; removes only top-level `.grading-*` and
+   `model-cache` data. `--full-archive` also includes those temporary/cache files.
+   `--purge-reports` deletes all selected output, including an entire selected
+   child run; it creates a full backup by default. Review the exact preview and
+   obtain explicit authorization before `--confirm-delete`).
 9. For distribution read `references/email.md`; never send without reviewing
    the exact preview and separate dispatch approval.
    For targeted regrading read `references/regrading.md`; require a current

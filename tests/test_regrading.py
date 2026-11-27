@@ -8,7 +8,7 @@ import threading
 import unittest
 import urllib.request
 from io import BytesIO
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -203,7 +203,10 @@ class RegradingTests(unittest.TestCase):
             return regrade(*positional, provider_factory=FakeGrader)
 
         with patch("handwriting_grader.regrading.regrade", side_effect=fake_regrade) as provider:
-            self.assertEqual(main(request), 1)
+            preview = io.StringIO()
+            with redirect_stdout(preview):
+                self.assertEqual(main(request), 1)
+            self.assertIn("Up to 1 batch request", preview.getvalue())
             provider.assert_not_called()
             self.assertEqual(main(request + ["--confirm-cost"]), 0)
             self.assertEqual(provider.call_count, 1)
@@ -457,7 +460,15 @@ class RegradingTests(unittest.TestCase):
         before = json.loads(checkpoint.read_text())
         self.assertEqual(sum(row["question"] == "Q1" for row in before["marks"]), 1)
         resume_args = ["resume-grading", "--exam", str(self.exam), "--run", "child"]
-        self.assertEqual(main(resume_args), 1)
+        preview = io.StringIO()
+        with redirect_stdout(preview):
+            self.assertEqual(main(resume_args), 1)
+        self.assertIn("0 metadata request(s) and 1 question request(s)", preview.getvalue())
+        for option in (["--mode", "item"], ["--concurrency", "2"]):
+            error = io.StringIO()
+            with redirect_stderr(error):
+                self.assertEqual(main(resume_args + option + ["--confirm-cost"]), 1)
+            self.assertIn("not supported for child", error.getvalue())
         self.assertEqual(json.loads(checkpoint.read_text()), before)
         calls = []
 

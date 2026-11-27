@@ -84,4 +84,4 @@ Instead of POSIX-specific `.tar.gz`, [`src/handwriting_grader/cleanup.py`](../sr
 ### 4.2 Gated Safety Principles
 1. **Preview First**: Running `handwriting-grader clean --exam exam.yaml` previews target directories, file counts, and total byte sizes without deleting anything.
 2. **Explicit Confirmation**: Files are only deleted when `--confirm-delete` is passed.
-3. **Report Preservation**: Top-level `reports/` and `analytics/` directories are preserved by default unless `--purge-reports` is explicitly requested.
+3. **Preservation**: Approval-bound grading and region images, reviews and reports are preserved in both root and child runs by default. `--purge-reports` deletes all selected output, including an entire selected child run.
