@@ -18,7 +18,8 @@ As [SKILL.md](../../.github/skills/handwriting-grading/SKILL.md) specifies:
 
 ```markdown
 **Cost governance**: Before every paid stage, preview target, transferred data and
-estimated requests; independently verify current regional deployment rates and
+estimated requests; independently verify rates for the selected deployment's
+retail meter profile and
 obtain `--confirm-cost`.
 ```
 

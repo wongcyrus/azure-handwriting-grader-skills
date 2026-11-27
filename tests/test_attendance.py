@@ -19,7 +19,7 @@ from handwriting_grader.regrading import regrade
 from handwriting_grader.reporting import create_reports
 from handwriting_grader.rubric import approve_rubric, import_rubric, write_rubric
 from handwriting_grader.score_editor import ScoreServer, load_state
-from test_grading import FakeGrader, prepare_scan_marker_fixture
+from test_grading import FakeGrader
 
 
 class AttendanceTests(unittest.TestCase):
@@ -81,7 +81,6 @@ class AttendanceTests(unittest.TestCase):
             "annotations_sha256": file_hash(regions / "annotations.json"),
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"], "revision": 1,
         })
-        prepare_scan_marker_fixture(self, self.config, self.root)
 
     def test_validation_and_review_versioning(self):
         errors, summary = check_exam(self.config, self.root)
@@ -142,8 +141,14 @@ class AttendanceTests(unittest.TestCase):
     def test_present_only_review_reports_and_email(self):
         self.prepare_approved_run()
         _, summary = check_exam(self.config, self.root)
+
+        class PresentGrader(FakeGrader):
+            def __init__(self, *args):
+                super().__init__(*args)
+                self.ids = iter(["001", "003"])
+
         root = grade_exam(self.config, self.root, self.exam, self.models, "endpoint", "v1", summary,
-                          provider_factory=FakeGrader)
+                          provider_factory=PresentGrader)
         server = ScoreServer(self.config, self.root, config_path=self.exam)
         self.addCleanup(server.server_close)
         self.assertEqual(set(load_state(server)[2]), {"001", "003"})

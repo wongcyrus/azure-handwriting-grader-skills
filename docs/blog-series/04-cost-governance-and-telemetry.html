@@ -15,9 +15,10 @@ a{color:#0067b8}em{color:#4b6175}
 - <strong>The Runtime <code>RunPricingVerifier</code> Latch</strong>: An immutable execution gate that calculates configuration fingerprints and halts execution before any model call if pricing attestation is missing or invalid.
 - <strong>Token Accounting and Prompt Caching</strong>: Measuring exact input, cached, output, and cache-write tokens to maximize Azure OpenAI prompt-caching cost reductions (up to 50–80%).
 - <strong>Honest Partial Run Accounting</strong>: Recording unpriced tools and free-tier resources with explicit <code>UNPRICED</code> markers rather than falsifying zero-dollar ledgers.</p>
-<p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> specifies:</p>
+<p>As <a href="../../.github/skills/handwriting-grading/SKILL.md">SKILL.md</a> specifies:</p>
 <pre><code class="language-markdown">**Cost governance**: Before every paid stage, preview target, transferred data and
-estimated requests; independently verify current regional deployment rates and
+estimated requests; independently verify rates for the selected deployment's
+retail meter profile and
 obtain `--confirm-cost`.
 </code></pre>
 <p><img alt="Fail-Closed Cost Governance &amp; Token Accounting" src="media/17-pricing-gate.png" /></p>

@@ -15,6 +15,17 @@ The same roster, scans, region boxes and attendance must remain current.
 Individual-student-only reruns, changed scan order, mixed layouts and
 automatic approval are not supported.
 
+Metadata-first original runs require nonempty, unique IDs covering the expected
+PRESENT roster exactly before answers, with leading zeroes preserved and no
+roster-order requirement. Child regrading uses current human-approved parent
+identity lineage instead of reinterpreting raw OCR; it requires fresh child
+identity/score review. See [grading](grading.md) for private source PDF page/script
+diagnostics and separately cost-consented original-run metadata recovery.
+Do not treat `grading/id-check.json` as approval or skip child identity/score
+review: roster consistency cannot prove identity correctness or other pages'
+order/completeness. No automatic alignment, rotation, reordering or silent
+regeneration of saved images is part of regrading.
+
 ## Optional replacement rubric
 
 Without a replacement, regrading uses the parent's approved rubric. To change

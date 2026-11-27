@@ -102,6 +102,7 @@ return questions, root, manifest, boxes
 </code></pre>
 <h2>2. Phase A identity OCR vs. authoritative roster join</h2>
 <p>Before grading answers, <code>grading.ocr_metadata_batch()</code> crops <code>ID</code>, <code>CLASS</code>, and <code>NAME</code> and injects the <strong>Official Enrolled Roster</strong> into the prompt so Azure OpenAI can resolve smudged or cursive characters against known candidates:</p>
+<p>The current runtime extracts <strong>all students' metadata only</strong>, without scanning or grading answers, then requires IDs to be nonempty, unique and exactly cover the expected PRESENT roster. Preserve leading zeroes without requiring roster order. A pass automatically continues; otherwise stop with exact 1-based source PDF page/script numbers in private <code>grading/id-check.json</code>, an incomplete metadata checkpoint and no completed review workbook. After source inspection, separately cost-consented resume may re-extract missing/invalid saved metadata, bypass known-rejected cache and recheck all IDs before answers. Metadata-first original-run recovery respects the gate; child regrading retains current human-approved parent identity lineage and needs fresh child review. Diagnostic is not approval; roster consistency cannot prove correct identity interpretation or other pages' order/completeness. The saved example below is historical evidence, not proof that a current run would pass.</p>
 <pre><code class="language-text">Extract the student metadata ({fields_str}) from the attached images.
 For each student script, you are provided with crops of their {fields_str} fields.
 Fields may be either handwritten or printed/computer text.
@@ -240,9 +241,9 @@ except FileExistsError as exc:
 <td>Skips already checkpointed <code>(script_index, question_key)</code> pairs; in-flight calls may repeat and be billed.</td>
 </tr>
 <tr>
-<td><strong>Transient 429/504/5xx or scanner shift</strong></td>
-<td><code>retry-grading --confirm-cost</code></td>
-<td>Isolates <code>grading_failed=True</code> / moderation errors; supports <code>--align-images</code>, <code>--re-ocr-id</code>, <code>--re-ocr-metadata</code>, <code>--question Q</code> while preserving manual marks.</td>
+<td><strong>Transient 429/504/5xx or reviewed crop corrections</strong></td>
+<td>Preview <code>retry-grading</code>, then separately consent to <code>--confirm-cost</code></td>
+<td>Isolates <code>grading_failed=True</code> / moderation errors; supports <code>--re-ocr-id</code>, <code>--re-ocr-metadata</code>, <code>--question Q</code> while preserving manual marks. Metadata-first originals recheck IDs before answers; legacy/child retries retain their reviewed identity workflow. No automatic alignment, rotation or reordering; source changes require fresh preparation, review and approvals.</td>
 </tr>
 <tr>
 <td><strong>Rubric or crop change on 1 question</strong></td>

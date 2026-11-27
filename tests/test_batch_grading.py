@@ -17,10 +17,12 @@ from handwriting_grader.grading import (
     StudentMetadataItem,
     StudentBatchGradeItem,
     batch_extract_metadata,
+    check_student_ids,
     continue_grading,
     export_failed_review,
     inspect_failed_question_batches,
     retry_failed_question_batches,
+    StudentIDCheckFailed,
 )
 from handwriting_grader.regions import atomic_json, file_hash
 from handwriting_grader.telemetry import TelemetryTracker
@@ -134,6 +136,96 @@ class TestBatchGrading(unittest.TestCase):
         self.stride = 1
         self.models = {"ocr": "flash", "grading": "flash", "moderation": "argon", "batch_grading": "argon"}
         self.metadata_fields = ["ID", "CLASS", "NAME"]
+
+    def test_all_native_metadata_chunks_finish_before_answers_and_invalid_last_chunk_blocks(self):
+        expected = [f"{si:03d}" for si in range(18)]
+        for invalid in (False, True):
+            with self.subTest(invalid=invalid):
+                extracted = []
+                answer_crops = []
+
+                class Provider(FakeBatchProvider):
+                    def ocr_metadata_batch(self, items, fields, roster_list=None):
+                        indices = [item["script_index"] for item in items]
+                        extracted.append(indices)
+                        return MetadataBatchResponse(students=[
+                            StudentMetadataItem(
+                                script_index=si, id_ocr="" if invalid and si == 17 else expected[17 - si],
+                                class_ocr="A", name_ocr="Synthetic",
+                            ) for si in indices
+                        ])
+
+                provider = Provider({}, "", "")
+                results = {"version": 1, "checkpoint_version": 1, "completed": False,
+                           "scripts": [], "marks": [], "moderated_questions": []}
+
+                def crop(path, box):
+                    if box["label"] not in self.metadata_fields:
+                        self.assertEqual(extracted, [list(range(16)), [16, 17]])
+                        answer_crops.append(path.name)
+                    return b"image"
+
+                def run():
+                    continue_grading(
+                        self.root, results, self.questions, self.boxes, {"students": 18}, 1,
+                        self.models, "endpoint", "v1", lambda *args: provider, [],
+                        self.root / "cache", self.metadata_fields, lambda: None, expected_ids=expected,
+                    )
+
+                with patch("handwriting_grader.grading.crop_image", side_effect=crop), \
+                     patch("handwriting_grader.local_filter.is_blank_cell", return_value=False):
+                    if invalid:
+                        with self.assertRaisesRegex(StudentIDCheckFailed, r"PDF page 18 \(Script #18\)"):
+                            run()
+                    else:
+                        run()
+                self.assertEqual(extracted, [list(range(16)), [16, 17]])
+                self.assertEqual(len(answer_crops), 0 if invalid else 36)
+                self.assertEqual(len(provider.batch_calls), 0 if invalid else 2)
+
+    def test_id_diagnostics_keep_exact_page_mapping_and_case_and_leading_zeroes(self):
+        scripts = [{"script_index": 0, "id_ocr": " 00Ab "}, {"script_index": 1, "id_ocr": "00ab"}]
+        boxes = {**self.boxes, "ID": (1, self.boxes["ID"][1])}
+        with self.assertRaisesRegex(StudentIDCheckFailed, r"PDF page 5 \(Script #2\)"):
+            check_student_ids(self.root, scripts, {"00Ab", "002"}, 2, boxes, 3)
+        report = json.loads((self.root / "id-check.json").read_text())
+        self.assertEqual([issue["pdf_page"] for issue in report["issues"]], [5])
+        self.assertEqual(report["missing_roster_ids"], ["002"])
+        scripts[1]["id_ocr"] = "002"
+        check_student_ids(self.root, scripts, {"00Ab", "002"}, 2, boxes, 3)
+        self.assertTrue(json.loads((self.root / "id-check.json").read_text())["passed"])
+
+    def test_failed_batch_retry_recomputes_ids_before_provider_or_answer_crops(self):
+        from unittest.mock import Mock
+        target = self.root / "grading"
+        target.mkdir()
+        config = {"exam": {"output_dir": str(self.root)}, "layout": {"pages_per_student": 1}}
+        manifest = {"grading_mode": "batch", "models": self.models, "endpoint": "endpoint", "api_version": "v1"}
+        results = {
+            "version": 1, "checkpoint_version": 1, "completed": False,
+            "scripts": [{"script_index": 0, "id_ocr": "001"}, {"script_index": 1, "id_ocr": "001"}],
+            "moderated_questions": ["1.1"],
+            "marks": [{"script_index": si, "question": "1.1", "page_image": f"images/{si}.jpg",
+                       "raw_mark": None, "grading_failed": True} for si in range(2)],
+        }
+        atomic_json(target / "results.json", results)
+        atomic_json(target / "id-check.json", {"passed": True})
+        factory = Mock(side_effect=AssertionError("No provider before current ID check"))
+        with patch("handwriting_grader.grade_review.verify_grading_run",
+                   return_value=(target, manifest, results, self.questions)), \
+             patch("handwriting_grader.attendance.present_roster", return_value={"001", "002"}), \
+             patch("handwriting_grader.grading.approved_inputs",
+                   return_value=(self.questions, None, None, self.boxes)), \
+             patch("handwriting_grader.grading.attendance_guard", return_value=lambda: None), \
+             patch("handwriting_grader.grading.crop_image") as crop:
+            with self.assertRaises(StudentIDCheckFailed):
+                retry_failed_question_batches(
+                    config, self.root, self.root / "exam.yaml", self.summary,
+                    file_hash(target / "results.json"), factory,
+                )
+        factory.assert_not_called()
+        crop.assert_not_called()
+        self.assertFalse(json.loads((target / "id-check.json").read_text())["passed"])
 
     def test_metadata_batches_respect_image_limit_and_cover_all_scripts(self):
         class MetadataProvider:
@@ -500,7 +592,7 @@ class TestBatchGrading(unittest.TestCase):
         manifest = {"grading_mode": "batch", "models": self.models, "endpoint": "endpoint", "api_version": "v1"}
         results = {
             "version": 1, "checkpoint_version": 1, "completed": False,
-            "scripts": [{"script_index": 0}, {"script_index": 1}],
+            "scripts": [{"script_index": 0, "id_ocr": "001"}, {"script_index": 1, "id_ocr": "002"}],
             "moderated_questions": ["1.1", "1.2"],
             "marks": [
                 {"script_index": si, "question": q["question_number"], "page_image": f"images/{si}.jpg",
@@ -520,6 +612,7 @@ class TestBatchGrading(unittest.TestCase):
 
         provider = FailFirst({}, "", "")
         with patch("handwriting_grader.grade_review.verify_grading_run", side_effect=verify), \
+             patch("handwriting_grader.attendance.present_roster", return_value={"001", "002"}), \
              patch("handwriting_grader.grading.approved_inputs", return_value=(self.questions, None, None, self.boxes)), \
              patch("handwriting_grader.grading.attendance_guard", return_value=lambda: None), \
              patch("handwriting_grader.grading.crop_image", return_value=b"image"):
@@ -535,6 +628,7 @@ class TestBatchGrading(unittest.TestCase):
         self.assertEqual(json.loads((backup / "failure.json").read_text())["question"], "1.1")
         provider = FakeBatchProvider({}, "", "")
         with patch("handwriting_grader.grade_review.verify_grading_run", side_effect=verify), \
+             patch("handwriting_grader.attendance.present_roster", return_value={"001", "002"}), \
              patch("handwriting_grader.grading.approved_inputs", return_value=(self.questions, None, None, self.boxes)), \
              patch("handwriting_grader.grading.attendance_guard", return_value=lambda: None), \
              patch("handwriting_grader.grading.crop_image", return_value=b"image"):
@@ -559,7 +653,7 @@ class TestBatchGrading(unittest.TestCase):
         manifest = {"grading_mode": "batch", "models": self.models, "endpoint": "endpoint", "api_version": "v1"}
         results = {
             "version": 1, "checkpoint_version": 1, "completed": False,
-            "scripts": [{"script_index": 0}, {"script_index": 1}],
+            "scripts": [{"script_index": 0, "id_ocr": "001"}, {"script_index": 1, "id_ocr": "002"}],
             "moderated_questions": ["1.1"],
             "marks": [
                 {"script_index": 0, "question": "1.1", "page_image": "images/0.jpg",
@@ -575,6 +669,7 @@ class TestBatchGrading(unittest.TestCase):
 
         provider = FakeBatchProvider({}, "", "")
         with patch("handwriting_grader.grade_review.verify_grading_run", side_effect=verify), \
+             patch("handwriting_grader.attendance.present_roster", return_value={"001", "002"}), \
              patch("handwriting_grader.grading.approved_inputs", return_value=(self.questions, None, None, self.boxes)), \
              patch("handwriting_grader.grading.attendance_guard", return_value=lambda: None), \
              patch("handwriting_grader.grading.crop_image", return_value=b"image"):

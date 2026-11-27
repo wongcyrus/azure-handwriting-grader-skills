@@ -38,12 +38,12 @@ structured outputs, embedding/image/search support and current regional rates.
 | Prior workflow task | Azure CLI task and decision |
 |---|---|
 | Printable personalized answer sheets | `answer-sheets`; local LibreOffice conversion, retained PDFs/mapping/combined PDF. Inspect pagination before printing. |
-| Validate inputs | `preflight`, then `check-scans`; local checks, not credential/identity/approval verification. Fix scan orientation/order manually. |
+| Validate inputs | Offline `preflight`; basic input/page-count/dimension/approval checks remain. No heuristic orientation/order check or automatic alignment. Review scans manually; source corrections require fresh preparation, review and approvals. |
 | Account for absences | `prepare-attendance`, review all statuses, `approve-attendance --confirm-reviewed`. Never infer absences. |
 | Marking scheme | `import-rubric` for validated XLSX or paid `extract-rubric` for DOCX. Review every question and mark, then `approve-rubric`. |
 | Optional fact check | Paid `verify-rubric` with Azure hosted `web_search` where supported. Check sources manually; does not approve the rubric. |
 | Bounding boxes | `prepare-regions`, optional paid `suggest-regions`, `review-regions`, explicit approval. Local manual boxes remain possible. |
-| OCR and grading | `grade` (framework default) or `--orchestrator python`; synchronous grouped images or item/text moderation. Preview and consent first. |
+| OCR and grading | Preview and consent to `grade` (framework default) or `--orchestrator python`. Extract all students' metadata only, then automatically process answers only if IDs are nonempty, unique and cover the PRESENT roster exactly, preserving leading zeroes without requiring roster order. Otherwise stop with source PDF page/script diagnostics in private `grading/id-check.json`, an incomplete metadata checkpoint and no completed review workbook. Diagnostic is not approval. |
 | Teacher score review | `review-grading` or XLSX; inspect identity and images, correct text/marks/reasoning, review every row, explicitly `approve-grading`. |
 | Failure recovery | Preview `resume-grading` for supported interrupted runs, or `retry-grading` for completed failures; fresh cost consent. Preserve history. |
 | One-question revision | Separate reviewed crop/rubric proposal and isolated child `regrade`; use `--run CHILD` for downstream stages. |

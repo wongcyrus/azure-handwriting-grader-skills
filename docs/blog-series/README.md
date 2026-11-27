@@ -4,6 +4,18 @@ Eight skill-led technical articles for Microsoft publishing review, explaining
 the assistant's decisions, Python implementation, Azure prompts and real outputs.
 Prepared 24 November 2026 using the existing cleared example and saved reports.
 
+## Workflow update — 27 November 2026
+
+The current [reviewed workflow](../../README.md#reviewed-workflow) replaces the
+old scan heuristic/marker gate and automatic alignment with an all-student
+metadata-only ID gate before answers. Parts 1–3 below reflect that change.
+Saved screenshots, console captures, source snippets, diagrams, provenance and
+Word exports remain historical evidence, not current commands or new validation.
+In particular, old scan-check captures and alignment snippets must not be used
+to diagnose current scans or as required approval evidence. Regenerate publication
+exports only through a separately reviewed editorial task; no student outputs
+were read or regenerated for this workflow update.
+
 ## Read and publish
 
 Open `index.html` for the article list. Each article has a Markdown master, a
@@ -62,9 +74,9 @@ default Framework runtime. Skill instructions alone do not enforce approval.
 Illustrative teacher requests and expected skill-guided decisions are **not
 captured agent conversations**. Actual screenshots/exports and console outputs
 remain separately labelled. Template placeholders show runtime insertion; they
-are not asserted historical HTTP payloads. The scan-check stop rule belongs to
-skill-guided preparation; the inspected grading route does not automatically
-rerun that check.
+are not asserted historical HTTP payloads. The current ID gate stops before
+answers and reports exact source PDF pages/scripts; roster consistency is not
+human identity/score approval or proof of other pages' order/completeness.
 
 Banner-generation prompts, code and costs belong only to the editorial
 [branding documentation](branding/README.md), not the eight grading articles.

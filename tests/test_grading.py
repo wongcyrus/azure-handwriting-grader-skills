@@ -3,6 +3,7 @@ import io
 import importlib.util
 import json
 import os
+import re
 import select
 import shutil
 import subprocess
@@ -193,46 +194,6 @@ vm.runInNewContext(source.slice(start, end), context);
         subprocess.run([shutil.which("node"), "-e", script, str(editor)], check=True, capture_output=True, text=True)
 
 
-def prepare_scan_marker_fixture(test, config, config_dir):
-    from handwriting_grader.scan_markers import marker_root, marker_snapshot
-
-    root = marker_root(config, config_dir)
-    (root / "images").mkdir(parents=True, exist_ok=True)
-    count = config["layout"]["pages_per_student"]
-    images = []
-    for index in range(count):
-        image = root / "images" / f"page-{index + 1:02d}.jpg"
-        shutil.copyfile(config_dir / config["exam"]["output_dir"] / "regions" / "images" / f"{index}.jpg", image)
-        images.append(image)
-    atomic_json(root / "manifest.json", {
-        **marker_snapshot(config, config_dir), "language": "eng",
-        "image_sha256": [file_hash(image) for image in images],
-    })
-    atomic_json(root / "markers.json", {"pages": [
-        {"page_number": index + 1, "markers": [
-            {"text": f"Page {index + 1} marker {number}", "x": 0, "y": number * 100,
-             "width": 500, "height": 50}
-            for number in (1, 2)
-        ]}
-        for index in range(count)
-    ]})
-    atomic_json(root / "approval.json", {
-        "manifest_sha256": file_hash(root / "manifest.json"),
-        "markers_sha256": file_hash(root / "markers.json"),
-    })
-    atomic_json(root / "azure_confirmation-v2.json", {
-        "version": 2,
-        "pdf_sha256": file_hash(config_dir / config["exam"]["scanned_pdf"]),
-        "marker_approval_sha256": file_hash(root / "approval.json"),
-        "crop_count": len(PdfReader(config_dir / config["exam"]["scanned_pdf"]).pages) * 2,
-        "issues": [],
-    })
-    for name, value in (("require_tesseract", "tesseract"), ("check_marker_pages", [])):
-        mock = patch(f"handwriting_grader.scan_markers.{name}", return_value=value)
-        mock.start()
-        test.addCleanup(mock.stop)
-
-
 class GradingTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -253,6 +214,8 @@ class GradingTests(unittest.TestCase):
             draw = ImageDraw.Draw(img)
             for y_off in range(2, 100, 6):
                 draw.line([(0, y_off), (200, y_off)], fill="black", width=2)
+            draw.rectangle((15, 5, 23, 12), fill="white")
+            draw.line((16, 6, 16 + idx * 2, 11), fill="black", width=2)
             if idx % 2 == 0:
                 draw.rectangle([(20, 140), (180, 210)], fill="black")
             else:
@@ -294,30 +257,197 @@ class GradingTests(unittest.TestCase):
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"],
             "revision": 1,
         })
-        prepare_scan_marker_fixture(self, self.config, self.root)
 
     def run_grading(self, provider=FakeGrader):
         return grade_exam(self.config, self.root, self.exam, self.models, "https://test.openai.azure.com", "v1",
                           self.summary, provider_factory=provider)
 
-    def test_unreadable_scan_markers_block_before_paid_grading(self):
-        from unittest.mock import Mock
-        provider = Mock()
-        confirmation = self.root / "output" / "scan-markers" / "azure_confirmation-v2.json"
-        data = json.loads(confirmation.read_text(encoding="utf-8"))
-        data["issues"] = ["PDF page 3: unreadable printed markers"]
-        atomic_json(confirmation, data)
-        with self.assertRaisesRegex(ValueError, "PDF page 3"):
-            self.run_grading(provider)
-        provider.assert_not_called()
-        self.assertFalse((self.root / "output" / "grading").exists())
+    def test_invalid_ids_checkpoint_all_metadata_before_any_answer_crop(self):
+        from handwriting_grader.grading import StudentIDCheckFailed, crop_image
+        for ids, pages in ((["", "002"], [1]), (["001", "999"], [3]), (["001", "001"], [1, 3])):
+            for mode in ("batch", "item"):
+                with self.subTest(ids=ids, mode=mode):
+                    class InvalidIDs(FakeGrader):
+                        fields = []
 
-    def test_changed_marker_review_invalidates_grading_run(self):
-        self.run_grading()
-        atomic_json(self.root / "output" / "scan-markers" / "approval.json", {})
-        from handwriting_grader.grade_review import verify_grading_run
-        with self.assertRaisesRegex(ValueError, "approval is no longer current"):
-            verify_grading_run(self.config, self.root, self.exam)
+                        def __init__(self, *args):
+                            self.ids = iter(ids)
+
+                        def ocr(self, image, field):
+                            self.fields.append(field)
+                            return super().ocr(image, field)
+
+                        def grade(self, *args, **kwargs):
+                            raise AssertionError("Answers must not be sent")
+
+                    root = self.root / "output" / "grading"
+                    if root.exists():
+                        shutil.rmtree(root)
+                    with patch("handwriting_grader.grading.crop_image", wraps=crop_image) as crop:
+                        with self.assertRaises(StudentIDCheckFailed) as exc:
+                            grade_exam(self.config, self.root, self.exam, self.models, "endpoint", "v1",
+                                       self.summary, provider_factory=InvalidIDs, mode=mode)
+                    self.assertEqual(len(crop.call_args_list), 6)
+                    self.assertEqual(InvalidIDs.fields, ["ID", "CLASS", "NAME"] * 2)
+                    saved = json.loads((root / "results.json").read_text())
+                    self.assertEqual(len(saved["scripts"]), 2)
+                    self.assertEqual(saved["marks"], [])
+                    self.assertFalse(saved["completed"])
+                    self.assertFalse((root / "review.xlsx").exists())
+                    report = json.loads((root / "id-check.json").read_text())
+                    self.assertEqual([issue["pdf_page"] for issue in report["issues"]], pages)
+                    for page in pages:
+                        self.assertIn(f"PDF page {page}", str(exc.exception))
+                    self.assertEqual((root / "id-check.json").stat().st_mode & 0o077, 0)
+
+    def test_valid_ids_can_follow_scan_order_not_roster_order(self):
+        class Reordered(FakeGrader):
+            def __init__(self, *args):
+                self.ids = iter([" 002 ", "001"])
+
+        root = self.run_grading(Reordered)
+        saved = json.loads((root / "results.json").read_text())
+        self.assertEqual([row["id_ocr"].strip() for row in saved["scripts"]], ["002", "001"])
+        self.assertTrue(saved["completed"])
+        self.assertTrue(json.loads((root / "id-check.json").read_text())["passed"])
+
+    def enable_metadata_cache(self):
+        settings = yaml.safe_load(self.models.read_text())
+        settings["caching"] = {"enabled": True, "agents": {"ocr": True}}
+        self.models.write_text(yaml.safe_dump(settings))
+
+    def test_resume_reextracts_only_rejected_saved_metadata_bypassing_cache(self):
+        from handwriting_grader.grading import StudentIDCheckFailed
+        self.enable_metadata_cache()
+
+        class BadID(FakeGrader):
+            def __init__(self, *args):
+                self.ids = iter(["001", "rejected"])
+
+        with self.assertRaises(StudentIDCheckFailed):
+            self.run_grading(BadID)
+        root = self.root / "output" / "grading"
+        image_hashes = [file_hash(root / "images" / f"{index}.jpg") for index in range(4)]
+        preview = io.StringIO()
+        with patch("handwriting_grader.grading.resume_grading") as resume, redirect_stdout(preview):
+            self.assertEqual(main(["resume-grading", "--exam", str(self.exam)]), 1)
+            resume.assert_not_called()
+        self.assertIn("1 metadata request(s)", preview.getvalue())
+        self.assertIn("Script #2, PDF page 3", preview.getvalue())
+        self.assertIn("Rejected metadata cache is bypassed", preview.getvalue())
+
+        class Corrected(FakeGrader):
+            fields = []
+
+            def __init__(self, *args):
+                self.ids = iter(["002"])
+
+            def ocr(self, image, field):
+                self.fields.append(field)
+                return super().ocr(image, field)
+
+        with patch("handwriting_grader.grading.render_scripts", side_effect=AssertionError("Use saved pages")):
+            resume_grading(self.config, self.root, self.exam, self.summary, provider_factory=Corrected)
+        self.assertEqual([field for field in Corrected.fields if field != "answer"], ["ID", "CLASS", "NAME"])
+        self.assertEqual([file_hash(root / "images" / f"{index}.jpg") for index in range(4)], image_hashes)
+        self.assertTrue(json.loads((root / "results.json").read_text())["completed"])
+
+    def test_resume_rejects_edited_source_before_provider_creation(self):
+        from handwriting_grader.grading import StudentIDCheckFailed
+        from unittest.mock import Mock
+
+        class BadID(FakeGrader):
+            def __init__(self, *args):
+                self.ids = iter(["001", "rejected"])
+
+        with self.assertRaises(StudentIDCheckFailed):
+            self.run_grading(BadID)
+        with (self.root / "scan.pdf").open("ab") as source:
+            source.write(b"\nchanged")
+        factory = Mock(side_effect=AssertionError("No provider"))
+        with self.assertRaisesRegex(ValueError, "changed"):
+            resume_grading(self.config, self.root, self.exam, self.summary, provider_factory=factory)
+        factory.assert_not_called()
+
+    def test_explicit_id_retry_bypasses_rejected_cache_rechecks_and_does_not_finish_missing_answers(self):
+        from handwriting_grader.grading import StudentIDCheckFailed, crop_image
+        self.enable_metadata_cache()
+
+        class BadID(FakeGrader):
+            def __init__(self, *args):
+                self.ids = iter(["001", "rejected"])
+
+        with self.assertRaises(StudentIDCheckFailed):
+            self.run_grading(BadID)
+        root = self.root / "output" / "grading"
+        results = json.loads((root / "results.json").read_text())
+        results["scripts"][1]["errors"] = [{"field": "ID", "type": "Old"}, {"field": "NAME", "type": "Keep"}]
+        atomic_json(root / "results.json", results)
+        for provider, success in ((BadID, False), (FakeGrader, True)):
+            with self.subTest(success=success), patch("handwriting_grader.grading.crop_image", wraps=crop_image) as crop:
+                if success:
+                    retry_grading(self.config, self.root, self.exam, self.summary,
+                                  provider_factory=provider, re_ocr_fields=["ID"])
+                else:
+                    with self.assertRaises(StudentIDCheckFailed):
+                        retry_grading(self.config, self.root, self.exam, self.summary,
+                                      provider_factory=provider, re_ocr_fields=["ID"])
+                self.assertEqual(len(crop.call_args_list), 2)
+            saved = json.loads((root / "results.json").read_text())
+            self.assertFalse(saved["completed"])
+            self.assertEqual(saved["marks"], [])
+            self.assertFalse((root / "review.xlsx").exists())
+            self.assertEqual(saved["scripts"][1]["errors"], [{"field": "NAME", "type": "Keep"}])
+        self.assertTrue(json.loads((root / "id-check.json").read_text())["passed"])
+        resume_grading(self.config, self.root, self.exam, self.summary, provider_factory=FakeGrader)
+        self.assertTrue(json.loads((root / "results.json").read_text())["completed"])
+
+    def test_explicit_id_retry_preserves_valid_metadata_cache(self):
+        self.enable_metadata_cache()
+        root = self.run_grading()
+
+        class NoMetadataCalls(FakeGrader):
+            def ocr(self, *args, **kwargs):
+                raise AssertionError("Valid cached metadata should be preserved")
+
+        retry_grading(self.config, self.root, self.exam, self.summary,
+                      provider_factory=NoMetadataCalls, re_ocr_fields=["ID"])
+        self.assertTrue(json.loads((root / "id-check.json").read_text())["passed"])
+
+    def test_explicit_full_metadata_retry_bypasses_rejected_cache(self):
+        from handwriting_grader.grading import StudentIDCheckFailed, crop_image
+        self.enable_metadata_cache()
+
+        class BadID(FakeGrader):
+            def __init__(self, *args):
+                self.ids = iter(["001", "rejected"])
+
+        with self.assertRaises(StudentIDCheckFailed):
+            self.run_grading(BadID)
+        with patch("handwriting_grader.grading.crop_image", wraps=crop_image) as crop:
+            root = retry_grading(
+                self.config, self.root, self.exam, self.summary, provider_factory=FakeGrader,
+                re_ocr_fields=["ID", "CLASS", "NAME"],
+            )
+        self.assertEqual(len(crop.call_args_list), 6)
+        results = json.loads((root / "results.json").read_text())
+        self.assertEqual([row["id_ocr"] for row in results["scripts"]], ["001", "002"])
+        self.assertEqual(results["marks"], [])
+        self.assertFalse(results["completed"])
+        self.assertFalse((root / "review.xlsx").exists())
+
+    def test_bad_rendered_page_count_or_layout_dimensions_stop_before_provider(self):
+        from unittest.mock import Mock
+        wrong_size = self.root / "wrong-size.jpg"
+        Image.new("RGB", (10, 10), "white").save(wrong_size)
+        factory = Mock(side_effect=AssertionError("No provider"))
+        for pages, message in (([], "page count"), ([wrong_size] * 4, "different dimensions")):
+            with self.subTest(message=message), \
+                 patch("handwriting_grader.grading.render_pdf_to_images", return_value=pages):
+                with self.assertRaisesRegex(ValueError, message):
+                    self.run_grading(factory)
+        factory.assert_not_called()
+        self.assertFalse((self.root / "output" / "grading").exists())
 
     def fill_review(self, path, *, flagged_override=1):
         book = load_workbook(path)
@@ -366,34 +496,18 @@ class GradingTests(unittest.TestCase):
         with response:
             return response.status, response.read()
 
-    def test_alignment_retry_restores_original_pages_and_preserves_history(self):
-        root = self.run_grading()
-        self.fill_review(root / "review.xlsx")
-        review_hash = file_hash(root / "review.xlsx")
-        pristine_hash = file_hash(root / "images" / "0.jpg")
-        results_before = json.loads((root / "results.json").read_text())
-        with Image.open(root / "images" / "0.jpg") as image:
-            shifted = image.transform(
-                image.size, Image.Transform.AFFINE, (1, 0, 0, 0, 1, -40),
-                fillcolor=(255, 255, 255),
-            )
-        shifted.save(root / "images" / "0.jpg", format="JPEG", quality=95)
-        damaged_hash = file_hash(root / "images" / "0.jpg")
-        manifest = json.loads((root / "manifest.json").read_text())
-        manifest["image_sha256"][0] = damaged_hash
-        atomic_json(root / "manifest.json", manifest)
+    def test_saved_grading_images_are_byte_for_byte_rendered_originals(self):
+        from handwriting_grader.grading import render_scripts
+        originals = []
 
-        with patch("handwriting_grader.grading.AzureClient", side_effect=AssertionError("No AI needed")):
-            retry_grading(self.config, self.root, self.exam, self.summary, align_images=True)
+        def capture(*args, **kwargs):
+            pages = render_scripts(*args, **kwargs)
+            originals.extend(page.read_bytes() for page in pages)
+            return pages
 
-        self.assertEqual(file_hash(root / "images" / "0.jpg"), pristine_hash)
-        self.assertEqual(json.loads((root / "results.json").read_text()), results_before)
-        backup, = (root / "alignment-history").iterdir()
-        self.assertEqual(file_hash(backup / "images" / "0.jpg"), damaged_hash)
-        self.assertEqual(file_hash(backup / "review.xlsx"), review_hash)
-        restored_manifest = json.loads((root / "manifest.json").read_text())
-        self.assertEqual(restored_manifest["image_sha256"][0], pristine_hash)
-        self.assertTrue(restored_manifest["aligned_to_regions"])
+        with patch("handwriting_grader.grading.render_scripts", side_effect=capture):
+            root = self.run_grading()
+        self.assertEqual([path.read_bytes() for path in sorted((root / "images").glob("*.jpg"))], originals)
 
     def test_write_review_never_regenerates_an_existing_workbook(self):
         from handwriting_grader.grading import write_review
@@ -886,7 +1000,7 @@ class GradingTests(unittest.TestCase):
         "Playwright and Google Chrome are required",
     )
     def test_score_editor_browser_reviews_and_approves(self):
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import expect, sync_playwright
 
         self.run_grading()
         with patch("handwriting_grader.score_editor.shared_embedding_cache_path",
@@ -898,7 +1012,7 @@ class GradingTests(unittest.TestCase):
                 page = browser.new_page()
                 page.on("dialog", lambda dialog: dialog.accept())
                 page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
-                page.wait_for_function("Boolean(state) && !busy")
+                expect(page.locator("#section")).to_be_enabled()
                 self.assertNotIn(self.score_server.token, page.url)
                 for index, student in enumerate(("001", "002")):
                     page.locator("#section").select_option("id")
@@ -928,7 +1042,7 @@ class GradingTests(unittest.TestCase):
         "Playwright and Google Chrome are required",
     )
     def test_score_editor_keyboard_navigation_and_group_mark(self):
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import expect, sync_playwright
 
         self.run_grading()
         self.start_score_editor()
@@ -937,7 +1051,7 @@ class GradingTests(unittest.TestCase):
             try:
                 page = browser.new_page()
                 page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
-                page.wait_for_function("Boolean(state) && !busy")
+                expect(page.locator("#section")).to_be_enabled()
                 page.get_by_role("button", name="Q1").click()
                 self.assertEqual(page.locator("#similarity-label").inner_text(), "Answer Similarity")
                 page.evaluate("""() => {
@@ -977,15 +1091,15 @@ class GradingTests(unittest.TestCase):
                 page.locator("#inline-mark-0").fill("2")
                 page.locator("#inline-mark-0").press("Enter")
                 page.get_by_text("Script #1 saved and reviewed.").wait_for()
-                page.wait_for_function("document.activeElement.id === 'inline-mark-1'")
+                expect(page.locator("#inline-mark-1")).to_be_focused()
                 page.locator("#inline-mark-1").fill("0")
                 page.locator("#inline-mark-1").press("ArrowUp")
                 page.get_by_text("Script #2 saved and reviewed.").wait_for()
-                page.wait_for_function("document.activeElement.id === 'inline-mark-0'")
+                expect(page.locator("#inline-mark-0")).to_be_focused()
                 page.locator("#inline-mark-0").fill("3")
                 page.locator("#inline-mark-0").press("ArrowDown")
                 page.get_by_text("Manual mark is outside the question's range").wait_for()
-                page.wait_for_function("document.activeElement.id === 'inline-mark-0'")
+                expect(page.locator("#inline-mark-0")).to_be_focused()
                 self.assertEqual(page.locator("#inline-mark-0").input_value(), "3")
 
                 page.locator("#inline-mark-0").fill("2")
@@ -1031,7 +1145,7 @@ class GradingTests(unittest.TestCase):
                 page.locator("#review-workspace").scroll_into_view_if_needed()
                 before = page.locator("#review-pinned").bounding_box()
                 page.locator("#review-workspace").evaluate("(el) => { el.scrollTop = 1000; }")
-                page.wait_for_function("document.getElementById('review-workspace').scrollTop > 0")
+                self.assertGreater(page.locator("#review-workspace").evaluate("(el) => el.scrollTop"), 0)
                 after = page.locator("#review-pinned").bounding_box()
                 header = page.locator("#marksheet th").first.bounding_box()
                 self.assertAlmostEqual(before["y"], after["y"], delta=1)
@@ -1045,12 +1159,13 @@ class GradingTests(unittest.TestCase):
         "Playwright and Google Chrome are required",
     )
     def test_marksheet_table_escapes_html_and_navigates_review(self):
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import expect, sync_playwright
 
         root = self.run_grading()
         self.fill_review(root / "review.xlsx", flagged_override=2)
         workbook = load_workbook(root / "review.xlsx")
-        workbook["Marks"]["D3"] = '<img src=x onerror="window.injected=true">'
+        malicious_answer = '<img src=x onerror="window.injected=true">'
+        workbook["Marks"]["D3"] = malicious_answer
         workbook.save(root / "review.xlsx")
         workbook.close()
         before = file_hash(root / "review.xlsx")
@@ -1062,13 +1177,19 @@ class GradingTests(unittest.TestCase):
             try:
                 page = browser.new_page()
                 page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
-                page.wait_for_function("Boolean(state) && !busy")
+                expect(page.locator("#section")).to_be_enabled()
                 page.get_by_role("button", name="Q1").click()
-                self.assertEqual(page.locator("#marksheet-tbody tr").count(), 2)
-                self.assertIn('<img src=x', page.locator("#inline-ans-1").input_value())
-                page.locator("#marksheet-tbody td strong", has_text="#2").click()
-                self.assertEqual(page.locator("#script").input_value(), "1")
-                self.assertEqual(page.locator("#section").input_value(), "0")
+                rows = page.locator("#marksheet-tbody > tr:has(textarea.inline-ans)")
+                expect(rows).to_have_count(2)
+                expect(rows.locator("td:first-child strong")).to_have_text(["#1", "#2"])
+                expect(page.locator("#inline-ans-1")).to_have_value(malicious_answer)
+                expect(page.locator("#marksheet-tbody img[src=x], #marksheet-tbody [onerror]")).to_have_count(0)
+                selected_row = rows.filter(has=page.locator("#inline-ans-1"))
+                selected_row.locator("td strong", has_text="#2").click()
+                expect(page.locator("#script")).to_have_value("1")
+                expect(page.locator("#section")).to_have_value("0")
+                expect(selected_row).to_have_class(re.compile(r"\brow-selected\b"))
+                expect(page.locator("#inline-mark-1")).to_be_focused()
                 self.assertIsNone(page.evaluate("window.injected"))
             finally:
                 browser.close()
@@ -1080,26 +1201,55 @@ class GradingTests(unittest.TestCase):
         "Playwright and Google Chrome are required",
     )
     def test_browser_crop_adjustment_is_only_a_visual_preview(self):
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import expect, sync_playwright
 
         root = self.run_grading()
-        before = file_hash(root / "review.xlsx")
+        before = {name: file_hash(root / name) for name in ("review.xlsx", "results.json", "manifest.json")}
         with patch("handwriting_grader.score_editor.shared_embedding_cache_path",
                    return_value=self.root / "shared_embed_cache.json"):
             self.start_score_editor()
+        original_state = json.loads(self.score_request("/api/state")[1])
+        mutations = []
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(executable_path=shutil.which("google-chrome"), headless=True)
             try:
                 page = browser.new_page()
+                page.on("request", lambda request: mutations.append(request.url)
+                        if request.method not in ("GET", "HEAD") else None)
                 page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
-                page.wait_for_function("Boolean(state) && !busy")
+                expect(page.locator("#section")).to_be_enabled()
                 page.get_by_role("button", name="Q1").click()
-                page.locator("#marksheet-tbody img.answer-crop-img").first.click()
+                crop = page.locator("#marksheet-tbody img.answer-crop-img").first
+                expect(crop).to_have_attribute("src", re.compile(r"^blob:"))
+                expect(crop).to_have_js_property("complete", True)
+                original_width = crop.evaluate("(img) => img.naturalWidth")
+                self.assertGreater(original_width, 0)
+                original_src = crop.get_attribute("src")
+                with page.expect_response(lambda response: "/api/image/0/0?pad=20" in response.url) as preview:
+                    page.locator("#box-pad").press("ArrowRight")
+                self.assertEqual(preview.value.status, 200)
+                expect(page.locator("#currentBoxPad")).to_have_text("+20px")
+                expect(crop).not_to_have_attribute("src", original_src)
+                expect(crop).to_have_js_property("complete", True)
+                self.assertGreater(crop.evaluate("(img) => img.naturalWidth"), original_width)
+                crop.click()
                 page.locator("#image-modal[open]").wait_for()
-                page.wait_for_function("() => document.querySelector('#modal-img').naturalWidth > 0")
+                image = page.locator("#modal-img")
+                expect(image).to_have_attribute("src", re.compile(r"^blob:"))
+                expect(image).to_have_js_property("complete", True)
+                self.assertGreater(image.evaluate("(img) => img.naturalWidth"), 0)
+                page.locator("#zoom-100").click()
+                expect(page.locator("#zoom-label")).to_have_text("100%")
+                page.locator("#zoom-fit").click()
+                expect(page.locator("#zoom-label")).to_have_text("Fit")
+                page.locator("#modal-close").click()
+                expect(page.locator("#image-modal")).not_to_be_visible()
+                self.assertEqual(mutations, [])
             finally:
                 browser.close()
-        self.assertEqual(file_hash(root / "review.xlsx"), before)
+        self.assertEqual(before, {name: file_hash(root / name) for name in before})
+        self.assertEqual(json.loads(self.score_request("/api/state")[1]), original_state)
+        self.assertFalse((root / "approval.json").exists())
 
     def test_preview_requires_consent_and_real_prerequisites(self):
         models = yaml.safe_load(self.models.read_text())
@@ -1885,7 +2035,6 @@ class GradingTests(unittest.TestCase):
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"],
             "revision": draft["revision"],
         })
-        prepare_scan_marker_fixture(self, self.config, self.root)
         root = self.run_grading()
         self.fill_review(root / "review.xlsx", flagged_override=2)
         approve_grading(self.config, self.root, self.exam)

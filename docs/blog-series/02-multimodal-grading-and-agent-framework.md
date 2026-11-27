@@ -46,7 +46,19 @@ In our saved VTC example, `grading/manifest.json` records `grading_mode: "batch"
 *Figure 2. Saved `grading/manifest.json` and `results.json` summary.*
 
 Under the hood:
-- **Phase A (Metadata OCR)** sends up to **16 scripts** (48 images for three fields) per request with roster candidates; batch errors stop the run.
+- **Phase A (Metadata OCR)** extracts all students' ID/CLASS/NAME metadata only,
+  before scanning or grading any answers: up to **16 scripts** (48 images for
+  three fields) per request with roster candidates. IDs must be nonempty, unique
+  and exactly cover the expected PRESENT roster, preserving leading zeroes without
+  requiring roster order. A pass automatically continues; otherwise stop with
+  exact source PDF page/script numbers in private `grading/id-check.json`, an
+  incomplete metadata checkpoint and no completed review workbook. The diagnostic
+  is not approval; human identity/score review remains mandatory. Separately
+  cost-consented resume may re-extract missing/invalid saved metadata, bypass
+  known-rejected cache and recheck all IDs before answers. Metadata-first
+  original-run recovery respects the gate; child regrading retains current
+  human-approved parent identity lineage and needs fresh child review.
+  Batch errors do not trigger paid fallback.
 - **Phase B (`--mode batch`, default)** groups up to **50 scripts** per question into a synchronous `responses.create()` call (`QuestionBatchGradeResponse`, `16,384`-token output cap). There is no payload-size micro-batching; comparisons happen *within* each group, not across an entire 500-student cohort.
 - **Phase B (`--mode item`)** grades each crop individually (`GradeResponse`, `8,192`-token cap), then runs a separate text-only `ModerationResponse` pass per question. Because text moderation cannot re-inspect diagrams, human image review remains essential.
 
@@ -196,10 +208,17 @@ After `cli.py` verifies `--confirm-cost`, it injects `grade_exam` into the Frame
 ```python
 execute = grade_exam
 options = {}
+if args.continue_on_image_policy_block:
+    options["continue_on_image_policy_block"] = True
 if args.orchestrator == "agent-framework":
     from .workflow import run_grading_workflow
     execute = run_grading_workflow
     options["grade_function"] = grade_exam
+```
+
+The selected callable receives the same inputs and explicit continuation option:
+
+```python
 output = execute(
     config, path.parent, path, args.model_config, args.endpoint.strip(),
     args.api_version.strip(), summary, mode=mode, batch_concurrency=concurrency, **options,
@@ -211,7 +230,8 @@ Inside `workflow.py`, three typed `Executor` nodes form a linear, bounded (`max_
 ```python
 def build_grading_workflow(config, config_dir, config_path, model_config_path,
                            endpoint, api_version, summary, *, mode="batch",
-                           batch_concurrency=3, grade_function=grade_exam):
+                           batch_concurrency=3, grade_function=grade_exam,
+                           continue_on_image_policy_block=False):
     class ValidateApproval(Executor):
         @handler
         async def process(self, request: str, ctx: WorkflowContext[str]) -> None:
@@ -225,6 +245,7 @@ def build_grading_workflow(config, config_dir, config_path, model_config_path,
                 grade_function, config, config_dir, config_path, model_config_path,
                 endpoint, api_version, summary,
                 mode=mode, batch_concurrency=batch_concurrency,
+                continue_on_image_policy_block=continue_on_image_policy_block,
             )
             await ctx.send_message(str(output))
 
@@ -260,7 +281,21 @@ def run_grading_workflow(*args, **kwargs):
     return asyncio.run(run())
 ```
 
-`ExecuteGrading` bridges the async Framework loop to the synchronous `grade_exam` engine via `asyncio.to_thread()`—ensuring Framework clients are never shared across OS threads—and `RequireHumanReview` yields only the draft directory path (`grading/`), never granting approval.
+`ExecuteGrading` bridges the async Framework loop to the synchronous `grade_exam`
+engine via `asyncio.to_thread()`. The engine constructs its Azure clients in that
+execution path; the graph passes configuration and paths, not a shared client.
+`ValidateApproval` checks the approved inputs before entering the engine; the
+all-student metadata-only ID gate described above runs **inside `grade_exam`**,
+before any answer inference, not as a separate graph executor.
+`RequireHumanReview` yields only the draft directory path (`grading/`), never
+granting approval.
+
+The CLI forwards `--continue-on-image-policy-block` only when explicitly selected;
+the wrapper defaults it to `False` and forwards it unchanged to the engine. This
+batch-only option flags image-policy-blocked answers for manual review while
+allowing other questions to continue. It does not bypass the metadata ID gate,
+Azure budget caps, client/deployment identity checks, or human approval, and does
+not trigger a paid fallback.
 
 ### Verifying the real Framework graph offline (0 Azure clients)
 Running `uv run --frozen python docs/blog-series/snippets/offline-framework-smoke.py` exercises the real `agent-framework-core` `WorkflowBuilder` locally with zero Azure clients:

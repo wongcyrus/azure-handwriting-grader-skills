@@ -78,17 +78,32 @@ return errors, summary
 ### Explicit attendance (`prepare-attendance` -> `approve-attendance`)
 Absences are **never** inferred from missing PDF pages or blank OCR. If `attendance` is configured, the teacher supplies an explicit `ID,STATUS` CSV (`present`/`absent` for every roster ID), reviews the versioned `attendance_review.xlsx`, and runs `approve-attendance --confirm-reviewed` to bind the present-student set with SHA-256 hashes. Corrections belong in the source CSV, followed by a new review.
 
-## 3. Why `check-scans` runs before region setup (4x FFT consensus)
+## 3. Human scan review and the metadata-only ID gate
 
 A passing `preflight` cannot tell if Script 1 was fed into the scanner upside-down. If you draw bounding boxes on an upside-down Script 1, every downstream crop for the entire class will be wrong.
 
-`handwriting-grader check-scans --exam example/example.yaml` solves this **offline at zero AI cost**. It renders pages via pure-Python `pypdfium2`, downsamples them 4x, and runs FFT phase correlation across the cohort to build a **majority-consensus reference** for each page position (`0..N-1`). Comparing every page against both upright and rotated (`90°`, `180°`, `270°`) consensus templates catches upside-down, sideways, blank, or swapped pages—even if Script 1 itself is the culprit.
+The former scan heuristic and required marker gate are removed; there is no
+automatic alignment, rotation or reordering. Basic input, page-count, dimension
+and approval checks remain. Newly rendered images are preserved byte-for-byte.
+Review orientation and within-script page order when approving regions.
 
-![Fresh scan check reporting possible sequence problems on PDF pages 1, 3 and 5.](media/03-scan-check.png)
+After region confirmation and explicit grading cost/data consent, extract all
+students' metadata (ID/CLASS/NAME only), without scanning or grading answers.
+IDs must be nonempty, unique and exactly cover the expected PRESENT roster;
+preserve leading zeroes and do not require script order to match roster order.
+A pass automatically continues to answers. Otherwise stop with exact 1-based
+source PDF page/script numbers in private `grading/id-check.json`, an incomplete
+metadata checkpoint and no completed review workbook.
 
-*Figure 3. Actual `check-scans` blocker captured on `example/example.yaml`: PDF pages 1, 3, and 5 match template page 2.*
-
-Because `check-scans` returned a non-zero exit code, `SKILL.md` enforces an explicit **stop rule**: report the exact 1-based PDF page numbers and script numbers so the teacher fixes the physical PDF manually—never silently flip or reorder pages in code.
+Have the teacher inspect those source pages before separately cost-consented
+resume re-extracts missing/invalid saved metadata, bypasses known-rejected cache
+and checks all IDs again. Metadata-first original-run recovery respects this gate;
+child regrading retains current human-approved parent identity lineage and needs
+fresh child identity/score review.
+The diagnostic is not approval: roster consistency cannot prove correct identity
+interpretation or other pages' order/completeness. Human identity and score
+review remains required. Source corrections require fresh preparation, review
+and approvals in a new output directory, never silent regeneration.
 
 ![First page of the original example exam, showing handwritten answers to Q1–Q3 and identification fields.](media/01-original-page.png)
 
@@ -191,7 +206,7 @@ bottom = round((box.y + box.height) * page["height"] / 1000)
 ### Token-hardened localhost review UI (`review-regions`)
 `handwriting-grader review-regions --exam exam.yaml` starts a zero-dependency local HTTP server (`editor.py`) bound to `127.0.0.1` with a random bearer token in the **URL fragment** (`#TOKEN`), strict **`Origin` header validation**, auto-loaded AI suggestions, zoom/pan, keyboard nudging, and a **live missing-box banner** verifying `ID` on page 0 plus every rubric question before "Approve all regions" writes `regions/approval.json`.
 
-### Coordinate scale discipline & 4-quadrant FFT page alignment (`alignment.py`)
+### Coordinate scale discipline and human crop review
 In our VTC example, John's Q3 box in `1654 × 2338` template space is `(222, 1153, 1191, 254)`:
 
 ```json
@@ -225,26 +240,10 @@ display_box = (
 
 *Figure 9. Reconstructed Q3 crop (`1191 × 254` px) showing a second line ("hand-on") that the historical transcription missed.*
 
-To compensate for physical scanner drift during `grade` (and `retry-grading --align-images`, which re-renders from the original PDF into `grading/alignment-history/recovery-*/`), `alignment.py` downsamples 2x, thresholds ink (`255 - pixel >= 35`), applies a **Hanning window** to each quadrant, and computes normalized **FFT cross-power phase correlation**:
-
-```python
-fa = np.fft.rfft2(ref_patch * win)
-fb = np.fft.rfft2(cur_patch * win)
-cross_power = fa * np.conj(fb)
-cross_power /= np.maximum(np.abs(cross_power), 1e-8)
-cc = np.fft.irfft2(cross_power, s=ref_patch.shape)
-```
-
-It fits a rigid transform (`tx, ty, theta`, bounded to `±150 px` and `±5°`) and **rejects outliers**—requiring at least three positively weighted quadrants to agree within `15.0` full-resolution pixels:
-
-```python
-residuals = np.hypot(
-    dx - (tx - theta * py),
-    dy - (ty + theta * px),
-)
-if np.count_nonzero((weights > 0.0) & (residuals <= 15.0)) < 3:
-    return 0.0, 0.0, 0.0
-```
+Scanner drift is handled by human crop/full-page inspection, not automatic
+alignment. Review and approve corrected boxes before separately cost-consented
+metadata or question recovery. Existing page images and approval-bound evidence
+are not silently regenerated; correcting the source requires a fresh run.
 
 Finally, before calling Azure OpenAI, `local_filter.py` runs an inset Pillow dark-pixel check (`ink_threshold=160`, `max_ink_ratio=0.0015`) to assign `0` locally to clearly blank answers, and `grading.crop_image()` sharpens non-blank crops in memory:
 
@@ -261,4 +260,4 @@ def crop_image(path, box):
 
 Next: [Multi-Role Azure OpenAI & Microsoft Agent Framework: Orchestration Without Surrendering Control](02-multimodal-grading-and-agent-framework.md).
 
-**Implementation references:** [preflight and CLI](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cli.py), [rubric extraction](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/rubric.py), [region suggestions](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/suggestions.py), and [FFT alignment](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/alignment.py).
+**Historical implementation references:** [preflight and CLI](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/cli.py), [rubric extraction](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/rubric.py), and [region suggestions](https://github.com/wongcyrus/azure-handwriting-grader-skills/blob/b6af53dd1cf4cf74b9a50591f0e775a3b1533133/src/handwriting_grader/suggestions.py). For current behavior, use the [reviewed workflow](../../README.md#reviewed-workflow).

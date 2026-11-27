@@ -2,9 +2,8 @@
 
 ## Prerequisites
 
-- Successful offline preflight AND Azure-confirmed `check-scans` passing
-  (run `check-scans` **before** `prepare-regions` so an upside-down or misordered
-  first script cannot corrupt the template layout and bounding boxes for all scripts).
+- Successful offline preflight for input validation. There is no required
+  scan-marker stage, heuristic orientation/order check or automatic alignment.
 - **Approved rubric (`output_dir/rubric/rubric.xlsx` + `approval.json`)**: Always extract/import
   and approve the rubric (`approve-rubric --confirm-reviewed`) before running `suggest-regions`
   so Azure OpenAI receives the finalized list of question IDs and does not waste calls or miss sub-questions.
@@ -42,23 +41,37 @@
    Saving another edit invalidates approval; source PDF, page images or configuration
    changes block the run.
 
-## Scanner Shift, Orientation, and Page Alignment
+## Scan and crop review
 
-Scanners commonly introduce vertical/horizontal shifts, slight skew, upside-down feeds, or out-of-order pages:
-- **Orientation & sequence validation (`check-scans`)**:
-  First preview `suggest-scan-markers` with an explicit model configuration, Azure endpoint and API version; obtain cost/data consent before `--confirm-cost`. Review the proposed printed marker text and boxes against the saved first-script images, verify that script's page order, then run `approve-scan-markers --exam /path/to/exam.yaml --confirm-reviewed`. Preview `handwriting-grader check-scans --exam /path/to/exam.yaml --model-config /private/config.yaml --endpoint ... --api-version v1`, then obtain separate cost/data consent before `--confirm-cost`. The reviewed crops are combined locally into one image per complete student script; Azure requests contain at most 50 script images each and cover the complete PDF across the previewed request count. The structured result is saved as `azure_confirmation-v2.json` only after every batch succeeds and is bound to the PDF and marker approval. `grade` refuses absent or stale confirmation. Each page needs at least one unique printed marker; a standalone question label is valid if it uniquely identifies the page. Missing, unreadable, ambiguous and wrong-page matches block grading. Tesseract may assist first-script human review, but no local character substitutions are allowed. **Never auto-flip or auto-reorder pages** — instruct the user to correct the source scan/PDF and re-run the check. Changing the source or reviewed markers invalidates approval; preserve the old output and prepare a new run.
-- **Automatic alignment during `grade`**: Every rendered page is automatically aligned (rigid translation + small rotation via 4-quadrant phase correlation with outlier-quadrant rejection) to `output_dir/regions/images/` before cropping.
-- **Recovering an existing unaligned run**:
-  `--align-images` rebuilds pages from the original PDF instead of transforming
-  already-aligned images again. Previous images, manifest, results and review
-  workbook are preserved in `grading/alignment-history/recovery-*/`.
-  1. Run offline alignment (0 AI cost) and targeted re-OCR / regrade:
-     - Align + re-OCR IDs: `handwriting-grader retry-grading --exam /path/to/exam.yaml --align-images --re-ocr-id`
-     - Align + re-OCR all metadata (`ID`, `CLASS`, `NAME`): `--align-images --re-ocr-metadata`
-     - Align + re-grade a specific question: `--align-images --question <Q_NUM>`
-  2. If a template bounding box itself is too tight, adjust it in `review-regions` (click **Save page** and **Approve all regions**) or edit `output_dir/regions/annotations.json` directly and run:
-     `handwriting-grader approve-regions --exam /path/to/exam.yaml --confirm-reviewed`
-  Always preview without `--confirm-cost`, check the action plan, obtain cost confirmation, and rerun with `--confirm-cost`. This updates `results.json`, syncs the run manifest, and updates `review.xlsx` without discarding existing manual edits.
+Review the first script's orientation and page order when approving regions.
+Newly rendered grading images are preserved byte-for-byte: no automatic rotation,
+reordering or alignment. Basic input, page-count, dimension and approval validation
+remains; these checks do not prove all scans are complete or correctly ordered.
+
+After region confirmation, extract all students' ID/CLASS/NAME metadata before
+scanning or grading any answers. IDs must be nonempty, unique and exactly cover
+the expected PRESENT roster (full roster without attendance). Scan order need not
+equal roster order; preserve leading zeroes. A failed gate stops answers and saves
+exact 1-based source PDF page/script diagnostics in private `grading/id-check.json`,
+plus an incomplete metadata checkpoint, not a completed review workbook.
+Tell the user which source pages to inspect; do not infer missing pages from
+roster row order. A passing diagnostic is not human approval or proof of correct
+identity interpretation or other pages' order/completeness.
+
+For unchanged inputs, preview `resume-grading` and obtain new cost/data consent
+before re-extracting missing or invalid saved metadata. Known-rejected cached
+metadata must not be replayed; all IDs are checked again before answers.
+For incorrect boxes on an unapproved completed run, review and approve corrected
+regions, then preview targeted `retry-grading --re-ocr-id`, `--re-ocr-metadata`
+or `--question Q`. Metadata-first original-run recovery enforces the ID gate.
+Child regrading retains current human-approved parent identity lineage.
+For separately reviewed answer-crop changes, see [child regrading](regrading.md).
+Teacher identity and score review remain required.
+
+Source corrections require a fresh output directory, preparation, review and
+approvals. Existing images, including older aligned images, and approval-bound
+evidence are never silently regenerated or modified. Restore missing evidence
+only from a verified exact backup with permission.
 
 ## Limits
 

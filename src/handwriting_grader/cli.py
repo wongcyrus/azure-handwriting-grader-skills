@@ -14,6 +14,13 @@ from pypdf import PdfReader
 from .telemetry import TelemetryTracker, set_active_tracker, get_active_tracker
 
 
+def _failure_detail(exc):
+    from .grading import StudentIDCheckFailed
+    if isinstance(exc, StudentIDCheckFailed):
+        return str(exc)
+    return " ".join(str(exc).split())[:2000] or "No provider error detail was available"
+
+
 def _report_failed_marks(target):
     with (target / "results.json").open(encoding="utf-8") as file:
         results = json.load(file)
@@ -186,17 +193,11 @@ def main(argv=None):
     marker_suggest.add_argument("--model-config", required=True, type=Path)
     marker_suggest.add_argument("--endpoint", required=True)
     marker_suggest.add_argument("--api-version", required=True)
-    marker_suggest.add_argument("--ocr-language", default="eng", help="Installed Tesseract language (default: eng)")
+    marker_suggest.add_argument("--ocr-language", default="eng", help="Legacy marker-language label (default: eng); no local OCR check")
     marker_suggest.add_argument("--confirm-cost", action="store_true")
     marker_approve = commands.add_parser("approve-scan-markers", help="Approve reviewed printed markers and first-script order")
     marker_approve.add_argument("--exam", required=True, type=Path)
     marker_approve.add_argument("--confirm-reviewed", action="store_true")
-    check_scans_cmd = commands.add_parser("check-scans", help="Confirm all reviewed marker crops with Azure OpenAI")
-    check_scans_cmd.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
-    check_scans_cmd.add_argument("--model-config", required=True, type=Path, help="Path to existing AI config.yaml")
-    check_scans_cmd.add_argument("--endpoint", required=True, help="Explicit Azure OpenAI endpoint")
-    check_scans_cmd.add_argument("--api-version", required=True, help="Explicit Azure OpenAI api_version")
-    check_scans_cmd.add_argument("--confirm-cost", action="store_true", help="Confirm sending all marker crops")
     suggest = commands.add_parser("suggest-regions", help="Request optional Azure OpenAI region proposals")
     suggest.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     suggest.add_argument("--model-config", required=True, type=Path, help="Path to existing AI config.yaml")
@@ -265,7 +266,6 @@ def main(argv=None):
     retry_cmd = commands.add_parser("retry-grading", help="Retry failed marks and unmoderated questions in a grading run")
     retry_cmd.add_argument("--exam", required=True, type=Path, help="Path to exam YAML")
     retry_cmd.add_argument("--run", help="Target child run ID (default: original run)")
-    retry_cmd.add_argument("--align-images", action="store_true", help="Re-render original PDF pages and align to reference regions, preserving previous artifacts (offline, zero AI cost)")
     retry_cmd.add_argument("--re-ocr-id", action="store_true", help="Re-run ID OCR for all scripts using current approved box")
     retry_cmd.add_argument("--re-ocr-metadata", action="store_true", help="Re-run ID, CLASS and NAME OCR for all scripts using current approved boxes")
     retry_cmd.add_argument("--question", help="Re-grade and re-moderate a specific question using current approved box")
@@ -751,7 +751,7 @@ def main(argv=None):
             tracker.write_cost_report(output)
         except Exception as exc:
             tracker.write_cost_report(output_dir)
-            detail = " ".join(str(exc).split())[:2000] or "No provider error detail was available"
+            detail = _failure_detail(exc)
             print(
                 f"Grading failed ({type(exc).__name__}): {detail}; requests may have "
                 "incurred charges. Inspect the partial run before retrying.",
@@ -919,13 +919,30 @@ def main(argv=None):
             keys = {question_key(q["question_number"]) for q in questions}
             finished = set(results.get("moderated_questions", []))
             pairs = {(row["script_index"], question_key(row["question"])) for row in results["marks"]}
-            missing = summary["students"] - len(results["scripts"])
-            metadata_requests = ceil(max(0, missing) / min(35, 50 // len(fields)))
+            from .attendance import present_roster
+            from .grading import MAX_IMAGES_PER_REQUEST, approved_inputs, student_id_issues
+            invalid = []
+            if args.run is None:
+                _, _, _, boxes = approved_inputs(config, path.parent, path)
+                invalid, _ = student_id_issues(
+                    results["scripts"], present_roster(config, path.parent, path),
+                    summary["students"], boxes["ID"][0], config["layout"]["pages_per_student"],
+                )
+            retry_scripts = (
+                set(range(summary["students"])) - {row["script_index"] for row in results["scripts"]}
+            ) | {issue["script_index"] for issue in invalid}
+            metadata_requests = ceil(len(retry_scripts) / min(35, MAX_IMAGES_PER_REQUEST // len(fields)))
+            if invalid:
+                print("Saved metadata will be re-extracted for invalid/missing scripts before the ID gate: "
+                      + "; ".join(
+                          f"Script #{issue['script_index'] + 1}, PDF page {issue['pdf_page']}: "
+                          + ", ".join(issue["reasons"]) for issue in invalid
+                      ) + ". Rejected metadata cache is bypassed; saved page images are used.")
             mode = "batch" if args.run is not None else (args.mode or manifest.get("grading_mode", "batch"))
             pending = [sum((si, key) not in pairs for si in range(summary["students"]))
                        for key in keys - finished]
             if mode == "batch":
-                requests = sum(ceil(count / 50) for count in pending)
+                requests = sum(ceil(count / MAX_IMAGES_PER_REQUEST) for count in pending)
                 print(f"Remaining batch preview: up to {metadata_requests} metadata request(s) and "
                       f"{requests} question request(s), excluding SDK retries. Previously failed answers are not retried.")
             else:
@@ -957,7 +974,7 @@ def main(argv=None):
             tracker.write_cost_report(output)
         except Exception as exc:
             tracker.write_cost_report(root)
-            detail = " ".join(str(exc).split())[:2000] or "No provider error detail was available"
+            detail = _failure_detail(exc)
             print(f"Resume failed ({type(exc).__name__}): {detail}; requests may have incurred charges.",
                   file=sys.stderr)
             return 1
@@ -1070,7 +1087,7 @@ def main(argv=None):
                 exclude_questions=args.exclude_question,
             )
         except Exception as exc:
-            detail = " ".join(str(exc).split())[:2000] or "No provider error detail available"
+            detail = _failure_detail(exc)
             print(f"Batch retry failed ({type(exc).__name__}): {detail}; requests may have incurred charges.",
                   file=sys.stderr)
             return 1
@@ -1091,7 +1108,6 @@ def main(argv=None):
             info = inspect_retry_grading(
                 config, path.parent, path, run_id=args.run,
                 re_ocr_fields=fields, question=args.question,
-                align_images=args.align_images,
             )
             failed_marks = info["failed_marks"]
             unmoderated_questions = info["unmoderated_questions"]
@@ -1104,13 +1120,11 @@ def main(argv=None):
             return 1
 
         if (not failed_marks and not unmoderated_questions and not fields
-                and not target_question and not regions_updated and not args.align_images):
+                and not target_question and not regions_updated):
             print("All marks, moderations, and metadata are complete; no items to retry.")
             return 0
 
         details = []
-        if args.align_images:
-            details.append(f"re-render and align {len(manifest.get('image_sha256', []))} original PDF page image(s), preserving previous artifacts (offline)")
         if regions_updated:
             details.append("approved regions updated")
         if fields:
@@ -1127,6 +1141,12 @@ def main(argv=None):
               f"Action plan: {'; '.join(details)}.\n"
               f"Estimated application requests: up to {est_requests}, excluding SDK retries. "
               + ("In-flight requests may incur charges." if est_requests > 0 else "No AI requests needed."))
+        if info.get("id_issues"):
+            print("Current saved IDs require correction before answers: " + "; ".join(
+                f"Script #{issue['script_index'] + 1}, PDF page {issue['pdf_page']}: "
+                + ", ".join(issue["reasons"]) for issue in info["id_issues"]
+            ) + ". An explicit ID/metadata retry bypasses rejected metadata cache; "
+                "saved page images are used. Incomplete answers still require resume-grading.")
         print("Affected identities and marks require review again, even if retry is interrupted; "
               "existing teacher edits are preserved.")
 
@@ -1142,13 +1162,13 @@ def main(argv=None):
             output = retry_grading(
                 config, path.parent, path, summary, run_id=args.run,
                 re_ocr_fields=fields, question=args.question,
-                align_images=args.align_images,
             )
             if est_requests > 0:
                 tracker.write_cost_report(output)
         except Exception as exc:
             tracker.write_cost_report(target_dir)
-            print(f"Retry failed ({type(exc).__name__}); requests may have incurred charges.", file=sys.stderr)
+            print(f"Retry failed ({type(exc).__name__}): {_failure_detail(exc)}; "
+                  "requests may have incurred charges.", file=sys.stderr)
             return 1
         finally:
             set_active_tracker(None)
@@ -1522,71 +1542,6 @@ def main(argv=None):
             print(f"Scan marker approval failed: {exc}", file=sys.stderr)
             return 1
         print("Printed markers and first-script order approved; changes invalidate approval.")
-        return 0
-    if args.command == "check-scans":
-        from .regions import resolve_path
-        from .scan_markers import check_scans, scan_marker_request_count
-        from .suggestions import load_model_settings
-
-        try:
-            if (not args.endpoint.strip() or not args.api_version.strip()
-                    or any(char.isspace() for char in args.endpoint)
-                    or any(char.isspace() for char in args.api_version)):
-                raise ValueError("Azure OpenAI endpoint and api_version must be provided")
-            model = load_model_settings(args.model_config, "ocr")
-            crop_count, image_count, request_count = scan_marker_request_count(
-                config, path.parent,
-            )
-        except (OSError, ValueError, yaml.YAMLError, subprocess.SubprocessError) as exc:
-            print(f"Cannot prepare scan check: {exc}", file=sys.stderr)
-            return 1
-        print(
-            f"Azure OpenAI target: endpoint={args.endpoint}, api_version={args.api_version}, "
-            f"model={model}. This sends {image_count} composite script image(s) "
-            f"covering {crop_count} reviewed marker crops in {request_count} "
-            f"request(s) and can incur charges."
-        )
-        if not args.confirm_cost:
-            print("No request sent. Obtain user approval and rerun with --confirm-cost.",
-                  file=sys.stderr)
-            return 1
-        tracker = TelemetryTracker(log_dir=None, config_path=args.model_config)
-        set_active_tracker(tracker)
-        try:
-            issues = check_scans(
-                config, path.parent, args.model_config,
-                args.endpoint.strip(), args.api_version.strip(),
-            )
-            telemetry_root = (
-                resolve_path(path.parent, config["exam"]["output_dir"]) / "scan-markers"
-            )
-        except Exception as exc:
-            telemetry_root = (
-                resolve_path(path.parent, config["exam"]["output_dir"]) / "scan-markers"
-            )
-            tracker.flush_jsonl(telemetry_root / "telemetry")
-            tracker.write_cost_report(telemetry_root)
-            detail = " ".join(str(exc).split())[:2000] or "No provider error detail was available"
-            print(
-                f"Scan check failed ({type(exc).__name__}): {detail}; "
-                "requests may have incurred charges.",
-                file=sys.stderr,
-            )
-            return 1
-        finally:
-            set_active_tracker(None)
-        telemetry_root = resolve_path(path.parent, config["exam"]["output_dir"]) / "scan-markers"
-        tracker.flush_jsonl(telemetry_root / "telemetry")
-        tracker.write_cost_report(telemetry_root)
-        if issues:
-            print(f"Scan orientation/sequence issues found ({len(issues)}):", file=sys.stderr)
-            for issue in issues:
-                print(f"- {issue}", file=sys.stderr)
-            print("Preserve this confirmation, fix the source scan, and prepare a new output directory "
-                  "with fresh marker review and scan confirmation.", file=sys.stderr)
-            return 1
-        print(f"Scan check passed: all {summary['pdf_pages']} pages ({summary['students']} scripts) "
-              "match reviewed printed markers in the expected orientation and sequence.")
         return 0
     if args.command == "suggest-regions":
         from .regions import resolve_path, verify_run

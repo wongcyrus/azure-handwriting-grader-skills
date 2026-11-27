@@ -29,9 +29,20 @@ See [deployment configuration](model-configuration-and-caching.md).
 Approved region crops supply ID, CLASS and NAME. Roster candidates help resolve
 ambiguous handwriting but do **not** guarantee exact matching or prevent false
 matches. Teachers must check every identity, leading zero and script association.
+After region confirmation, extract **all students' metadata only**, without
+scanning or grading any answers. IDs must be nonempty, unique and cover the
+expected PRESENT roster exactly (full roster without attendance). Preserve
+leading zeroes; scan order need not match roster order. A pass automatically
+continues to answers. Otherwise stop and report exact 1-based source PDF
+page/script numbers from private `grading/id-check.json`, retaining an incomplete
+metadata checkpoint and no completed review workbook. This diagnostic is not
+approval. Roster consistency cannot establish correct identity interpretation or
+other pages' order/completeness; human identity and score review remain required.
+
 Batch extraction stops on errors rather than issuing unapproved fallback calls.
 Individual OCR is used when a provider does not support batch extraction.
-Metadata requests contain at most 50 images and 35 scripts (16 with three fields).
+Metadata requests contain at most 50 images and `min(35, 50 // fields)` scripts
+(16 with ID/CLASS/NAME, 25 with ID/CLASS).
 No payload-size micro-batching is applied. No runtime or exact-match percentage is guaranteed.
 
 ## Grading modes and request limits
@@ -75,11 +86,21 @@ with `--confirm-cost`. Recorded completed work is preserved, but in-flight calls
 can repeat and incur charges. Existing review workbooks and unsupported old
 checkpoints cannot be resumed.
 
+After inspecting the indicated source pages, explicitly cost-consented resume
+may re-extract missing/invalid saved metadata, bypass known-rejected cache and
+recheck all IDs before answers. Metadata-first original-run recovery enforces the
+same gate. Child regrading retains current human-approved parent identity lineage,
+not new raw-OCR identity guesses, and requires fresh child identity/score review.
+Completed legacy/child retries retain their existing reviewed identity workflow.
+Source changes require a fresh output directory, preparation, review
+and approvals. Newly rendered images are preserved byte-for-byte, without
+automatic alignment, rotation or reordering; never silently regenerate evidence.
+
 A completed run with failed marks or moderation errors uses
 `retry-grading --exam /private/exam.yaml` (preview), then `--confirm-cost` only after
 fresh consent. It targets failures and preserves existing manual reviews. It also
-supports `--align-images`, `--re-ocr-id`, `--re-ocr-metadata` and `--question Q`;
-alignment itself is local, whereas re-OCR/regrading sends data and costs money.
+supports `--re-ocr-id`, `--re-ocr-metadata` and `--question Q`;
+re-OCR/regrading sends data and costs money.
 
 Azure SDK bounded retries handle transient transport failures. Report remaining
 429/timeouts/5xx errors and offer manual review or user-approved targeted recovery;

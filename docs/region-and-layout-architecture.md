@@ -28,13 +28,35 @@ Exam answer sheets use physical pixel bounding boxes anchored to rendered 200 DP
 
 ---
 
-## 2. Scan Validation (`check-scans`) & Layout Preparation (`prepare-regions`)
+## 2. Input Validation & Layout Preparation (`prepare-regions`)
 
-1. **Before `prepare-regions`**, run `handwriting-grader check-scans --exam exam.yaml` (offline, 0 AI cost). Using majority-consensus 4x downsampled FFT phase correlation across scripts, it detects upside-down (`180°`), sideways (`90°/270°`), blank, or out-of-sequence pages — even if Script 1 itself is wrong — and reports exact 1-based PDF page numbers for manual correction.
+1. Run offline `preflight` for input validation. There is no required scan-marker
+   stage, heuristic orientation/order check or automatic page alignment.
 2. `prepare-regions` reads `exam.scanned_pdf` and `layout.pages_per_student`.
 3. Uses `render_pdf_to_images` (`pypdfium2`) to render the first script's $N$ pages into `output/regions/images/0.jpg`, `1.jpg`, etc.
 4. Generates `output/regions/manifest.json` recording pixel dimensions `(width, height)` and SHA-256 hashes for each layout page.
 5. Regions can be approved interactively in `review-regions` or headlessly after editing `annotations.json` via `handwriting-grader approve-regions --exam exam.yaml --confirm-reviewed`.
+
+Review the first script's orientation, order and boxes. Newly rendered grading
+images are preserved byte-for-byte, never automatically rotated, reordered or
+aligned. Input, page-count, dimension and approval validation remains. Source
+changes require a fresh output directory, preparation, review and approvals,
+not silent regeneration of existing evidence.
+
+After region confirmation, extract all students' metadata (ID/CLASS/NAME only),
+without scanning or grading answers. Answers proceed automatically only when IDs
+are nonempty, unique and exactly cover the expected PRESENT roster; preserve
+leading zeroes without requiring scan order to match roster order. Otherwise
+stop with exact 1-based source PDF page/script numbers in private
+`grading/id-check.json`, an incomplete metadata checkpoint and no completed review
+workbook. After source inspection and explicit new cost consent, resume may
+re-extract missing/invalid saved metadata, bypass known-rejected cache and recheck
+all IDs before answers. Metadata-first original-run recovery respects this gate;
+child regrading retains current human-approved parent identity lineage and needs
+fresh child identity/score review.
+The diagnostic is not approval; teacher identity/score review remains mandatory
+because roster consistency cannot establish identity correctness or other pages'
+order/completeness.
 
 ---
 

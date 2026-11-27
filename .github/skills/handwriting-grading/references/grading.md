@@ -47,13 +47,29 @@
      still apply. Moderation cannot re-inspect diagrams: teachers must review images.
      The request estimate includes a possible separate answer OCR call for each
      graded crop; resume previews the remaining item-mode requests separately.
-   - Both retain `results.json`, `review.xlsx`, and `azure_usage.jsonl`. Pillow blank
+   - Completed runs retain `results.json`, `review.xlsx`, and `azure_usage.jsonl`. Pillow blank
      filtering saves calls only for clearly blank crops; confirm them during review.
-   - Roster candidates assist ID/CLASS/NAME OCR but do not guarantee correct matching.
-     Metadata requests contain at most 50 images and 35 scripts (16 with three
-     fields). A batch failure stops the run instead of issuing paid fallback calls.
-     Successful metadata batches are checkpointed before the next batch; resume
-     skips checkpointed scripts. A request interrupted before its response is saved
+   - **Metadata first, answers only after all IDs pass:** extract every student's
+     ID/CLASS/NAME metadata without scanning or grading answers. IDs must be nonempty,
+     unique and exactly cover the expected PRESENT roster (full roster without
+     attendance). Scan order need not match roster order; preserve leading zeroes.
+     A pass automatically continues; failure stops with exact 1-based source PDF
+     page/script numbers in private `grading/id-check.json`, an incomplete metadata
+     checkpoint and no completed review workbook. Tell the user which source pages
+     to inspect. This diagnostic is not approval; roster consistency cannot prove
+     correct identity interpretation or other pages' order/completeness.
+     Roster candidates assist ID/CLASS/NAME OCR but do not guarantee correct matching.
+     Metadata requests contain at most 50 images and `min(35, 50 // fields)`
+     scripts (16 with ID/CLASS/NAME, 25 with ID/CLASS).
+     A batch failure stops the run instead of issuing paid fallback calls.
+     Successful metadata batches are checkpointed before the next batch. After
+     source inspection, separately cost-consented resume can re-extract missing
+     or invalid saved metadata, bypass known-rejected cache entries, and recheck
+     all IDs before answers. Valid saved metadata is retained. Metadata-first
+     original-run recovery enforces the same gate; no automatic paid fallback
+     or retry loop. Child regrading uses current human-approved parent identity
+     lineage and still requires fresh child identity/score review.
+     A request interrupted before its response is saved
      may still be repeated and billed.
      Deployment, payload, context, output-token budgets and quota can still cause failures.
 
@@ -267,9 +283,11 @@ When API operations exhaust their built-in retry attempts:
 - **User decision required**: The agent must prompt the user to choose:
   1. Inspect/wait for Azure quota reset, then execute targeted `retry-grading --exam /path/to/exam.yaml [--confirm-cost]`.
   2. Grade the failed items manually in `review.xlsx` without additional API calls.
-- **Targeted retry and re-run commands**: When the user approves retrying or after scanner-shift alignment / bounding box adjustments (see `regions.md`):
+- **Targeted retry and re-run commands**: After explicit retry consent or reviewed
+  bounding-box adjustments (see `regions.md`). Metadata-first originals recheck
+  all IDs before answers. Completed legacy/child retries retain their existing
+  reviewed identity workflow; do not reinterpret corrected raw OCR as approval:
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml`: Retries failed marks and completes unmoderated questions. Teacher edits are preserved in the workbook and a previous copy is saved in `grading/review-history/`. Affected questions and identities must be reviewed again, even if retry is interrupted. Do not edit the workbook while retry is running; if it changes, retry stops rather than overwriting it.
-  - `handwriting-grader retry-grading --exam /path/to/exam.yaml --align-images`: Aligns all scanned page images to the approved reference layout (offline, 0 AI cost). Can be combined with `--re-ocr-id`, `--re-ocr-metadata`, or `--question`.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-id`: Re-runs student ID OCR for all scripts using the approved bounding box.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --re-ocr-metadata`: Re-runs student ID, class, and name OCR in groups of up to 16 scripts (48 images); payload limits still apply and every identity needs human verification.
   - `handwriting-grader retry-grading --exam /path/to/exam.yaml --question <Q_NUM>`: Re-grades and re-moderates a specific question using its approved box.
@@ -280,6 +298,9 @@ with `resume-grading --exam /path/to/exam.yaml`; preview the recorded target
 and obtain consent before adding `--confirm-cost`. In-flight requests can
 repeat and be billed; completed failures still need manual review. Older
 checkpoints and runs with existing review workbooks cannot be resumed.
+Source changes require a fresh output directory, preparation, review and approvals.
+Newly rendered images remain byte-for-byte unchanged; no automatic alignment,
+rotation, reordering or silent regeneration of approval-bound evidence.
 Investigate any stale `processing.lock` and never remove a live lock.
 Optional OCR/grading/moderation, annotation, rubric-extraction and analytics
 caches contain sensitive data.

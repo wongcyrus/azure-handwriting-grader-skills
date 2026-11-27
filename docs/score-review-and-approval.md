@@ -8,6 +8,13 @@ This document details the teacher score review workflow, blind question markshee
 
 AI grades and moderation suggestions are strictly preliminary. Educational standards require that an authorized human instructor inspect, adjust, and approve all evaluations.
 
+The earlier all-student metadata-only ID gate checks nonempty, unique IDs and
+exact expected PRESENT-roster coverage before answers; scripts need not follow
+roster order and leading zeroes are preserved. Its private `grading/id-check.json`
+is a source PDF page/script diagnostic, never approval. Even a passing check
+cannot establish correct identity interpretation or other pages' order/completeness.
+Human identity and score review below remains mandatory.
+
 ### The Double-Review Structure (`review.xlsx`):
 1. **`Scripts` Sheet**:
    - `script_index`, `id_ocr`, `class_ocr`, `reviewed_id`, `reviewed`, `name_ocr`.

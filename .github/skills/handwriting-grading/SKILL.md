@@ -161,15 +161,15 @@ output links directly; do not hide stage failures.
 
    | Artifact / Status | Possible Stage | Next Command / Action |
    |---|---|---|
-   | No `exam.yaml` / `config.yaml` | Not configured | Configure `exam.yaml` and, when needed, `discover-foundry` -> `preflight` -> prepare and approve scan markers -> `check-scans` |
-   | `exam.yaml` exists (no `rubric/` or `attendance/`) | Configured | `preflight` -> prepare and approve scan markers -> `check-scans` -> `prepare-attendance` (if configured) or `extract-rubric`/`import-rubric` |
-   | No `scan-markers/approval.json` | Printed scan markers not approved | Preview `suggest-scan-markers` with explicit cost/data consent before paid calls -> teacher reviews markers and first-script order -> `approve-scan-markers` -> paid Azure `check-scans` before region setup or grading |
+   | No `exam.yaml` / `config.yaml` | Not configured | Configure `exam.yaml` and, when needed, `discover-foundry` -> `preflight` |
+   | `exam.yaml` exists (no `rubric/` or `attendance/`) | Configured | `preflight` -> `prepare-attendance` (if configured) or `extract-rubric`/`import-rubric` |
    | `attendance/current.json` points to a version without `approval.json` | Attendance prepared | Teacher reviews `attendance/versions/<review_id>/attendance_review.xlsx` -> `approve-attendance` |
    | `rubric/rubric.xlsx` (no `rubric/approval.json`) | Rubric extracted/imported | Teacher reviews `rubric/rubric.xlsx` -> `approve-rubric` |
    | `rubric/approval.json` (no `regions/approval.json` or `regions/images/`) | Rubric approved; region setup not completed | `prepare-regions` -> optional paid `suggest-regions` -> `review-regions`; if an existing region or grading approval references missing images, use the recovery guidance above instead |
    | `regions/images/` (no `regions/ai_suggestions.json`, no `regions/approval.json`) | Region pages rendered | Optional `suggest-regions` (preview and consent first), or local manual `review-regions` |
    | `regions/ai_suggestions.json` or `regions/draft.json` (no `regions/approval.json`) | Regions suggested/drafted | `review-regions` (adjust boxes & approve) or `approve-regions` |
    | `regions/approval.json` (no `grading/`) | Regions approved | `grade` (preview first, then `--confirm-cost`) |
+   | `grading/id-check.json` reports problems | Metadata ID gate failed | Report exact source PDF pages/scripts for inspection; no answers or completed review workbook. For unchanged inputs, preview separately consented `resume-grading` to re-extract missing/invalid saved metadata and recheck all IDs |
    | `grading/checkpoint.json` (no `grading/manifest.json`) | Grading interrupted | `resume-grading` (preview first, then `--confirm-cost`) |
    | `grading/manifest.json`, `results.json` with `completed: false` | Grading interrupted | `resume-grading` (preview first, then `--confirm-cost`) |
    | `grading/manifest.json`, `results.json` with `completed: true` (no `grading/approval.json`) | Grading done (or failed items) | `cluster-answers` (optional) -> `review-grading` (or `retry-grading` if failures) -> approve |
@@ -202,36 +202,12 @@ output links directly; do not hide stage failures.
 5. Fix reported errors with the user's input and rerun. A successful preflight
    does not verify scan order, leading zeroes, rubric contents, credentials,
    model access or approval.
-   **Prepare reviewed printed markers, then run `check-scans` BEFORE region setup**:
-   Preview `suggest-scan-markers --exam /path/to/exam.yaml --model-config /private/config.yaml
-   --endpoint https://RESOURCE.openai.azure.com --api-version v1`.
-   It proposes page-unique printed phrases from the first student's script through
-   a Microsoft Agent Framework workflow using `models.annotation`. Obtain separate
-   cost/data consent before `--confirm-cost`. The teacher must review the first
-   script's order and `output_dir/scan-markers/markers.json` against the saved images,
-   then explicitly run `approve-scan-markers --exam /path/to/exam.yaml --confirm-reviewed`.
-   Tesseract and the selected language pack must be installed locally.
-   `handwriting-grader check-scans --exam /path/to/exam.yaml
-   --model-config /private/config.yaml --endpoint https://RESOURCE.openai.azure.com
-   --api-version v1`.
-   Preview the crop count and obtain explicit data/cost consent, then add
-   `--confirm-cost`. Locally combine all reviewed markers for each student's script
-   into one composite image. Azure requests send at most 50 script images each, so
-   a 58-student, two-page exam uses 58 script images—not 116 individual marker
-   images—and covers the complete PDF across the previewed request count. No
-   confirmation is committed until every batch succeeds. A clearly printed
-   standalone question label is valid when it uniquely identifies the page and the
-   teacher verifies its exact box. Do not send whole answer pages or use
-   handwritten OCR substitutions.
-   The hash-bound `azure_confirmation-v2.json` is required by grading. Missing,
-   unreadable or ambiguous markers block grading, as do wrong-page matches. The first
-   script is a human-confirmed reference, not independent proof of correct order.
-   If any page is flagged, **do not
-   silently flip or reorder pages in code** — report the exact PDF page numbers and
-   script numbers. A completed confirmation is retained even when it reports
-   issues, and source changes invalidate marker approval. Preserve the existing
-   output, correct the physical scan or source PDF, and prepare a new output
-   directory with fresh marker review and separately consented scan checking.
+   There is no required scan-marker stage, heuristic orientation/order check or
+   automatic alignment. Basic input, page-count, dimension and approval validation
+   remains. Review orientation, page order and layout during region approval.
+   Never automatically rotate or reorder pages. Source corrections require a new
+   output directory, preparation, review and approvals; preserve existing evidence,
+   never silently regenerate it.
    If attendance is configured, read `references/attendance.md` and obtain
    explicit review and approval before grading.
 6. For rubric setup (MUST run BEFORE region suggestion so exact question IDs are known), read `references/grading.md`:
@@ -255,10 +231,10 @@ output links directly; do not hide stage failures.
       page, and approve. Alternatively, after manual or programmatic edits to
       `annotations.json`, approve with:
       `handwriting-grader approve-regions --exam /path/to/exam.yaml --confirm-reviewed`.
-   d. **Automatic Page Alignment & Scanner Shift Recovery**:
-      During `grade`, every scanned page is automatically aligned against `regions/images/`
-      before cropping. For an existing unaligned run or tight boxes, follow the recovery
-      commands (`retry-grading --align-images ...`) in `references/regions.md`.
+   d. **Unchanged images and crop recovery**:
+      Newly rendered images are preserved byte-for-byte, with no automatic
+      alignment, rotation or reordering. Inspect clipped or shifted crops in
+      full-page views; follow reviewed-box recovery in `references/regions.md`.
 8. For grading, reporting and AI analysis read `references/grading.md`.
    Obtain the specified human confirmations; never infer approval.
    - For current Azure prices, read `references/pricing.md`. Use discovered resource
@@ -293,6 +269,21 @@ output links directly; do not hide stage failures.
      Choose by actual deployment behavior and preview; promise no fixed savings/runtime.
    - Pillow filters clearly blank answers locally. Roster candidates assist metadata
      OCR but do not guarantee exact matches: verify every identity and answer.
+   - **All-student metadata-only ID gate**: After region confirmation, extract all
+     students' ID/CLASS/NAME metadata without scanning or grading any answers.
+     IDs must be nonempty, unique and cover the expected PRESENT roster exactly
+     (full roster without attendance); scan order need not match roster order.
+     Preserve leading zeroes. A pass automatically continues to answers. Otherwise
+     stop and tell the user the exact 1-based **source PDF page and script numbers**
+     in private `grading/id-check.json` to inspect. Retain an incomplete metadata
+     checkpoint, not a completed review workbook; the diagnostic is never approval.
+     After inspection, separately cost-consented resume may re-extract only
+     missing/invalid saved metadata, bypass known-rejected cache and recheck all IDs.
+     Metadata-first original-run recovery must pass the same gate; child regrading
+     retains current human-approved parent identity lineage and needs fresh child
+     identity/score review, not new raw-OCR identity guesses. Roster consistency
+     cannot prove correct identity interpretation or other pages' order/completeness;
+     human identity and score review remain mandatory.
 
    **Failure Diagnostics, Quota Protection, and User-Decision Gating**:
    - The engine uses bounded Azure SDK retries. **Never write ad-hoc Python retry loops.**

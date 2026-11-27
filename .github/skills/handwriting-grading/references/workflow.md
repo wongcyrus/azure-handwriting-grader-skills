@@ -18,16 +18,10 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    Configuration approval never substitutes
    for stage-specific paid consent. When attendance is configured, review and approve the
    complete list separately; see `attendance.md`.
-   Before region setup, preview `suggest-scan-markers`, obtain cost/data consent,
-   and use Azure to propose printed markers from the first script through the
-   Microsoft Agent Framework workflow. Review the markers and that script's
-   order, then `approve-scan-markers --confirm-reviewed`. Install local
-   Tesseract/language data and preview `check-scans` with every reviewed marker
-   crop, endpoint, model and request count. Obtain separate cost/data consent,
-   then combine markers into one image per student script and send synchronous requests
-   of at most 50 script images. Unreadable, ambiguous
-   or wrong-page markers block grading. Source corrections require a
-   fresh output directory and marker review.
+   No required scan-marker stage, heuristic orientation/order check or automatic
+   alignment remains. Preserve newly rendered images byte-for-byte; never
+   automatically rotate or reorder them. Source corrections require a fresh
+   output directory, preparation, review and approvals, not silent regeneration.
 3. **Rubric:** extract the scheme and have a teacher approve questions,
    answers and maximum marks.
 4. **Regions:** optionally request Azure suggestions after explicit cost
@@ -35,7 +29,18 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    Save original-image pixel coordinates in `annotations.json` and approve all
    layouts.
 5. **Grading:** preview Azure endpoint/API version/deployments and request estimates,
-   then obtain explicit `--confirm-cost`. Default framework Executors wrap validation,
+   then obtain explicit `--confirm-cost`. Extract all students' ID/CLASS/NAME
+   metadata before scanning or grading answers. IDs must be nonempty, unique
+   and cover the expected PRESENT roster exactly; scan order need not match
+   roster order and leading zeroes are preserved. A pass automatically continues.
+   Otherwise stop and report exact 1-based source PDF page/script numbers from
+   private `grading/id-check.json`; retain an incomplete metadata checkpoint,
+   not a completed review workbook. This diagnostic is not approval. After
+   source inspection, separately consented resume may re-extract missing/invalid
+   saved metadata, bypass known-rejected cache and recheck all IDs before answers.
+   Metadata-first original-run recovery enforces this gate. Child regrading uses
+   current human-approved parent identity lineage and needs fresh child review.
+   Default framework Executors wrap validation,
    existing grading and the human-review boundary; `workflow-grade` forces this path,
    `--orchestrator python` is the direct fallback. `--mode batch` is synchronous
    multi-image inference, not Azure asynchronous Batch. Requests contain at most
@@ -54,7 +59,8 @@ are implemented. Formatting and cache coverage differ from the notebooks.
    shared caches retain sensitive answer data. See
    [configuration resolution](configuration.md#embedding-configuration-resolution).
 7. **Score Review:** A teacher reviews IDs, OCR, exceptions, moderation flags and
-   mark overrides in `review-grading`.
+   mark overrides in `review-grading`. Roster consistency cannot establish correct
+   identity interpretation or other pages' order/completeness; review is mandatory.
 8. **Reports:** reconcile the complete present roster and marks, validate ranges and
    have the teacher approve final scores and feedback. After reporting, prompt
    the user if they want to archive or clean intermediate grading runs with `clean`.

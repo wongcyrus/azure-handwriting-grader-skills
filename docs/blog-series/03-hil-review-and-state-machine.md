@@ -81,6 +81,21 @@ return questions, root, manifest, boxes
 
 Before grading answers, `grading.ocr_metadata_batch()` crops `ID`, `CLASS`, and `NAME` and injects the **Official Enrolled Roster** into the prompt so Azure OpenAI can resolve smudged or cursive characters against known candidates:
 
+The current runtime extracts **all students' metadata only**, without scanning
+or grading answers, then requires IDs to be nonempty, unique and exactly cover
+the expected PRESENT roster. Preserve leading zeroes; scan order need not match
+roster order. A pass automatically continues; otherwise stop with exact 1-based
+source PDF page/script numbers in private `grading/id-check.json`, an incomplete
+metadata checkpoint and no completed review workbook. After source inspection,
+separately cost-consented resume may re-extract missing/invalid saved metadata,
+bypass known-rejected cache and recheck all IDs before answers. Metadata-first
+original-run recovery respects this gate; child regrading retains current
+human-approved parent identity lineage and needs fresh child review.
+This diagnostic is not approval;
+roster consistency cannot prove correct identity interpretation or other pages'
+order/completeness. The saved example below is historical evidence, not proof
+that a current run would pass the gate.
+
 ```text
 Extract the student metadata ({fields_str}) from the attached images.
 For each student script, you are provided with crops of their {fields_str} fields.
@@ -253,7 +268,7 @@ except FileExistsError as exc:
 | Scenario | Command | Behavior & Invariant |
 |---|---|---|
 | **Crash / power loss mid-run** | `resume-grading --confirm-cost` | Skips already checkpointed `(script_index, question_key)` pairs; in-flight calls may repeat and be billed. |
-| **Transient 429/504/5xx or scanner shift** | `retry-grading --confirm-cost` | Isolates `grading_failed=True` / moderation errors; supports `--align-images`, `--re-ocr-id`, `--re-ocr-metadata`, `--question Q` while preserving manual marks. |
+| **Transient 429/504/5xx or reviewed crop corrections** | Preview `retry-grading`, then separately consent to `--confirm-cost` | Isolates `grading_failed=True` / moderation errors; supports `--re-ocr-id`, `--re-ocr-metadata`, `--question Q` while preserving manual marks. Metadata-first originals recheck IDs before answers; legacy/child retries retain their reviewed identity workflow. No automatic alignment, rotation or reordering; source changes require fresh preparation, review and approvals. |
 | **Rubric or crop change on 1 question** | `regrade --run CHILD_RUN --confirm-cost` | Creates an **isolated child run** under `runs/<child>/` without mutating parent history. |
 
 When a teacher changes a single question's rubric or crop via `crop_proposals.py` (`shared` and/or per-script `students` overrides validated as exact integers within page bounds), `regrade --run CHILD_RUN` reruns that canonical question across **all present students**, preserves unchanged question scores as drafts, and **clears all `reviewed` flags** so every identity and score receives fresh human approval before `--run CHILD_RUN` can generate reports.

@@ -1,6 +1,7 @@
 import json
 import io
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -205,10 +206,55 @@ class AnswerSheetTests(unittest.TestCase):
 
     def test_conversion_failure_leaves_no_completion_marker(self):
         with patch("handwriting_grader.answer_sheets.shutil.which", return_value="/fake/libreoffice"), \
-             patch("handwriting_grader.answer_sheets.subprocess.run") as run:
-            run.return_value.returncode = 1
+             patch("handwriting_grader.answer_sheets.subprocess.run",
+                   return_value=subprocess.CompletedProcess([], 1, "Conversion attempted", "Access denied")), \
+             patch("sys.stderr", new_callable=io.StringIO) as stderr:
             self.assertEqual(main(["answer-sheets", "--exam", str(self.exam)]), 1)
+        self.assertIn("Conversion attempted", stderr.getvalue())
+        self.assertIn("Access denied", stderr.getvalue())
         self.assertFalse((self.root / "output" / "answer-sheets" / "manifest.json").exists())
+
+    def test_zero_exit_without_pdf_reports_libreoffice_error(self):
+        with patch("handwriting_grader.answer_sheets.shutil.which", return_value="/fake/libreoffice"), \
+             patch("handwriting_grader.answer_sheets.subprocess.run",
+                   return_value=subprocess.CompletedProcess(
+                       [], 0, "", "Fatal Error: User installation could not be completed.")), \
+             patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            self.assertEqual(main(["answer-sheets", "--exam", str(self.exam)]), 1)
+        self.assertIn("User installation could not be completed", stderr.getvalue())
+        self.assertFalse((self.root / "output" / "answer-sheets" / "manifest.json").exists())
+
+    def test_snap_conversion_stages_all_paths_in_private_home_workspace(self):
+        home = self.root / "accessible-home"
+        home.mkdir()
+        workspaces = []
+
+        def fake_conversion(command, **kwargs):
+            output = Path(command[command.index("--outdir") + 1])
+            docx = Path(command[-1])
+            work = docx.parent
+            workspaces.append(work)
+            self.assertEqual(work.parent, home)
+            self.assertFalse(work.name.startswith("."))
+            self.assertEqual(output.parent, work)
+            self.assertIn(f"-env:UserInstallation={(work / 'profile').as_uri()}", command)
+            self.assertTrue(docx.is_file())
+            writer = PdfWriter()
+            writer.add_blank_page(width=200, height=300)
+            with (output / (docx.stem + ".pdf")).open("wb") as file:
+                writer.write(file)
+            writer.close()
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with patch("handwriting_grader.answer_sheets.shutil.which", return_value="/snap/bin/libreoffice"), \
+             patch("handwriting_grader.answer_sheets.Path.home", return_value=home), \
+             patch("handwriting_grader.answer_sheets.subprocess.run", side_effect=fake_conversion):
+            self.assertEqual(main(["answer-sheets", "--exam", str(self.exam)]), 0)
+        self.assertEqual(len(workspaces), 2)
+        self.assertTrue(all(not work.exists() for work in workspaces))
+        target = self.root / "output" / "answer-sheets"
+        self.assertEqual(len(list((target / "pdfs").glob("*.pdf"))), 2)
+        self.assertEqual(len(PdfReader(target / "combined.pdf").pages), 2)
 
     def test_inconsistent_page_counts_leave_no_completion_marker(self):
         conversions = []

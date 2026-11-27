@@ -52,14 +52,26 @@ a{color:#0067b8}em{color:#4b6175}
 </table>
 <p>Only explicit HTTPS Azure resource endpoints (<code>*.openai.azure.com</code> or <code>*.services.ai.azure.com</code>) are accepted—there is <strong>zero public OpenAI fallback</strong>.</p>
 <h2>2. <code>--mode batch</code> vs. <code>--mode item</code>: synchronous multi-image, not Async Batch</h2>
-<p>One of the most important clarifications in <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> is what "batch" actually means:</p>
+<p>One of the most important clarifications in <a href="../../.github/skills/handwriting-grading/SKILL.md">SKILL.md</a> is what "batch" actually means:</p>
 <pre><code class="language-markdown">`--mode batch` is synchronous multi-image inference, **not Azure asynchronous Batch**.
 </code></pre>
 <p>In our saved VTC example, <code>grading/manifest.json</code> records <code>grading_mode: "batch"</code>, four scripts, and 20 mark records across five logical calls:</p>
 <p><img alt="Selected saved grading manifest and result counts: batch mode, four scripts and twenty marks." src="media/14-grading-evidence.png" /></p>
 <p><em>Figure 2. Saved <code>grading/manifest.json</code> and <code>results.json</code> summary.</em></p>
 <p>Under the hood:
-- <strong>Phase A (Metadata OCR)</strong> sends up to <strong>16 scripts</strong> (48 images for three fields) per request with roster candidates; batch errors stop the run.
+- <strong>Phase A (Metadata OCR)</strong> extracts all students' ID/CLASS/NAME metadata only,
+  before scanning or grading any answers: up to <strong>16 scripts</strong> (48 images for
+  three fields) per request with roster candidates. IDs must be nonempty, unique
+  and exactly cover the expected PRESENT roster, preserving leading zeroes without
+  requiring roster order. A pass automatically continues; otherwise stop with
+  exact source PDF page/script numbers in private <code>grading/id-check.json</code>, an
+  incomplete metadata checkpoint and no completed review workbook. The diagnostic
+  is not approval; human identity/score review remains mandatory. Separately
+  cost-consented resume may re-extract missing/invalid saved metadata, bypass
+  known-rejected cache and recheck all IDs before answers. Metadata-first
+  original-run recovery respects the gate; child regrading retains current
+  human-approved parent identity lineage and needs fresh child review.
+  Batch errors do not trigger paid fallback.
 - <strong>Phase B (<code>--mode batch</code>, default)</strong> groups up to <strong>50 scripts</strong> per question into a synchronous <code>responses.create()</code> call (<code>QuestionBatchGradeResponse</code>, <code>16,384</code>-token output cap). There is no payload-size micro-batching; comparisons happen <em>within</em> each group, not across an entire 500-student cohort.
 - <strong>Phase B (<code>--mode item</code>)</strong> grades each crop individually (<code>GradeResponse</code>, <code>8,192</code>-token cap), then runs a separate text-only <code>ModerationResponse</code> pass per question. Because text moderation cannot re-inspect diagrams, human image review remains essential.</p>
 <h2>3. Production prompts, <code>strict_schema()</code>, and adversarial safety</h2>
@@ -152,7 +164,7 @@ if returned_indices != chunk_expected or len(result.grades) != len(chunk_expecte
 <p><img alt="Observed Q2 transcription, proposed score and reasoning rendered from the saved result." src="media/15-q2-result.png" /></p>
 <p><em>Figure 3. Saved result for Peter's Q2 (<code>8.0 / 10</code>, <code>similarity_score: 0.9</code>). Even unflagged responses can surface rubric ambiguities ("Degree" vs. "Bachelor's Degree").</em></p>
 <h2>4. Microsoft Agent Framework: Skill Policy vs. Graph Orchestration</h2>
-<p>As <a href="../../skills/handwriting-grading/SKILL.md">SKILL.md</a> summarizes:</p>
+<p>As <a href="../../.github/skills/handwriting-grading/SKILL.md">SKILL.md</a> summarizes:</p>
 <pre><code class="language-markdown">`grade` defaults to `--orchestrator agent-framework`: real Executor/WorkflowBuilder
 validation → existing grading → human-review boundary. `workflow-grade` forces it;
 `--orchestrator python` is the direct fallback. No autonomous approval or email.
@@ -201,11 +213,15 @@ validation → existing grading → human-review boundary. `workflow-grade` forc
 <p>After <code>cli.py</code> verifies <code>--confirm-cost</code>, it injects <code>grade_exam</code> into the Framework wrapper (preserving 1:1 parity with <code>--orchestrator python</code>):</p>
 <pre><code class="language-python">execute = grade_exam
 options = {}
+if args.continue_on_image_policy_block:
+    options[&quot;continue_on_image_policy_block&quot;] = True
 if args.orchestrator == &quot;agent-framework&quot;:
     from .workflow import run_grading_workflow
     execute = run_grading_workflow
     options[&quot;grade_function&quot;] = grade_exam
-output = execute(
+</code></pre>
+<p>The selected callable receives the same inputs and explicit continuation option:</p>
+<pre><code class="language-python">output = execute(
     config, path.parent, path, args.model_config, args.endpoint.strip(),
     args.api_version.strip(), summary, mode=mode, batch_concurrency=concurrency, **options,
 )
@@ -213,7 +229,8 @@ output = execute(
 <p>Inside <code>workflow.py</code>, three typed <code>Executor</code> nodes form a linear, bounded (<code>max_iterations=4</code>) graph:</p>
 <pre><code class="language-python">def build_grading_workflow(config, config_dir, config_path, model_config_path,
                            endpoint, api_version, summary, *, mode=&quot;batch&quot;,
-                           batch_concurrency=3, grade_function=grade_exam):
+                           batch_concurrency=3, grade_function=grade_exam,
+                           continue_on_image_policy_block=False):
     class ValidateApproval(Executor):
         @handler
         async def process(self, request: str, ctx: WorkflowContext[str]) -&gt; None:
@@ -227,6 +244,7 @@ output = execute(
                 grade_function, config, config_dir, config_path, model_config_path,
                 endpoint, api_version, summary,
                 mode=mode, batch_concurrency=batch_concurrency,
+                continue_on_image_policy_block=continue_on_image_policy_block,
             )
             await ctx.send_message(str(output))
 
@@ -259,7 +277,20 @@ output = execute(
 
     return asyncio.run(run())
 </code></pre>
-<p><code>ExecuteGrading</code> bridges the async Framework loop to the synchronous <code>grade_exam</code> engine via <code>asyncio.to_thread()</code>—ensuring Framework clients are never shared across OS threads—and <code>RequireHumanReview</code> yields only the draft directory path (<code>grading/</code>), never granting approval.</p>
+<p><code>ExecuteGrading</code> bridges the async Framework loop to the synchronous <code>grade_exam</code>
+engine via <code>asyncio.to_thread()</code>. The engine constructs its Azure clients in that
+execution path; the graph passes configuration and paths, not a shared client.
+<code>ValidateApproval</code> checks the approved inputs before entering the engine; the
+all-student metadata-only ID gate described above runs <strong>inside <code>grade_exam</code></strong>,
+before any answer inference, not as a separate graph executor.
+<code>RequireHumanReview</code> yields only the draft directory path (<code>grading/</code>), never
+granting approval.</p>
+<p>The CLI forwards <code>--continue-on-image-policy-block</code> only when explicitly selected;
+the wrapper defaults it to <code>False</code> and forwards it unchanged to the engine. This
+batch-only option flags image-policy-blocked answers for manual review while
+allowing other questions to continue. It does not bypass the metadata ID gate,
+Azure budget caps, client/deployment identity checks, or human approval, and does
+not trigger a paid fallback.</p>
 <h3>Verifying the real Framework graph offline (0 Azure clients)</h3>
 <p>Running <code>uv run --frozen python docs/blog-series/snippets/offline-framework-smoke.py</code> exercises the real <code>agent-framework-core</code> <code>WorkflowBuilder</code> locally with zero Azure clients:</p>
 <pre><code class="language-python">from pathlib import Path

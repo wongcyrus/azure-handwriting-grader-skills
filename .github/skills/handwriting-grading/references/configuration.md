@@ -9,7 +9,7 @@ local copy outside version control. Relative paths resolve from its directory.
 | `exam.roster`, `exam.roster_sheet` | Select the workbook and sheet; preflight requires ID, NAME and CLASS columns. |
 | `exam.attendance` | Optional reviewed `ID,STATUS` CSV; see attendance.md. Without it every roster entry is expected to have a complete script. |
 | `exam.answer_sheet_template` | DOCX template for optional personalized answer sheets, usable before scans exist. |
-| `exam.scanned_pdf` | Select the combined scan; verify its page count and human-confirmed ordering. |
+| `exam.scanned_pdf` | Select the combined scan; verify page count and human-confirmed within-script ordering. Student scripts need not follow roster order. |
 | `exam.marking_scheme` | Select the source file; current preflight checks existence only. |
 | `exam.output_dir` | Select a separate location; inspect any existing outputs before writing. |
 | `layout.pages_per_student` | User confirms a positive integer; preflight compares it with the PDF and present-student counts. |
@@ -18,6 +18,12 @@ local copy outside version control. Relative paths resolve from its directory.
 | `reporting.question_pass_marks`, `reporting.question_passing_includes_equal` | Optional per-question mark thresholds and explicit equality policy for analytics. Supply both; unset questions have blank pass statistics. Configure before approvals. |
 | `reporting.advanced_analysis` | Not used as an automatic trigger; run AI analysis explicitly after consent. |
 | `email.enabled` | Not an automatic send trigger; distribution requires separate settings and explicit approval. |
+
+After region confirmation, all students' metadata IDs must be nonempty, unique
+and cover the expected PRESENT roster exactly before any answers are processed.
+Keep IDs as text to preserve leading zeroes. This consistency gate is not human
+identity approval or proof of other pages' order/completeness. Source corrections
+require fresh preparation, review and approvals in a new output directory.
 
 For optional per-question analytics, set explicit thresholds and a comparison
 policy before creating approvals, for example:

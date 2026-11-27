@@ -180,9 +180,14 @@ def generate_answer_sheets(config, config_dir, config_path):
     expected_pages = None
     total_pages = 0
     try:
-        with tempfile.TemporaryDirectory(prefix=".conversion-", dir=target) as temporary:
+        # Snap cannot read /tmp or hidden top-level home directories. Stage all
+        # converter inputs, output and its private profile in an accessible home path.
+        work_parent = Path.home() if Path(converter).parent == Path("/snap/bin") else target
+        with tempfile.TemporaryDirectory(prefix="handwriting-conversion-", dir=work_parent) as temporary:
             work = Path(temporary)
             profile = (work / "profile").as_uri()
+            converted = work / "pdfs"
+            converted.mkdir(mode=0o700)
             for number, (student_id, fields) in enumerate(roster.items(), start=1):
                 document = Document(template)
                 replace_placeholders(document, {"id": student_id, **fields})
@@ -191,14 +196,17 @@ def generate_answer_sheets(config, config_dir, config_path):
                 document.save(docx)
                 result = subprocess.run(
                     [converter, f"-env:UserInstallation={profile}", "--headless", "--convert-to", "pdf",
-                     "--outdir", str(pdf_dir), str(docx)],
-                    capture_output=True, timeout=120, check=False,
+                     "--outdir", str(converted), str(docx)],
+                    capture_output=True, text=True, timeout=120, check=False,
                 )
-                pdf = pdf_dir / f"{stem}.pdf"
+                pdf = converted / f"{stem}.pdf"
                 if result.returncode or not pdf.is_file():
+                    details = "\n".join(
+                        text.strip() for text in (result.stdout, result.stderr) if text and text.strip()
+                    )
                     raise ValueError(
-                        f"PDF conversion failed for roster row {number}; check LibreOffice and output directory "
-                        "access (Snap installations may not access /tmp)"
+                        f"PDF conversion failed for roster row {number} (exit code {result.returncode}): "
+                        + (details or "LibreOffice did not produce a PDF")
                     )
                 reader = PdfReader(pdf)
                 pages = len(reader.pages)
@@ -207,6 +215,7 @@ def generate_answer_sheets(config, config_dir, config_path):
                 expected_pages = pages
                 for page in reader.pages:
                     writer.add_page(page)
+                shutil.copyfile(pdf, pdf_dir / pdf.name)
                 safe_append(index, [student_id, fields["name"], fields["class"], f"pdfs/{stem}.pdf",
                                     total_pages + 1, pages])
                 total_pages += pages

@@ -30,7 +30,7 @@ from handwriting_grader.regions import atomic_json, file_hash, prepare_regions, 
 from handwriting_grader.reporting import create_reports
 from handwriting_grader.rubric import approve_rubric, import_rubric, write_rubric
 from handwriting_grader.score_editor import ScoreServer, load_state
-from test_grading import FakeGrader, prepare_scan_marker_fixture
+from test_grading import FakeGrader
 
 
 class RegradingTests(unittest.TestCase):
@@ -54,6 +54,8 @@ class RegradingTests(unittest.TestCase):
             for y_off in range(2, 100, 6):
                 draw.line([(0, y_off), (200, y_off)], fill="black", width=2)
             draw.text((10, 120), f"Page {idx}", fill="black")
+            draw.rectangle((15, 5, 23, 12), fill="white")
+            draw.line((16, 6, 16 + idx * 5, 11), fill="black", width=2)
             pages.append(img)
         pages[0].save(self.root / "scan.pdf", save_all=True, append_images=pages[1:], resolution=72.0)
         self.questions = [
@@ -83,7 +85,6 @@ class RegradingTests(unittest.TestCase):
             "config_sha256": manifest["config_sha256"], "pdf_sha256": manifest["pdf_sha256"], "revision": 1,
         })
         _, summary = check_exam(self.config, self.root)
-        prepare_scan_marker_fixture(self, self.config, self.root)
         self.parent = grade_exam(self.config, self.root, self.exam, self.models, "endpoint", "v1", summary,
                                  provider_factory=FakeGrader)
         self.review(self.parent / "review.xlsx")
@@ -237,7 +238,6 @@ class RegradingTests(unittest.TestCase):
             "revision": draft["revision"],
         })
         _, summary = check_exam(config, self.root)
-        prepare_scan_marker_fixture(self, config, self.root)
         parent = grade_exam(config, self.root, exam, models, "endpoint", "v1", summary,
                             provider_factory=FakeGrader)
         self.review(parent / "review.xlsx")
