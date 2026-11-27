@@ -119,20 +119,32 @@
    marksheet per question (hiding student IDs during question review), groups
    similar answers together under similarity banners with a dedicated `📌 Grouped`
    toggle button, lets the teacher sort by clicking table headers (`Answer`, `Script`,
-   `Mark`, `Similarity`, `Status`), filter to only rows requiring a mark/review
+   `Mark`, `Answer Similarity` or `Group Similarity`, `Status`), filter to only rows requiring a mark/review
    (`Needs Mark ⚠`), expand bounding boxes (`Expand Box`), resize or zoom/pan
    handwriting crops (`+Context` / `Full Page`), toggle columns, and edit marks,
    answers, and reasoning inline (display, grouping, filter, and sort preferences
-   persist across questions). In grouped view, blank answers with a valid zero mark
+   persist across questions). Answer similarity reflects alignment with the marking
+   scheme; in embedding-grouped view, group similarity instead compares answers
+   with their group representative. Empty answers are assigned group similarity
+   1.0; this does not indicate a correct answer or a full mark. The question details, controls and table header stay
+   visible while scrolling the marksheet; on small screens the pinned controls can
+   be scrolled separately. The question and marking scheme are open by default;
+   collapse the heading to one line, or open Review menu for assignment-wide actions.
+   In grouped view, blank answers with a valid zero mark
    appear last; unscored answers and those needing manual marks remain elsewhere.
    Blank answers still require human review.
+   Each multi-answer group has a mark field: confirming it replaces the manual
+   marks for the shown group members and leaves them unreviewed for inspection.
+   Answers without a similar group appear under "Ungrouped answers"; they are
+   not necessarily similar and are not changed by another group's mark.
    - **All Questions Status Modal (`Alt+S`)**: A live overview dialog showing
      review completion for all questions and identity matching, filtering by
      "Incomplete Questions Only", and allowing instant keyboard (`Enter`) or mouse
      jump to any question.
    - **Batch Review Confirmation (`Ctrl+Enter`)**: "Confirm Question Reviewed"
-     and "Match OCR IDs" save all items in a single instant batch request (`/api/save-batch`)
-     without blocking keyboard shortcuts.
+     blocks the entire confirmation if any mark is empty, non-numeric, or outside
+     the question's range, including marks hidden by a filter. After marks are
+     corrected, it and "Match OCR IDs" save items in one batch request (`/api/save-batch`).
    - **Review Reset / Rollback (`/api/reset`)**: The "Reset Review" button allows
      safely rolling back all edits and review flags to the fresh AI grading output,
      automatically creating a timestamped backup in `grading/review-history/`.
@@ -203,20 +215,29 @@
    answers and costs money; add `--confirm-cost` only after consent. Review and
    correct every row in `ai-analysis/review.xlsx`, mark `reviewed=yes`, then explicitly
    `approve-analysis --exam /private/exam.yaml --confirm-reviewed`.
-   `advanced-report --exam /private/exam.yaml` generates a teacher DOCX and 16:9 class
-   PPTX **offline by default**. Optional Azure infographics require a configured
+   When offering advanced reports, explicitly offer the user a choice between an
+   offline teacher DOCX and 16:9 class PPTX, and a PPTX with optional paid Azure
+   infographics. Ask before running `advanced-report` if the choice is not already
+   clear; do not silently choose the offline default or ask again after a clear
+   choice for the same report. The teacher DOCX remains text-only.
+   `advanced-report --exam /private/exam.yaml` generates both documents offline.
+   Optional Azure infographics require a configured
    `models.analytics_image` deployment (e.g. an alias for `gpt-image-2.5-flare`) or override:
    `advanced-report --exam /private/exam.yaml --infographics --confirm-cost
    [--image-model DEPLOYMENT]`. Inspect the configuration recorded in the approved
    analysis manifest; adjacent image files are not auto-discovered.
    For a separate image resource, supply `--image-model-config /private/image.config.yaml`
    using the root [image template](../../../../image-config.yaml.template) with its
-   endpoint, `models.analytics_image` deployment and reviewed rates. Preserve an existing report
-   with `--report-name reports-infographics`; do not edit the approved analysis
+   endpoint, `models.analytics_image` deployment and reviewed rates. If an offline
+   report already exists, offer an infographic version as a separate output. Preserve
+   an existing report with `--report-name reports-infographics`; do not edit the approved analysis
    configuration. Preview without `--confirm-cost` first.
-   Image generation is single-attempt with cached PNG reuse and text-card fallback.
-   If `ai-analysis/reports/manifest.json` has `failed_infographics`, report failures;
-   never retry without a fresh user decision. Review documents before sharing.
+   Include every available infographic on a separate PPTX slide after its editable
+   analysis and reviewed-score summary, with a visible warning that image text and
+   numbers can be inaccurate or sample-based. Retain editable slides for failed
+   images. Generation is single-attempt with cached PNG reuse. Inspect the selected
+   report's `manifest.json` for `failed_infographics` and report failures; never retry
+   without a fresh user decision. Review documents and images before sharing.
 
 For an approved parent needing one-question regrading, read
 `regrading.md`. Child-specific review, reports and later stages use `--run`

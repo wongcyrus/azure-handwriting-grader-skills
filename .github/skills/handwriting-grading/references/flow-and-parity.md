@@ -35,6 +35,9 @@ YAML, and keep configuration, data, caches and outputs outside version control.
 Each command below is invoked as `handwriting-grader COMMAND` (from an active
 virtual environment or via `.venv/bin/handwriting-grader` on Unix / `.venv\Scripts\handwriting-grader` on Windows).
 The relevant references specify required arguments and error handling.
+After each stage, including partial failures and confirmed cleanup, refresh the
+assistant-maintained teacher output index described in [the skill](../SKILL.md#teacher-output-index);
+it is a guide, not an approval or a CLI-generated completion marker.
 
 | Stage | Inputs and command | Output and required human decision |
 |---|---|---|
@@ -59,7 +62,7 @@ The relevant references specify required arguments and error handling.
 | Offline analytics | Current grading approval; `analytics --exam EXAM` | `analytics/statistics.xlsx` with overall, class and question statistics and charts, plus question box-plot PNGs. Pass results remain blank without an explicit policy. |
 | Optional AI analysis | Current grading approval; `ai-analysis` with model target | `ai-analysis/review.xlsx` for student feedback, questions and class overview. Preview and obtain separate cost/data consent before `--confirm-cost`; review and correct every item. |
 | Analysis approval | Reviewed feedback; `approve-analysis --exam EXAM --confirm-reviewed` | Separate approval required before advanced reports or feedback in email. |
-| Advanced reports | Current analysis approval; `advanced-report --exam EXAM` | Teacher DOCX and class PPTX. Review the outputs before sharing. |
+| Advanced reports | Current analysis approval; `advanced-report --exam EXAM` | Ask whether to use the offline teacher DOCX and class PPTX or add optional paid Azure infographics to the PPTX. Preview and obtain separate cost/data consent; preserve existing reports in a new named folder. Put available images after editable analysis and reviewed-score summaries, with an image-accuracy warning. Review outputs before sharing. |
 | Optional email | Current grading approval and scored PDFs, explicit CSV for present recipients and separate settings YAML; `preview-email` | Private individual `.eml` files and preview manifest; nothing is sent. Check every recipient, body and attachment. `{feedback}` also requires current analysis approval. |
 | Email approval and send | Reviewed preview; `approve-email --confirm-reviewed`, then separate `send-email --confirm-send` | Requires a second explicit authorization immediately before dispatch. SMTP STARTTLS acceptance is not delivery. Inspect the delivery journal after errors; ambiguous attempts are not retried automatically. |
 

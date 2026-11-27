@@ -70,6 +70,30 @@ class FakeGrader:
 
 class GroupedAnswerOrderingTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node.js is required")
+    def test_similarity_labels_describe_displayed_values(self):
+        editor = Path(__file__).resolve().parents[1] / "src" / "handwriting_grader" / "score_editor.html"
+        script = """
+const fs = require("fs"), vm = require("vm"), assert = require("assert");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const start = source.indexOf("function updateSimilarityLabels(");
+const end = source.indexOf("\\nfunction moveBlankZeroAnswersLast(", start);
+assert(start >= 0 && end > start);
+const elements = {"similarity-label": {parentElement: {}}, "similarity-toggle": {}};
+vm.runInNewContext(source.slice(start, end) + `
+  updateSimilarityLabels(true);
+  if (byId("similarity-label").textContent !== "Group Similarity") throw Error("group label");
+  if (byId("similarity-toggle").textContent !== "Group Similarity") throw Error("group toggle");
+  if (byId("similarity-label").parentElement.title !==
+      "Click to sort by answer similarity and exit grouped view") throw Error("group sort title");
+  updateSimilarityLabels(false);
+`, {byId: id => elements[id]});
+assert.strictEqual(elements["similarity-label"].textContent, "Answer Similarity");
+assert.strictEqual(elements["similarity-toggle"].textContent, "Answer Similarity");
+assert.strictEqual(elements["similarity-label"].parentElement.title, "Click to sort by answer similarity");
+"""
+        subprocess.run([shutil.which("node"), "-e", script, str(editor)], check=True, capture_output=True, text=True)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required")
     def test_blank_zero_answers_move_last_without_hiding_unscored_items(self):
         editor = Path(__file__).resolve().parents[1] / "src" / "handwriting_grader" / "score_editor.html"
         script = """
@@ -94,9 +118,77 @@ for (const model of ["Word Overlap", "text-embedding-3-small"]) {
   assert.deepStrictEqual(result.map(c => c.items.map(i => i.id)),
     [["unscored", "needs-manual", "blank-positive"], ["zero-answer"],
      ["blank-zero", "whitespace-zero"]]);
+  assert.strictEqual(result[1].ungrouped, true);
   assert.strictEqual(result[2].blankZero, true);
   assert.strictEqual(clusters[0].items.length, 4);
+  const separated = moveBlankZeroAnswersLast([
+    {items: [item("first", "one", 1)]},
+    {items: [item("same-a", "same", 1), item("same-b", "same", 1)]},
+    {items: [item("second", "two", 1)]},
+    {items: [item("blank", "", 0)]}
+  ]);
+  assert.deepStrictEqual(separated.map(c => c.items.map(i => i.id)),
+    [["same-a", "same-b"], ["first", "second"], ["blank"]]);
+  assert.strictEqual(separated[1].ungrouped, true);
+  assert.strictEqual(separated[2].blankZero, true);
 }
+"""
+        subprocess.run([shutil.which("node"), "-e", script, str(editor)], check=True, capture_output=True, text=True)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js is required")
+    def test_confirm_question_blocks_invalid_marks_including_hidden_rows(self):
+        editor = Path(__file__).resolve().parents[1] / "src" / "handwriting_grader" / "score_editor.html"
+        script = """
+const fs = require("fs"), vm = require("vm"), assert = require("assert");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const start = source.indexOf('byId("mark-question-reviewed").onclick =');
+const end = source.indexOf("\\nasync function loadTableImages()", start);
+assert(start >= 0 && end > start);
+let calls = 0, status = "";
+const elements = {"mark-question-reviewed": {}, "inline-mark-0": {value: "1"},
+  "review-workspace": {scrollTop: 500}};
+const mark = value => ({manual_mark: null, moderated_mark: value, raw_mark: value,
+  answer: "", reasoning: "", reviewed: false, grading_failed: false, moderator_flag: false});
+const state = {revision: "test", questions: [{question_number: "Q1", marks: 2}],
+  scripts: [{script_index: 0}, {script_index: 1}], marks: [[mark(1)], [mark(null)]]};
+const context = {state, section: "0", byId: id => elements[id] || null,
+  message: text => status = text, setBusy: () => {}, updateRevision: () => {},
+  reload: async () => { state.marks.forEach(row => row[0].reviewed = true); },
+  api: async () => { calls++; return {json: async () => ({revision: "new"})}; },
+  document: {activeElement: null}, render: async () => {}};
+vm.runInNewContext(source.slice(start, end), context);
+(async () => {
+  await elements["mark-question-reviewed"].onclick();
+  assert.strictEqual(calls, 0);
+  assert.match(status, /#2 \\(empty\\)/);
+  assert.strictEqual(elements["review-workspace"].scrollTop, 500);
+  state.marks[1][0].moderated_mark = 0;
+  elements["inline-mark-0"].value = "  ";
+  await elements["mark-question-reviewed"].onclick();
+  assert.strictEqual(calls, 0);
+  assert.match(status, /#1 \\(empty\\)/);
+  for (const [value, reason] of [["abc", "not numeric"], ["-1", "outside"], ["3", "outside"]]) {
+    elements["inline-mark-0"].value = value;
+    await elements["mark-question-reviewed"].onclick();
+    assert.strictEqual(calls, 0);
+    assert(status.includes(reason));
+  }
+  elements["inline-mark-0"].value = "1";
+  state.marks[1][0].moderated_mark = 3;
+  await elements["mark-question-reviewed"].onclick();
+  assert.strictEqual(calls, 0);
+  assert.match(status, /#2 \\(outside/);
+  state.marks[1][0].moderated_mark = 0;
+  await elements["mark-question-reviewed"].onclick();
+  assert.strictEqual(calls, 1);
+  assert.strictEqual(elements["review-workspace"].scrollTop, 500);
+  state.questions.push({question_number: "Q2", marks: 2});
+  state.marks.forEach(row => { row[0].reviewed = false; row.push(mark(1)); });
+  await elements["mark-question-reviewed"].onclick();
+  assert.strictEqual(calls, 2);
+  assert.strictEqual(context.section, "1");
+  assert.strictEqual(elements["review-workspace"].scrollTop, 0);
+})().catch(error => { console.error(error); process.exitCode = 1; });
 """
         subprocess.run([shutil.which("node"), "-e", script, str(editor)], check=True, capture_output=True, text=True)
 
@@ -549,7 +641,7 @@ class GradingTests(unittest.TestCase):
                 page = browser.new_page()
                 page.on("dialog", lambda dialog: dialog.accept())
                 page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
-                page.get_by_text("Review each identity and every mark before approval.").wait_for()
+                page.wait_for_function("Boolean(state) && !busy")
                 self.assertNotIn(self.score_server.token, page.url)
                 for index, student in enumerate(("001", "002")):
                     page.locator("#section").select_option("id")
@@ -564,12 +656,130 @@ class GradingTests(unittest.TestCase):
                 page.get_by_text("Script #1 saved and reviewed.").wait_for()
                 page.locator("#inline-rev-1").click()
                 page.get_by_text("Script #2 saved and reviewed.").wait_for()
+                page.locator("#review-menu > summary").click()
                 page.locator("#approve").click()
                 page.locator("#kb-confirm-ok").click()
                 page.get_by_text("Approved 2 students and 2 marks.").wait_for()
                 reviewed = read_approved_grading(self.config, self.root, self.exam)
                 self.assertEqual(reviewed[2]["marks"][0]["answer"], "Corrected answer")
                 self.assertEqual(reviewed[6][(0, "1")], 2)
+            finally:
+                browser.close()
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("playwright") and shutil.which("google-chrome"),
+        "Playwright and Google Chrome are required",
+    )
+    def test_score_editor_keyboard_navigation_and_group_mark(self):
+        from playwright.sync_api import sync_playwright
+
+        self.run_grading()
+        self.start_score_editor()
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=shutil.which("google-chrome"), headless=True)
+            try:
+                page = browser.new_page()
+                page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
+                page.wait_for_function("Boolean(state) && !busy")
+                page.get_by_role("button", name="Q1").click()
+                self.assertEqual(page.locator("#similarity-label").inner_text(), "Answer Similarity")
+                page.evaluate("""() => {
+                    state.has_clusters = true;
+                    const select = document.getElementById("marksheet-cluster-mode");
+                    select.querySelector('[value="embedding"]').disabled = false;
+                    select.value = "embedding";
+                    qClusterCache.set(0, {method: "embedding", model: "test", clusters: [
+                        {id: 1, rep_text: "Example answer", scripts: [
+                            {script_index: 0, similarity: 1}, {script_index: 1, similarity: 0.9}
+                        ]}
+                    ]});
+                    renderMarksheetTable();
+                }""")
+                self.assertEqual(page.locator("#similarity-label").inner_text(), "Group Similarity")
+                self.assertIn("Avg Group Similarity:", page.locator(".group-divider").first.inner_text())
+                page.select_option("#marksheet-cluster-mode", "words")
+                self.assertEqual(page.locator("#similarity-label").inner_text(), "Answer Similarity")
+                self.assertIn("Avg Answer Similarity:", page.locator(".group-divider").first.inner_text())
+                self.assertFalse(page.locator("#status").is_visible())
+                page.evaluate("""() => {
+                    document.getElementById("q-banner-title").textContent = "Long question ".repeat(100);
+                }""")
+                title = page.locator("#q-banner-title")
+                self.assertTrue(page.locator("#q-banner-scheme").is_visible())
+                self.assertGreater(title.bounding_box()["height"], 20)
+                page.locator("#q-banner > summary").click()
+                self.assertTrue(title.evaluate("(el) => el.scrollWidth > el.clientWidth"))
+                self.assertFalse(page.locator("#q-banner-scheme").is_visible())
+                page.locator("#q-banner > summary").click()
+                self.assertTrue(page.locator("#q-banner-scheme").is_visible())
+                page.locator("#q-banner > summary").click()
+                self.assertFalse(page.locator("#review-menu").evaluate("(el) => el.open"))
+                page.locator("#review-menu > summary").click()
+                self.assertTrue(page.locator("#approve").is_visible())
+                page.locator("#review-menu > summary").click()
+                page.locator("#inline-mark-0").fill("2")
+                page.locator("#inline-mark-0").press("Enter")
+                page.get_by_text("Script #1 saved and reviewed.").wait_for()
+                page.wait_for_function("document.activeElement.id === 'inline-mark-1'")
+                page.locator("#inline-mark-1").fill("0")
+                page.locator("#inline-mark-1").press("ArrowUp")
+                page.get_by_text("Script #2 saved and reviewed.").wait_for()
+                page.wait_for_function("document.activeElement.id === 'inline-mark-0'")
+                page.locator("#inline-mark-0").fill("3")
+                page.locator("#inline-mark-0").press("ArrowDown")
+                page.get_by_text("Manual mark is outside the question's range").wait_for()
+                page.wait_for_function("document.activeElement.id === 'inline-mark-0'")
+                self.assertEqual(page.locator("#inline-mark-0").input_value(), "3")
+
+                page.locator("#inline-mark-0").fill("2")
+                page.locator("#inline-mark-0").press("Enter")
+                page.get_by_text("Script #1 saved and reviewed.").wait_for()
+                group_mark = page.get_by_label("Mark for Similar Group 1")
+                group_mark.fill("1")
+                page.get_by_role("button", name="Apply group mark").click()
+                self.assertIn("2 reviewed answer(s) will become unreviewed", page.locator("#kb-confirm-text").inner_text())
+                page.locator("#kb-confirm-ok").click()
+                page.get_by_text("Saved 2 group marks. Review each affected answer.").wait_for()
+                state = json.loads(self.score_request("/api/state")[1])
+                self.assertEqual([state["marks"][i][0]["manual_mark"] for i in range(2)], [1, 1])
+                self.assertTrue(all(not state["marks"][i][0]["reviewed"] for i in range(2)))
+
+                page.get_by_label("Mark for Similar Group 1").fill("0")
+                page.get_by_role("button", name="Apply group mark").click()
+                page.locator("#kb-confirm-cancel").click()
+                self.assertEqual(json.loads(self.score_request("/api/state")[1])["revision"], state["revision"])
+
+                page.evaluate("""() => {
+                    state.scripts.push({...state.scripts[0], script_index: 2});
+                    state.marks[2] = [{...state.marks[0][0], answer: "Unrelated"}];
+                    renderMarksheetTable();
+                }""")
+                rows = page.locator("#marksheet-tbody > tr")
+                self.assertEqual(rows.count(), 5)
+                self.assertIn("Similar Group 1", rows.nth(0).inner_text())
+                self.assertIn("Ungrouped answers", rows.nth(3).inner_text())
+                self.assertEqual(rows.nth(3).locator("input").count(), 0)
+
+                page.evaluate("""() => {
+                    const tbody = document.getElementById("marksheet-tbody");
+                    for (let i = 0; i < 15; i++) {
+                        const row = document.createElement("tr");
+                        const cell = document.createElement("td");
+                        cell.colSpan = 7;
+                        cell.style.height = "150px";
+                        row.append(cell);
+                        tbody.append(row);
+                    }
+                }""")
+                page.locator("#review-workspace").scroll_into_view_if_needed()
+                before = page.locator("#review-pinned").bounding_box()
+                page.locator("#review-workspace").evaluate("(el) => { el.scrollTop = 1000; }")
+                page.wait_for_function("document.getElementById('review-workspace').scrollTop > 0")
+                after = page.locator("#review-pinned").bounding_box()
+                header = page.locator("#marksheet th").first.bounding_box()
+                self.assertAlmostEqual(before["y"], after["y"], delta=1)
+                self.assertAlmostEqual(after["y"] + after["height"], header["y"], delta=2)
+                self.assertTrue(page.locator("#mark-question-reviewed").is_visible())
             finally:
                 browser.close()
 
@@ -595,7 +805,7 @@ class GradingTests(unittest.TestCase):
             try:
                 page = browser.new_page()
                 page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
-                page.get_by_text("Review each identity and every mark before approval.").wait_for()
+                page.wait_for_function("Boolean(state) && !busy")
                 page.get_by_role("button", name="Q1").click()
                 self.assertEqual(page.locator("#marksheet-tbody tr").count(), 2)
                 self.assertIn('<img src=x', page.locator("#inline-ans-1").input_value())
@@ -625,7 +835,7 @@ class GradingTests(unittest.TestCase):
             try:
                 page = browser.new_page()
                 page.goto(f"{self.score_server.origin}/#{self.score_server.token}")
-                page.get_by_text("Review each identity and every mark before approval.").wait_for()
+                page.wait_for_function("Boolean(state) && !busy")
                 page.get_by_role("button", name="Q1").click()
                 page.locator("#marksheet-tbody img.answer-crop-img").first.click()
                 page.locator("#image-modal[open]").wait_for()

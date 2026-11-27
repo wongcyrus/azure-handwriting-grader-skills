@@ -77,6 +77,51 @@ execute a notebook as a workaround, or claim a human approval occurred.
   spend including every retry. Azure billing is authoritative.
   Opening review/clustering is offline unless embeddings are explicitly consented.
 
+## Teacher output index
+
+Maintain a teacher-friendly `index.html` in the configured `exam.output_dir`.
+It must open locally in a normal browser without a server or internet connection,
+with readable headings, plain-language descriptions and clickable links.
+This is an assistant-maintained guide, not an automatically generated CLI artifact
+and not an approval record. Once the output directory exists, create or refresh it
+when resuming a workspace and after every stage that creates, changes, fails to
+create, archives, or removes useful outputs. Refresh it before presenting the
+stage outcome, link to it in the response, and tell the teacher they can open it
+in a browser. If the index cannot be written, say so and provide the relevant
+output links directly; do not hide stage failures.
+
+- Inspect actual files, completion manifests, and current hash-bound approvals
+  before describing their status. A file's presence or a completed manifest
+  alone is not proof of approval, current inputs, correctness, or permission to
+  share. Mark partial, failed, stale, unverified, superseded, or unavailable
+  results clearly; do not link absent files or claim that future outputs exist.
+- Start with recommended current deliverables, then group other useful outputs by
+  stage. Give each existing relative link a short plain-language description,
+  its purpose, any necessary review or sharing warning, and relevant version or
+  run context. Include review workbooks, reports, analytics, advanced decks,
+  distribution previews/exports and cost summaries when present. Distinguish
+  alternative, failed, manually modified, and child-run artifacts rather than
+  implying they are current or automatically synchronized.
+- Link folders for collections such as individual PDFs; do not enumerate student
+  names, IDs, answers, feedback, credentials, or confidential content in the
+  index. Treat the index and linked files as private. Explain that AI-generated
+  images and analysis need human verification before sharing.
+- Use relative HTML links rooted at the index location, URL-encode path components
+  and escape HTML text and attributes. Keep the page self-contained, keyboard
+  accessible, and free of external resources and scripts. Maintain only the
+  clearly delimited `<!-- handwriting-grading:index:start -->` and
+  `<!-- handwriting-grading:index:end -->` section, preserving user content
+  outside it. Create a new index if none exists. If an existing index lacks a
+  single unambiguous managed section, do not overwrite it; ask before modifying
+  it or creating an alternate index. Never modify underlying outputs, approvals,
+  or manifests just to update the index. If a previous assistant-managed Markdown
+  index exists, preserve user content outside its managed section and mark that
+  section as superseded with a link to the HTML page; do not alter an unmanaged
+  Markdown file.
+- Recheck and update links after a confirmed cleanup or archive. Do not start a
+  paid request, retry, email, cleanup, or any other gated operation to build the
+  index. Index maintenance does not replace the required user confirmations.
+
 ## Prepare an exam
 
 1. Establish whether the user is starting or resuming, what stage they need,
@@ -124,7 +169,7 @@ execute a notebook as a workaround, or claim a human approval occurred.
    | `grading/approval.json` | Scores approved | Present Post-Approval Menu: `report`, `analytics`, `ai-analysis` (optional) |
    | `reports/manifest.json` or `analytics/manifest.json` | Reports / offline stats generated | Offer remaining options: `analytics`/`report` (if missing), `ai-analysis` -> `advanced-report`, `moodle-export` (LMS PDFs/ZIP/CSV), `preview-email` -> `send-email`, or `clean` |
    | `ai-analysis/review.xlsx` (no `ai-analysis/approval.json`) | AI analysis generated | Teacher reviews `ai-analysis/review.xlsx` -> `approve-analysis` |
-   | `ai-analysis/approval.json` | AI analysis approved | `advanced-report` (Teacher DOCX & Class PPTX), `preview-email` -> `send-email`, or `clean` |
+   | `ai-analysis/approval.json` | AI analysis approved | Offer `advanced-report` with or without optional paid infographics, `preview-email` -> `send-email`, or `clean` |
    | `email/` preview artifact (no `email/approval.json`) | Email preview generated | Teacher inspects preview -> `approve-email` -> `send-email` |
    | `runs/<child>/` directory | Targeted single-question regrade | Inspect artifacts inside `runs/<child>/` and pass `--run <child>` to commands |
 
@@ -270,8 +315,12 @@ execute a notebook as a workaround, or claim a human approval occurred.
      2. **Offline Statistical Analytics (`analytics`)** *(Offline, zero AI cost)*: Cohort & class statistics (`statistics.xlsx`) and per-question box-plot PNGs.
      3. **AI Analysis & Advanced Reports**: `ai-analysis` is paid: preview, obtain
         explicit consent, review `ai-analysis/review.xlsx`, then `approve-analysis`.
-        `advanced-report` defaults to offline Teacher DOCX/Class PPTX generation.
-        Optional Azure infographics require a configured `models.analytics_image`
+        When offering or requesting advanced reports, explicitly offer both offline
+        Teacher DOCX/Class PPTX and the optional paid Azure infographics for the
+        PPTX. Before running `advanced-report`, ask which the user wants if their
+        choice is not already clear; do not silently select the offline default or
+        repeat a clear choice for the same report. The teacher DOCX remains text-only.
+        Infographics require a configured `models.analytics_image`
         deployment or override and explicit `--infographics --confirm-cost
         [--image-model DEPLOYMENT]`. For a separate image resource, read the
         [image configuration guide](references/configuration.md#separate-image-generation-resource)
@@ -281,13 +330,18 @@ execute a notebook as a workaround, or claim a human approval occurred.
         approved analysis manifest selects the configuration and Azure target.
         The standalone `azure-image-generation` skill uses a separate package
         and its own templates (`models.image`); do not conflate the workflows.
-        Preserve prior reports with a fresh `--report-name reports-infographics`;
+        If an offline report already exists, offer to create an infographic version
+        separately. Preserve prior reports with a fresh `--report-name reports-infographics`;
         do not edit the configuration bound to approved analysis. Preview first,
         then obtain separate data/cost consent and current manual image pricing.
         This path uses Azure Images API, not native Agent Framework image tools.
-        Images are single-attempt, with text fallback; report failed images and
-        never retry without a fresh user decision. Point users to the PPTX in the
-        new named folder; the teacher DOCX remains text-only.
+        Include each available infographic in the PPTX on a separate slide following
+        its editable analysis and reviewed-score summary, with a visible warning that
+        image text and numbers can be inaccurate or sample-based. Retain the editable
+        slide when an image fails. Images are single-attempt; report failures and never
+        retry without a fresh user decision. Review both analysis and images before
+        sharing. Point users to the PPTX in the new named folder; the teacher DOCX
+        remains text-only.
      4. **Moodle / LMS Export (`moodle-export`)** *(Offline, zero AI cost)*: Exports combined per-student PDFs (`student_pdfs/<ID>_<Name>.pdf` with AI feedback cover page + marked script), builds `recipients.csv` from a Moodle participants CSV, and (with `--worksheet`) fills a Moodle Assignment grading worksheet CSV + `feedback_files.zip` for bulk Moodle upload.
      5. **Email Distribution (`preview-email` -> `approve-email` -> `send-email`)**: Previews and emails marked PDFs and feedback to students (accepts `ID,EMAIL` or Moodle participants CSV directly).
 

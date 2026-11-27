@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from docx import Document
 from openpyxl import load_workbook
 from PIL import Image
+from pptx import Presentation
 
 from handwriting_grader import advanced, score_editor, verification
 from handwriting_grader.azure_ai import Usage
@@ -175,6 +176,42 @@ class AzureAuxiliaryTests(unittest.TestCase):
         )
         self.assertEqual(client.generate_image.call_count, 2)
         self.assertEqual(json.loads((target / "manifest.json").read_text())["infographics_count"], 2)
+        slides = Presentation(target / "class-presentation.pptx").slides
+        self.assertEqual(len(slides), 5)
+        slide_text = [" ".join(s.text for s in slide.shapes if s.has_text_frame) for slide in slides]
+        self.assertIn("Human-reviewed class analysis", slide_text[0])
+        self.assertIn("mean 1.00 / 2", slide_text[0])
+        self.assertIn("Human-reviewed question analysis", slide_text[3])
+        self.assertIn("mean 1.00 / 2 (50.0%)", slide_text[3])
+        for index in (1, 4):
+            self.assertIn("may be inaccurate or sample-based", slide_text[index])
+            self.assertEqual(sum(shape.shape_type == 13 for shape in slides[index].shapes), 1)
+
+    def test_failed_infographic_keeps_editable_slide_without_image_slide(self):
+        _, reviewed, rows = self._report_fixture()
+        image = io.BytesIO()
+        Image.new("RGB", (16, 9), "white").save(image, format="PNG")
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=False)
+        client.generate_image.side_effect = [
+            SimpleNamespace(image_bytes=image.getvalue(), usage_metadata=None),
+            ValueError("generation failed"),
+        ]
+        with patch.object(advanced, "read_approved_analysis", return_value=reviewed), \
+                patch.object(advanced, "validate_analysis"), \
+                patch.object(advanced, "report_rows", return_value=(rows, {})), \
+                patch.object(advanced, "load_model_settings", return_value="image-alias"), \
+                patch.object(advanced, "AzureClient", return_value=client), \
+                patch.object(advanced.time, "sleep"):
+            target = advanced.create_advanced_report({}, self.root, None, infographics=True)
+        slides = Presentation(target / "class-presentation.pptx").slides
+        self.assertEqual(len(slides), 4)
+        self.assertIn("Human-reviewed question analysis",
+                      " ".join(s.text for s in slides[-1].shapes if s.has_text_frame))
+        manifest = json.loads((target / "manifest.json").read_text())
+        self.assertEqual(manifest["infographics_count"], 1)
+        self.assertEqual(manifest["failed_infographics"][0]["key"], "q_0")
 
     def test_separate_image_resource_preserves_analysis_and_existing_reports(self):
         _, reviewed, rows = self._report_fixture()

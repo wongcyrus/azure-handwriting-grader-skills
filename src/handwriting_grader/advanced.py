@@ -529,33 +529,41 @@ def create_advanced_report(config, config_dir, config_path, *, run_id=None, info
     presentation.slide_height = Inches(7.5)
     blank_layout = presentation.slide_layouts[6]
 
-    def _add_analysis_slide(title_text, md_body, info_key):
+    def _add_analysis_slide(title_text, md_body, info_key, score_summary):
         slide = presentation.slides.add_slide(blank_layout)
         _add_styled_header(slide, title_text)
+        summary = _add_content_card(slide, Inches(0.55), Inches(1.15), Inches(12.23), Inches(0.75))
+        _add_markdown_to_frame(summary, score_summary)
+        tf = _add_content_card(slide, Inches(0.55), Inches(2.05), Inches(12.23), Inches(5.05))
+        _add_markdown_to_frame(tf, f"**Reviewed AI analysis (verify claims)**\n{md_body}", max_chars=1800)
         img_path = infographic_paths.get(info_key)
-        if img_path and img_path.exists():
+        if img_path is not None:
             from PIL import Image as _PILImage
-            try:
-                with _PILImage.open(img_path) as im:
-                    aspect = im.width / im.height
-            except Exception:
-                aspect = 16.0 / 9.0
+            with _PILImage.open(img_path) as im:
+                aspect = im.width / im.height
+            slide = presentation.slides.add_slide(blank_layout)
+            _add_styled_header(slide, f"{title_text} - Infographic")
+            warning = slide.shapes.add_textbox(Inches(0.6), Inches(1.05), Inches(12.1), Inches(0.5))
+            _add_markdown_to_frame(
+                warning.text_frame,
+                "**AI-generated image:** Text and numbers may be inaccurate or sample-based. "
+                "Use the reviewed marks and editable statistics.",
+            )
             avail_w = Inches(12.2)
-            avail_h = Inches(6.05)
+            avail_h = Inches(5.65)
             target_w = avail_w
             target_h = int(avail_w / aspect)
             if target_h > avail_h:
                 target_h = avail_h
                 target_w = int(avail_h * aspect)
             left_pos = int((presentation.slide_width - target_w) / 2)
-            top_pos = int(Inches(1.15) + (avail_h - target_h) / 2)
+            top_pos = int(Inches(1.65) + (avail_h - target_h) / 2)
             slide.shapes.add_picture(str(img_path), left_pos, top_pos, width=target_w, height=target_h)
-            slide.notes_slide.notes_text_frame.text = md_body or ""
-        else:
-            tf = _add_content_card(slide, Inches(0.55), Inches(1.2), Inches(12.23), Inches(5.9))
-            _add_markdown_to_frame(tf, md_body, max_chars=1800)
 
-    _add_analysis_slide("Class Overview", overview, "class")
+    total_marks = sum(q["marks"] for q in questions)
+    class_mean = statistics.mean(row["total"] for row in rows)
+    _add_analysis_slide("Class Overview", overview, "class",
+                        f"Reviewed marks: {len(rows)} students; mean {class_mean:.2f} / {total_marks:g}.")
 
     chart_slide = presentation.slides.add_slide(blank_layout)
     _add_styled_header(chart_slide, "Mean Score by Question (%)")
@@ -570,7 +578,12 @@ def create_advanced_report(config, config_dir, config_path, *, run_id=None, info
 
     for idx, question in enumerate(questions):
         qn = question["question_number"]
-        _add_analysis_slide(f"Question {qn}", questions_text[question_key(qn)], f"q_{idx}")
+        mean = statistics.mean(row["marks"][idx] for row in rows)
+        _add_analysis_slide(
+            f"Question {qn}", questions_text[question_key(qn)], f"q_{idx}",
+            f"Reviewed marks: {len(rows)} students; mean {mean:.2f} / {question['marks']:g} "
+            f"({100 * mean / question['marks']:.1f}%).",
+        )
 
     presentation.save(report / "class-presentation.pptx")
     validate_analysis(config, config_dir, config_path, run_id=run_id)
