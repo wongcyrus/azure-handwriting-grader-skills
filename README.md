@@ -1,6 +1,6 @@
 # Azure Handwriting Grader Skills
 
-![Azure Handwriting Grader logo](assets/branding/wordmark.png)
+![Handwriting Grader logo incorporating the Azure OpenAI icon](assets/branding/wordmark.png)
 
 **Blog series:** [Read the eight output-led articles](docs/blog-series/README.md).
 The articles include prompts, code, actual example outputs and publishing assets.

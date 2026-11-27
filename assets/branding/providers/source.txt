@@ -1,0 +1,16 @@
+Azure OpenAI provider icon
+
+Original SVG, unmodified:
+Azure_Public_Service_Icons/Icons/ai + machine learning/03438-icon-service-Azure-OpenAI.svg
+
+Official archive:
+https://arch-center.azureedge.net/icons/Azure_Public_Service_Icons_V25.zip
+
+Source and usage terms: https://learn.microsoft.com/en-us/azure/architecture/icons/
+Retrieved: 2026-11-27
+Brand guidance: https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks
+
+The provider icon is rendered and composited locally into logo.png and wordmark.png.
+original.png remains the unmodified AI-generated project artwork.
+Microsoft's icon is not covered by this repository's license.
+Provider marks belong to their respective owners; no endorsement is implied.
